@@ -73,7 +73,13 @@ Yes. Postgres handles millions of rows and vectors. Ingest directories recursive
 
 ## What editors are supported?
 
-Any MCP-compatible client: Claude Code, Cursor, Codex, OpenCode, Hermes, Cline, and others. The `mcp-configs/` files cover Claude Code, Cursor, and Codex; OpenCode uses the root `opencode.json`. Generic MCP clients need no config file — they point at `corpus-kb --transport stdio`. See [harness-distribution.md](research/harness-distribution.md).
+Any MCP-compatible client: Claude Code, Cursor, Codex, OpenCode, ZCode, Hermes, Cline, and others. The `mcp-configs/` files cover Claude Code, Cursor, and ZCode; Codex reads TOML, so use `mcp-configs/codex.toml`; OpenCode uses the root `opencode.json`. Generic MCP clients need no config file — they point at `corpus-kb --transport stdio`. See [harness-distribution.md](research/harness-distribution.md).
+
+Codex reads MCP servers only from `~/.codex/config.toml`, as TOML tables. Copy the `[mcp_servers.corpus-kb]` table from `mcp-configs/codex.toml` into that file, then restart Codex.
+
+ZCode reads the nested `mcp.servers` envelope. Copy the `corpus-kb` entry from `mcp-configs/zcode.json` into your ZCode config. Use the user file (`~/.zcode/cli/config.json`) or the workspace file (`.zcode/config.json`).
+
+Cursor asks you to confirm every tool call. That is Cursor's design, not an error.
 
 ## How do I switch from HTTP mode to MCP stdio mode?
 

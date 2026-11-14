@@ -1,0 +1,16 @@
+{
+  "mcp": {
+    "servers": {
+      "corpus-kb": {
+        "name": "Corpus-KB",
+        "description": "Local knowledge base for files, transcripts, and code. Search, ingest, and analyze on your own machine.",
+        "command": "corpus-kb",
+        "args": [
+          "--transport",
+          "stdio"
+        ],
+        "env": {}
+      }
+    }
+  }
+}

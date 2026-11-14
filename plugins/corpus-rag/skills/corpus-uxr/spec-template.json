@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "Template for a UXR study spec. Copy this file to the study folder root.",
+    "Rename the copy to <TICKET>-<N>.spec.json (example: UX1-275.spec.json).",
+    "Replace the placeholder text below, then run:",
+    "corpus-rag uxr ingest-plan --spec <TICKET>-<N>.spec.json",
+    "The loader ignores this _comment key.",
+    "research_questions become RQ1, RQ2, and so on, in list order.",
+    "hypotheses take 'H1: text' strings, or {\"label\": \"H1\", \"text\": \"...\"} objects.",
+    "analysis_questions become A1, A2, and so on, in list order.",
+    "An optional 'ticket' key overrides the name from the file name."
+  ],
+  "research_questions": [
+    "Why do participants stop during first-run setup?"
+  ],
+  "hypotheses": [
+    "H1: Participants stop when the setup wording names no outcome."
+  ],
+  "analysis_questions": [
+    "Which moments show the strongest friction?"
+  ]
+}

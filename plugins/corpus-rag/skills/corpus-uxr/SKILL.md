@@ -37,6 +37,10 @@ never guess a class. Never run analysis from a hook.
    corpus-rag uxr ingest-plan --spec UX1-275.spec.json
    ```
 
+   No spec file yet? Copy the template `spec-template.json` next to this
+   skill to the study folder root. Name it `<TICKET>-<N>.spec.json` and
+   fill in your questions.
+
 2. **Consent.** `corpus-rag uxr consent` again if the session changed.
    Exit 1 (local only) means no transcript text goes to a cloud model
    at any later step.

@@ -33,7 +33,11 @@ def register(research_app: typer.Typer) -> None:
 
 def research_ingest_transcript(
     path: str = typer.Argument(..., help="Transcript file (txt|vtt|srt|csv|docx)"),
-    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project UUID. corpus-kb research projects prints the list.",
+    ),
     force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
     source_type: str = typer.Option(
         None,
@@ -53,7 +57,11 @@ def research_ingest_transcript(
 
 def research_ingest(
     path: str = typer.Argument(..., help="File, directory, or glob"),
-    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project UUID. corpus-kb research projects prints the list.",
+    ),
     watch: bool = typer.Option(False, "--watch", help="Tail a drop directory forever"),
     force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
     source_type: str = typer.Option(

@@ -301,6 +301,10 @@ async def test_graph_store_provenance_writes(migrated: Any) -> None:
 async def test_doctor_snapshot_marks_postgres_not_used_on_duckdb(monkeypatch: Any) -> None:
     from corpus_kb.tools.doctor_tools import doctor_snapshot
 
+    # The env overrides win over the config. CI exports a Postgres URL, which
+    # pairs with this DuckDB backend as a config-pair FAIL (journey skipped).
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
+    monkeypatch.delenv("CORPUS_KB_DATABASE_BACKEND", raising=False)
     cfg = {
         "database": {
             "backend": "duckdb",
@@ -312,10 +316,14 @@ async def test_doctor_snapshot_marks_postgres_not_used_on_duckdb(monkeypatch: An
     result = snapshot["result"]
     assert result["postgres"]["reachable"] is False
     assert "not used" in result["postgres"]["message"]
-    research = result["research_checks"]
-    assert len(research) == 1
-    assert research[0]["status"] == "info"
-    assert "DuckDB" in research[0]["name"]
+    # Checks are found by name, so a later insertion cannot shift them.
+    research = {check["name"]: check for check in result["research_checks"]}
+    assert research["research checks (DuckDB)"]["status"] == "info"
+    # No Postgres research probe ran: only the notice and the journey ride.
+    assert set(research) == {"research checks (DuckDB)", "journey"}
+    # The W3 journey's honest omitted check (the file has no analysis
+    # tables to read). An absent file is a WARN, never an unreachable one.
+    assert research["journey"]["status"] == "info"
 
 
 # --- lazy handler builds (tools fall back to the given store) ---------------------

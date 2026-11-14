@@ -36,7 +36,9 @@ from corpus_kb.research.cycle_gates import (
     GATE_EXIT_CODES,
 )
 
-research_app = typer.Typer(help="Research domain: transcript ingestion")
+research_app = typer.Typer(
+    help="Run the research pipeline. Commands: ingest, ask, report, projects, cycle, demo."
+)
 
 # The ingest commands register first (they are the first two in help).
 register_ingest(research_app)
@@ -105,11 +107,18 @@ def research_cycle(
     mode: str = typer.Option(
         "out", "--mode", help="in: exactly one stage | on: approve each stage | out: to the gates"
     ),
-    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project UUID. corpus-kb research projects prints the list.",
+    ),
     drop_dir: str = typer.Option(None, "--dir", help="Transcript drop directory (ingest stage)"),
     question: str = typer.Option(None, "--question", help="Notebook question (final stage)"),
     codebook_version_id: str = typer.Option(
-        None, "--codebook-version-id", help="Pin the codebook version (default: latest)"
+        None,
+        "--codebook-version-id",
+        help="Pin the codebook version (default: latest)."
+        " corpus-kb codebook list prints the versions.",
     ),
     guide: bool = typer.Option(
         False, "--guide", help="Taught gates: narrate stages + halts with decision context"
@@ -131,7 +140,7 @@ def research_cycle(
         None, "--watch", help="Foreground: re-run the cycle when transcripts land in this directory"
     ),
 ) -> int:
-    """Research cycle (todo 20): full pipeline with human-critical halt gates.
+    """Research cycle: full pipeline with human-critical halt gates.
 
     Halts print `AWAITING HUMAN: <gate>` plus the exact next command and a
     distinct per-gate exit code; `codebook_promotion` is hard-floored and

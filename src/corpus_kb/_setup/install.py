@@ -104,6 +104,7 @@ def print_doctor_report(
     research: list[Any] | None = None,
     env_check: Any | None = None,
     storage: list[Any] | None = None,
+    journey: list[Any] | None = None,
 ) -> None:
     """Print read-only diagnostic report."""
     print("\n=== Corpus-KB Doctor ===")
@@ -153,6 +154,10 @@ def print_doctor_report(
         from corpus_kb._setup.doctor_storage import print_storage_checks
 
         print_storage_checks(storage)
+    if journey:
+        from corpus_kb._setup.doctor_journey import print_journey_checks
+
+        print_journey_checks(journey)
     print("\nRecommended commands (drop --dry-run to execute setup):")
     print("  1. pip install -e .[dev]")
     print("  2. corpus-kb setup")
@@ -218,6 +223,7 @@ def doctor_json_report(
     storage: list[Any] | None,
     config: dict[str, Any],
     conn_str: str,
+    journey: list[Any] | None = None,
 ) -> dict[str, Any]:
     """The machine-readable doctor report (issue #348).
 
@@ -245,7 +251,7 @@ def doctor_json_report(
         checks[-1]["fix"] = "install Ollama, then run: ollama serve"
     if env_check is not None:
         checks.append(_check_entry(env_check))
-    for group in (research, storage):
+    for group in (research, storage, journey):
         for check in group or []:
             checks.append(_check_entry(check))
     return {
@@ -314,11 +320,19 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
 
     reachable = database_reachable(resolved_backend(config), bool(info["postgres_ok"]), storage)
+
+    # Novice journey section (novice-UX program W3): the same probe the SPA
+    # snapshot composes, so the CLI and the UI cannot disagree. Read-only;
+    # never flips the exit code.
+    from corpus_kb._setup.doctor_journey import journey_checks
+
+    journey = await journey_checks(config, conn_str, reachable, bool(info["ollama_ok"]))
+
     if json_output:
-        report = doctor_json_report(info, env_check, research, storage, config, conn_str)
+        report = doctor_json_report(info, env_check, research, storage, config, conn_str, journey)
         print(json.dumps(report, indent=2))
     else:
-        print_doctor_report(info, research, env_check=env_check, storage=storage)
+        print_doctor_report(info, research, env_check=env_check, storage=storage, journey=journey)
     return 0 if reachable else 3
 
 

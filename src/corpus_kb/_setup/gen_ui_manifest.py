@@ -7,15 +7,21 @@ drift, ``gen_harness_pack`` precedent):
   * ``ui_src/src/api/ops.generated.ts``        — typed op table: id, path,
     method, longRunning (an ``@generated`` file humans must not edit)
   * ``ui_src/src/api/thresholds.generated.ts`` — verify-badge thresholds
+  * ``ui_src/src/api/methods.generated.ts``    — the analysis register's
+    guidance table (difficulty, concepts, prerequisites, next) for the
+    SPA's progression rail (novice-UX program W3)
 
-The renderers live in ``gen_ui_manifest_render.py`` (the 250-line rule).
+The renderers live in ``gen_ui_manifest_render.py`` (the 250-line rule);
+the method rows load in ``gen_ui_manifest_methods.py``.
 
-Sources (exactly two, zero-drift rule 1):
+Sources (exactly three, zero-drift rule 1):
 
   * ``surface_registry.SURFACES``, loaded BY PATH — the registry is
     strictly stdlib-only and is never imported as a package member;
   * ``corpus_kb.api.research_http.tool_routes()`` for the required/optional
-    body keys (imported lazily; the registry load stays dependency-free).
+    body keys (imported lazily; the registry load stays dependency-free);
+  * the analysis method register through its one loader, for the
+    guidance rows.
 
 One declared exception: the multipart upload route is not a JSON tool
 route, so its required form field (``file``) is named in
@@ -36,9 +42,12 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+from corpus_kb._setup.gen_ui_manifest_methods import build_method_entries
 from corpus_kb._setup.gen_ui_manifest_render import (
+    METHODS_TS_REL,
     OPS_TS_REL,
     THRESHOLDS_TS_REL,
+    render_methods_ts,
     render_ops_ts,
     render_thresholds_ts,
 )
@@ -172,6 +181,7 @@ def artifacts(project_root: Path) -> dict[Path, str]:
         MANIFEST_REL: manifest_json,
         OPS_TS_REL: render_ops_ts(entries),
         THRESHOLDS_TS_REL: render_thresholds_ts(),
+        METHODS_TS_REL: render_methods_ts(build_method_entries(project_root)),
     }
 
 

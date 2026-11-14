@@ -45,8 +45,8 @@ MRL-sliced from >=1024). The default `pgml` provider abstains when the pgml
 extension is absent. 768-dim models (nomic-embed-text) always abstain:
 vectors stay NULL and retrieval degrades to lexical-only. Real research
 deployments should set `embedding.provider: ollama` with a >=1024-dim model
-(for example `qwen3-embedding:8b-q8_0`). `corpus-kb doctor` warns about this
-shape.
+(for example the shipped default `qwen3-embedding:4b`). `corpus-kb doctor`
+warns about this shape and prints the exact pull.
 
 ## Config reference
 

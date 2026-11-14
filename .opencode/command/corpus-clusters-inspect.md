@@ -11,6 +11,12 @@ description: "Cluster structure report: sizes, noise, exemplars, reduction"
 4. Budget the calibration effort (moderate) and autonomy (human_in_loop).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `intermediate`.
+- Teaches: `clustering`, `vector_similarity`.
+- Next step: method 04, dictionary or rule-based classification (`labeling-build`), once the groups suggest labels.
+
 ## Run
 
   ```

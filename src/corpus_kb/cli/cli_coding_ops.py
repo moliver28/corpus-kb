@@ -100,7 +100,9 @@ def register_ops(coding_app: typer.Typer) -> None:
     @coding_app.command("pool")
     def pool(
         codebook_version_id: str = typer.Option(
-            ..., "--codebook-version-id", help="Codebook version UUID to pool for"
+            ...,
+            "--codebook-version-id",
+            help="Codebook version UUID to pool for. corpus-kb codebook list prints the versions.",
         ),
     ) -> int:
         """Run pooling (keyword hits, similarity) and coverage reconciliation."""

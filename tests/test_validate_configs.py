@@ -37,6 +37,7 @@ VALID_TOOL_NAMES = validate_configs.VALID_TOOL_NAMES
 validate_opencode_config = validate_configs.validate_opencode_config
 validate_claude_config = validate_configs.validate_claude_config
 validate_cursor_config = validate_configs.validate_cursor_config
+validate_zcode_config = validate_configs.validate_zcode_config
 load_json = validate_configs.load_json
 check_cross_config_consistency = validate_configs.check_cross_config_consistency
 validate_all = validate_configs.validate_all
@@ -112,6 +113,24 @@ def valid_codex_config():
                 "args": ["--transport", "stdio"],
                 "env": {},
                 "autoApprove": ["search", "retrieve_context"],
+            }
+        },
+    }
+
+
+@pytest.fixture
+def valid_zcode_config():
+    """Minimal valid ZCode format config (nested mcp.servers, no autoApprove)."""
+    return {
+        "mcp": {
+            "servers": {
+                "corpus-kb": {
+                    "name": "Corpus-KB",
+                    "description": "Local RAG system",
+                    "command": "corpus-kb",
+                    "args": ["--transport", "stdio"],
+                    "env": {},
+                }
             }
         },
     }
@@ -473,6 +492,49 @@ class TestCodexConfig:
         (tmp_path / "mcp-configs" / "mystery.json").write_text("{}", encoding="utf-8")
         errors = validate_all(project_root=tmp_path)
         assert any("unknown config format" in e for e in errors)
+
+
+class TestZcodeConfig:
+    def test_valid_zcode_config_passes(self, valid_zcode_config):
+        errors = validate_zcode_config(valid_zcode_config)
+        assert errors == [], f"Expected no errors, got: {errors}"
+
+    def test_missing_servers_fails(self, valid_zcode_config):
+        config = copy.deepcopy(valid_zcode_config)
+        del config["mcp"]["servers"]
+        errors = validate_zcode_config(config)
+        assert any("mcp.servers" in e for e in errors)
+
+    def test_fallback_mcp_servers_shape_is_rejected(self):
+        config = {
+            "mcpServers": {
+                "corpus-kb": {
+                    "name": "Corpus-KB",
+                    "description": "Local RAG system",
+                    "command": "corpus-kb",
+                    "args": ["--transport", "stdio"],
+                    "env": {},
+                }
+            }
+        }
+        errors = validate_zcode_config(config)
+        assert any("mcp.servers" in e for e in errors)
+
+    def test_missing_env_fails(self, valid_zcode_config):
+        config = copy.deepcopy(valid_zcode_config)
+        del config["mcp"]["servers"]["corpus-kb"]["env"]
+        errors = validate_zcode_config(config)
+        assert any("env" in e for e in errors)
+
+    def test_command_must_be_string(self, valid_zcode_config):
+        config = copy.deepcopy(valid_zcode_config)
+        config["mcp"]["servers"]["corpus-kb"]["command"] = ["corpus-kb", "--transport", "stdio"]
+        errors = validate_zcode_config(config)
+        assert any("command" in e for e in errors)
+
+    def test_real_zcode_config_passes(self):
+        errors = validate_zcode_config(load_json(ROOT / "mcp-configs" / "zcode.json"))
+        assert errors == [], f"Real zcode.json failed validation: {errors}"
 
 
 def test_research_and_notebook_tools_are_valid_names():

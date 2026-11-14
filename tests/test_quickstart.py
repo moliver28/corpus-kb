@@ -448,7 +448,7 @@ def test_cli_writes_adopted_dsn_to_config(tmp_path: Path, monkeypatch: pytest.Mo
     assert result.exit_code == 0, result.output
     text = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     assert DSN_5432 in text
-    assert "corpus-kb ingest docs" in result.output
+    assert "corpus-kb demo-kb" in result.output
 
 
 def test_cli_no_write_does_not_touch_config(

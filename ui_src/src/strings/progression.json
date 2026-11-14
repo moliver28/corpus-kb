@@ -1,0 +1,15 @@
+{
+  "progressionTitle": "Your method ladder",
+  "progressionBody": "Methods sit on three rungs by difficulty. Open a rung to see what each method teaches and what builds on it.",
+  "progressionRungNovice": "Novice",
+  "progressionRungIntermediate": "Intermediate",
+  "progressionRungAdvanced": "Advanced",
+  "progressionRungUntagged": "No difficulty noted",
+  "progressionMethodCount": "{count} methods",
+  "progressionMethodCountOne": "{count} method",
+  "progressionTeachesLabel": "Teaches",
+  "progressionNeedsLabel": "Needs first",
+  "progressionNextLabel": "Builds toward",
+  "progressionHumanOnly": "You run this one yourself",
+  "progressionRungEmpty": "No methods sit on this rung yet."
+}

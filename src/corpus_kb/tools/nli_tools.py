@@ -30,7 +30,9 @@ from .ingest_common import DEFAULT_TENANT_ID
 __all__ = ["contradictions_screen", "nli_classify"]
 
 _NO_CORPUS_REASON = "the tenant has no embedded chunks."
-_NO_CORPUS_REMEDY = "Ingest documents with embeddings first, then retry."
+_NO_CORPUS_REMEDY = (
+    "Ingest documents with embeddings first (corpus-kb research ingest), then retry."
+)
 _NO_TARGETS_REASON = "none of the requested chunk ids have stored vectors."
 _NO_TARGETS_REMEDY = "List chunk ids that exist in this tenant, then retry."
 _TOO_FEW_REASON = "fewer than two embedded chunks; no pairs to compare."

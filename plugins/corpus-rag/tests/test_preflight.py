@@ -27,9 +27,7 @@ def setup_state(tmp_path: Path, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_hard_checks_fail_without_engine_and_carry_fixes(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_hard_checks_fail_without_engine_and_carry_fixes(tmp_path: Path, monkeypatch) -> None:
     setup_state(tmp_path, monkeypatch)
     monkeypatch.setattr(preflight.engine_paths, "engine_root", lambda root=None: None)
     monkeypatch.setattr(preflight.engine_paths, "engine_cli", lambda root=None: None)
@@ -125,9 +123,7 @@ def test_pgvector_probe_uses_the_superuser_dsn(tmp_path: Path, monkeypatch) -> N
 
 def test_soft_checks_warn_but_never_stop(tmp_path: Path, monkeypatch) -> None:
     setup_state(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        soft_checks, "doctor_report", lambda cli: {"checks": [], "config": {}}
-    )
+    monkeypatch.setattr(soft_checks, "doctor_report", lambda cli: {"checks": [], "config": {}})
     monkeypatch.setattr(soft_checks, "ollama_models", lambda: [])
     soft: list[dict] = []
     soft_checks.soft_checks(None, soft)
@@ -139,22 +135,32 @@ def test_soft_checks_warn_but_never_stop(tmp_path: Path, monkeypatch) -> None:
     preflight.assert_passes({"hard": [], "soft": soft})
 
 
-def test_soft_checks_read_doctor_json_and_model_list(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_soft_checks_read_doctor_json_and_model_list(tmp_path: Path, monkeypatch) -> None:
     setup_state(tmp_path, monkeypatch)
     report = {
         "checks": [{"name": "Ollama", "level": "OK", "detail": "up"}],
         "config": {"embedding_model": "nomic-embed-text"},
     }
     monkeypatch.setattr(soft_checks, "doctor_report", lambda cli: report)
-    monkeypatch.setattr(
-        soft_checks, "ollama_models", lambda: ["nomic-embed-text:latest"]
-    )
+    monkeypatch.setattr(soft_checks, "ollama_models", lambda: ["nomic-embed-text:latest"])
     soft: list[dict] = []
     soft_checks.soft_checks("corpus-kb", soft)
     assert all(row["ok"] for row in soft)
     assert soft[1]["detail"] == "nomic-embed-text"
+
+
+def test_soft_checks_model_fallback_is_the_shipped_default(tmp_path: Path, monkeypatch) -> None:
+    """With no configured model, the fix names the shipped default."""
+    setup_state(tmp_path, monkeypatch)
+    report = {"checks": [], "config": {}}
+    monkeypatch.setattr(soft_checks, "doctor_report", lambda cli: report)
+    monkeypatch.setattr(soft_checks, "ollama_models", lambda: [])
+    soft: list[dict] = []
+    soft_checks.soft_checks(None, soft)
+    model_row = soft[1]
+    assert model_row["detail"] == "no model configured"
+    assert "`ollama pull qwen3-embedding:4b`" in model_row["fix"]
+    assert "nomic-embed-text" not in model_row["fix"]
 
 
 def test_doctor_report_tolerates_bad_output(tmp_path: Path, monkeypatch) -> None:

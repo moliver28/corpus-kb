@@ -498,6 +498,15 @@ def _patch_doctor_probes(
     async def fake_storage(config: object, conn_str: str, postgres_ok: bool) -> list[_Check]:
         return [_Check("engine", "info", "postgres")]
 
+    async def fake_journey(
+        config: object, conn_str: str, db_ok: bool, ollama_ok: bool
+    ) -> list[_Check]:
+        if not db_ok:
+            return [
+                _Check("journey", "skipped", "The database did not answer. The journey is omitted.")
+            ]
+        return [_Check("journey_next", "ok", "Next: build labels with method 04.")]
+
     stubbed: dict[str, Any] = {"database": {"connection_string": "postgresql://doctor-test"}}
     if config is not None:
         stubbed.update(config)
@@ -508,10 +517,14 @@ def _patch_doctor_probes(
     monkeypatch.setattr(setup_steps, "check_extensions", fake_extensions)
     monkeypatch.setattr(setup_steps, "check_ollama", fake_ollama)
     # research/storage/env names are bound at doctor_tools module top, so
-    # the patches target that binding, not the defining module.
+    # the patches target that binding, not the defining module. The W3
+    # journey probe imports lazily from its own module, so it patches there.
     monkeypatch.setattr(doctor_tools, "research_checks", fake_research)
     monkeypatch.setattr(doctor_tools, "storage_checks", fake_storage)
     monkeypatch.setattr(doctor_tools, "env_var_check", lambda: _Env())
+    import corpus_kb._setup.doctor_journey as doctor_journey
+
+    monkeypatch.setattr(doctor_journey, "journey_checks", fake_journey)
 
 
 def test_doctor_snapshot_reuses_the_cli_probes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -539,7 +552,15 @@ def test_doctor_snapshot_reuses_the_cli_probes(monkeypatch: pytest.MonkeyPatch) 
             "fix": "",
             "doc": "",
             "embedding_dimensions": None,
-        }
+        },
+        {
+            "name": "journey_next",
+            "status": "ok",
+            "detail": "Next: build labels with method 04.",
+            "fix": "",
+            "doc": "",
+            "embedding_dimensions": None,
+        },
     ]
     # Structured embedding facts + reranker state (issue #183), read from
     # the same config the CLI doctor checks (defaults in this fixture).
@@ -630,7 +651,18 @@ def test_doctor_skips_research_checks_without_postgres(
     assert response.status_code == 200
     result = response.json()["result"]
     assert result["postgres"]["reachable"] is False
-    assert result["research_checks"] == []
+    # The research probes stay empty; the W3 journey reports one honest
+    # skipped check instead of a broken section.
+    assert result["research_checks"] == [
+        {
+            "name": "journey",
+            "status": "skipped",
+            "detail": "The database did not answer. The journey is omitted.",
+            "fix": "",
+            "doc": "",
+            "embedding_dimensions": None,
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------

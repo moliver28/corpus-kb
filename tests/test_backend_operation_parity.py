@@ -67,6 +67,34 @@ PARITY_OPS: ParityLegs = (
     "coding_status",
     "coding_export",
     "events_summary",
+    # Novice-UX W2: every engine-neutral analysis op that ran through the
+    # dual-engine seam (tenant_connection) without a DuckDB leg. The rule
+    # for this block: an op joins when its store path runs on EVERY
+    # outcome in this gate world; honest guard envelopes (disabled,
+    # empty, unavailable) count, engine-shaped exceptions do not. The
+    # NLI pair joins under the same rule — the store read (the vector
+    # prefilter) runs on every outcome, and its chat arm is
+    # engine-independent, degrading to the honest unavailable envelope
+    # on a model-less host. analysis_route stays out: it reads no store
+    # on any path (the deep surface gate covers its envelope).
+    "keyphrases_extract",
+    "lexical_classify",
+    "neighbors_classify",
+    "centroids_classify",
+    "clusters_inspect",
+    "duplicates_screen",
+    "outliers_rank",
+    "sentiment_screen",
+    "active_learn_next",
+    "nli_classify",
+    "contradictions_screen",
+    "labeling_build",
+    "classification_build",
+    "topics_build",
+    "topics_trends",
+    "analysis_backfill_dates",
+    "analysis_embed_meta",
+    "analyze_run",
 )
 
 

@@ -9,6 +9,9 @@ header around it is hand-maintained:
   ...the table plus the per-method guidance bullets...
   <!-- amr-register:generated:end -->
 
+The block builder lives in ``_method_docs_block.py`` (the sibling-helper
+pattern the bench scripts use), so both files stay under the 250-line cap.
+
 ``--check`` regenerates in memory and exits 1 on drift (the license-lock
 and harness-pack precedent) so ``poe gen`` / ``poe check`` catch a stale
 docs table after any register edit.
@@ -22,140 +25,18 @@ Exit code 0 = in sync (or written), 1 = drift detected.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _method_docs_block import END_MARKER, START_MARKER, build_block
+
 REGISTER_REL = Path("config") / "analysis_methods.yaml"
 DOCS_REL = Path("docs") / "ANALYSIS-METHODS.md"
-START_MARKER = "<!-- amr-register:generated:start -->"
-END_MARKER = "<!-- amr-register:generated:end -->"
-
-_STATUS_LABEL = {
-    "implemented_existing": "existing op",
-    "implemented_new": "new op",
-    "human_led": "human-led",
-    "not_planned": "not planned",
-}
-
-
-_CODE_TOKEN = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
-
-
-def _code(token: str) -> str:
-    """Format one token as code (Vale: code-looking words need backticks)."""
-    return f"`{token}`"
-
-
-def _prose(text: str) -> str:
-    """Backtick snake_case tokens inside a prose field, keep the rest."""
-    return _CODE_TOKEN.sub(lambda m: _code(m.group(0)), text)
-
-
-def _input_label(token: str) -> str:
-    """The docs label for one input kind (the LLM initialism stays upper)."""
-    return "LLM" if token == "llm" else _code(token)
-
-
-_ROUTING_AXES_FIELDS = (
-    "task_type",
-    "comparison_structure",
-    "output_form",
-    "evidence_basis",
-    "statistical_rigor",
-    "cost_tier",
-)
-
-_ROUTING_PROSE_FIELDS = (
-    ("Watch for", "failure_modes"),
-    ("Limits", "scope_limits"),
-)
-
-
-def _routing_lines(method: dict[str, Any]) -> list[str]:
-    """The routing-axes bullets for one method (analysis-routing program).
-
-    Renders nothing when the row carries no routing axes (all fields are
-    optional), so old registers and test fixtures still generate cleanly.
-    A row with SOME axes but not all six is an authoring bug: it names the
-    method id and stops, instead of rendering a half-filled block.
-    """
-    present = [name for name in _ROUTING_AXES_FIELDS if method.get(name)]
-    if not present:
-        return []
-    if len(present) != len(_ROUTING_AXES_FIELDS):
-        raise SystemExit(
-            f"method {method.get('id')}: partial routing axes ({', '.join(present)}). "
-            "Set all six axes or none."
-        )
-    axes = (
-        f"  - Routing axes: task {_code(method['task_type'])}, comparison "
-        f"{_code(method['comparison_structure'])}, output {_code(method['output_form'])}, "
-        f"evidence {_code(method['evidence_basis'])}, rigor "
-        f"{_code(method['statistical_rigor'])}, cost tier {_code(method['cost_tier'])}."
-    )
-    lines = [axes]
-    for label, field_name in _ROUTING_PROSE_FIELDS:
-        value = method.get(field_name)
-        if value:
-            lines.append(f"  - {label}: {_prose(value)}")
-    phrases = method.get("question_phrases") or []
-    if phrases:
-        sample = " / ".join(f'"{phrase}"' for phrase in phrases[:3])
-        lines.append(f"  - Ask it: {sample}")
-    follows = method.get("suggests") or []
-    if follows:
-        quoted = " / ".join('"' + item + '"' for item in follows)
-        lines.append(f"  - Follow-ups: {quoted}")
-    # The primary source carries the venue annotation: "URL (Venue Year)".
-    sources = method.get("sources") or []
-    if sources:
-        lines.append(f"  - Evidence: {sources[0]}")
-    return lines
-
-
-def build_block(register: dict[str, Any]) -> str:
-    """The generated markdown: the register table plus guidance bullets."""
-    methods: list[dict[str, Any]] = register["methods"]
-    lines = [
-        START_MARKER,
-        f"Register version: {register['register_version']}. Source: the "
-        "research document named in `config/analysis_methods.yaml`.",
-        "",
-        "| Id | Method | Output family | Inputs | Calibration | Autonomy | "
-        "Complexity | Status | Op |",
-        "|----|--------|---------------|--------|-------------|----------|------------|--------|----|",
-    ]
-    for method in methods:
-        op = method.get("op") or "(none)"
-        op_cell = _code(op) if op != "(none)" else op
-        inputs = ", ".join(_input_label(i) for i in method["inputs_required"])
-        lines.append(
-            f"| {method['id']} | {method['name']} | {_code(method['output_family'])} "
-            f"| {inputs} | {_code(method['calibration_effort'])} "
-            f"| {_code(method['autonomy'])} | {_code(method['complexity_tier'])} "
-            f"| {_STATUS_LABEL[method['implementation_status']]} | {op_cell} |"
-        )
-    lines += ["", "## Method guidance", ""]
-    for method in methods:
-        op = method.get("op")
-        suffix = f" (op: `{op}`)" if op else ""
-        lines.append(
-            f"- **{method['id']} — {method['name']}**{suffix}. {_prose(method['usage_guidance'])}"
-        )
-        lines.append(f"  - Validate: {_prose(method['validation_required'])}")
-        lines.append(f"  - Claim only: {_prose(method['permitted_claims'])}")
-        lines.append(f"  - Do not claim: {_prose(method['do_not_claim'])}")
-        lines.append(
-            f"  - Cautions: {_prose(method['robustness_caveat'])} "
-            f"Bias: {_prose(method['bias_risk'])}"
-        )
-        lines += _routing_lines(method)
-    lines.append(END_MARKER)
-    return "\n".join(lines)
 
 
 def load_register(project_root: Path) -> dict[str, Any]:

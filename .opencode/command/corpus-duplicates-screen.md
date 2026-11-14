@@ -11,6 +11,11 @@ description: "Near-duplicate candidate pairs at a cosine threshold"
 4. Budget the calibration effort (moderate) and autonomy (automated_with_audit).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `novice`.
+- Teaches: `vector_similarity`.
+
 ## Run
 
   ```

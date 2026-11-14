@@ -25,7 +25,11 @@ _DOC_ID_OPTION = typer.Option(None, "--doc-id", help="Filter: source doc UUID (r
 
 def research_ask(
     question: str = typer.Argument(..., help="Notebook question"),
-    project_id: str = typer.Option(..., "--project-id", help="Research project UUID"),
+    project_id: str = typer.Option(
+        ...,
+        "--project-id",
+        help="Research project UUID. corpus-kb research projects prints the list.",
+    ),
     retrieval_only: bool = typer.Option(
         False, "--retrieval-only", help="Return evidence only (zero LLM calls)"
     ),

@@ -11,6 +11,11 @@ description: "Keyphrase candidates ranked three ways (tfidf, embedding, llm)"
 4. Budget the calibration effort (low to moderate) and autonomy (automated_with_audit).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `novice for tfidf and yake; intermediate for the embedding arm`.
+- Teaches: `term_weighting`, `vector_similarity`.
+
 ## Run
 
   ```

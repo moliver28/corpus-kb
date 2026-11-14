@@ -12,6 +12,12 @@ argument-hint: "[--k N] [--chunk-id <id> ...]"
 4. Budget the calibration effort (low) and autonomy (automated_with_audit).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `intermediate`.
+- Teaches: `classification`, `vector_similarity`.
+- Run first: method 04, dictionary or rule-based classification (`labeling-build`).
+
 ## Run
 
   ```

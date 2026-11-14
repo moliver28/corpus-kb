@@ -65,10 +65,22 @@ def _snippet(text: str) -> str:
     return flat[:cut].rstrip() + _TRUNCATED
 
 
+def _hit_label(hit: dict[str, object]) -> str:
+    """The document's readable name: its source, else its file path."""
+    for key in ("source", "file_path"):
+        value = hit.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _print_hit(rank: int, hit: dict[str, object]) -> None:
+    """One hit line: score, the document name beside its id, the snippet."""
     score = hit.get("score")
     doc_id = hit.get("doc_id")
-    print(f"{rank}. [{score}] {doc_id} :: {_snippet(str(hit.get('text', '')))}")
+    label = _hit_label(hit)
+    head = f"{label} ({doc_id})" if label else str(doc_id)
+    print(f"{rank}. [{score}] {head} :: {_snippet(str(hit.get('text', '')))}")
 
 
 def _emit(result: dict[str, object], json_output: bool) -> None:

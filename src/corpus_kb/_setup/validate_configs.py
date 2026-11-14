@@ -80,6 +80,7 @@ try:
         validate_claude_config,
         validate_cursor_config,
         validate_opencode_config,
+        validate_zcode_config,
     )
     from corpus_kb._setup.validate_configs_rules import (
         _apply_to_errors,
@@ -168,6 +169,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     validate_claude_config = _mcp.validate_claude_config
     validate_cursor_config = _mcp.validate_cursor_config
     validate_opencode_config = _mcp.validate_opencode_config
+    validate_zcode_config = _mcp.validate_zcode_config
     _rules = _modules["validate_configs_rules"]
     _apply_to_errors = _rules._apply_to_errors
     _backend_mix_errors = _rules._backend_mix_errors

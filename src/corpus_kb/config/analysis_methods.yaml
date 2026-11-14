@@ -3,9 +3,14 @@
 # share method ids 01-30. Descriptive axes are verbatim guidance; the
 # selector never scores them. Routing axes (analysis-routing program,
 # wave 1) ride on each row and validate against the vocabularies in
-# corpus_kb.analysis.method_register_routing. This file and
+# corpus_kb.analysis.method_register_routing. Progression axes
+# (novice-UX program, wave 1) - difficulty, concepts, prerequisites,
+# and next - validate against the vocabularies in
+# corpus_kb.analysis.method_register_progression. Table contracts
+# (novice-UX program, wave 2) validate against the schema in
+# corpus_kb.analysis.method_register_tables. This file and
 # src/corpus_kb/config/analysis_methods.yaml must stay byte-identical.
-register_version: "3.0.0"
+register_version: "3.2.0"
 source_document:
   title: "I want to understand the NLP Analysis landscape so that I can ensure a team of non-NLP researchers are selected methods appropriately when using an NLP harness around a claude code like tool"
   path_note: "Owner research document with 30 methods and four linked tables that share ids 01-30. Per-method sources are the document footnotes."
@@ -60,6 +65,10 @@ methods:
       - "Which cases resist my current codes?"
       - "How do I record code changes over time?"
       - "Where do two codes overlap in one passage?"
+    difficulty: "advanced"
+    concepts: ["qualitative_coding"]
+    prerequisites: []
+    next: []
   - id: "02"
     name: "Rapid Qualitative Analysis (RQA) matrix"
     summary: "Analysts place short summaries in a structured template, then compare cases in a matrix."
@@ -104,6 +113,10 @@ methods:
       - "Which cases disagree on this question?"
       - "Is the template missing an answer type?"
       - "Where do summaries need the original quote?"
+    difficulty: "novice"
+    concepts: ["qualitative_coding"]
+    prerequisites: []
+    next: ["03"]
   - id: "03"
     name: "Framework Method"
     summary: "Analysts chart coded evidence in a case-by-category matrix to compare within and across cases."
@@ -148,6 +161,10 @@ methods:
       - "Which categories split the cases most cleanly?"
       - "What sits outside the framework columns?"
       - "How do two case groups compare on each category?"
+    difficulty: "advanced"
+    concepts: ["qualitative_coding"]
+    prerequisites: []
+    next: []
   - id: "04"
     name: "Dictionary or rule-based classification"
     summary: "Match defined words, phrases, or patterns to categories. Rules can assign a category or abstain."
@@ -192,6 +209,10 @@ methods:
       - "Which rules over-match or under-match?"
       - "What do the unmatched records say?"
       - "Should an exclusion cover negated phrases?"
+    difficulty: "novice"
+    concepts: ["keyword_rules"]
+    prerequisites: []
+    next: ["13", "14", "15"]
   - id: "05"
     name: "TF-IDF keyphrase scan"
     summary: "Rank words and word sequences by document frequency and corpus rarity to find distinctive wording."
@@ -236,6 +257,24 @@ methods:
       - "Which top terms look meaningless here?"
       - "What rare words rank surprisingly high?"
       - "How does filtering change the ranked list?"
+    difficulty: "novice"
+    concepts: ["term_weighting"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "The candidate word sequence, lowercased as the vectorizer emits it."
+        - name: "score"
+          type: "number"
+          description: "TF-IDF weight; the maximum across the selected chunks."
+          unit: "tfidf"
+      order_by: ["-score", "phrase"]
+      ties: "Equal scores order by phrase ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "06"
     name: "Embedding-based keyphrase extraction (KeyBERT)"
     summary: "Rank candidate phrases by embedding similarity to the document. Seed terms can steer the ranking."
@@ -280,6 +319,25 @@ methods:
       - "Do these phrases match what the document argues?"
       - "How does a seed term change the ranking?"
       - "Which documents share the same key phrases?"
+    difficulty: "intermediate"
+    concepts: ["vector_similarity"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "The candidate phrase; candidates come from the shared TF-IDF pass."
+        - name: "score"
+          type: "number"
+          description: "Cosine similarity from the phrase vector to the selected corpus centroid."
+          unit: "cosine"
+      order_by: ["-score", "phrase"]
+      ties: "Equal scores order by phrase ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Stored chunk vectors and the live embedder can give slightly different scores."
   - id: "07"
     name: "Statistical keyphrase extraction (YAKE)"
     summary: "Extract phrases from text features alone. No fitted model or embedding step is needed."
@@ -324,6 +382,24 @@ methods:
       - "How does this list compare with embedding-based phrases?"
       - "Which phrases survive stricter filtering?"
       - "Do short texts rank differently here?"
+    difficulty: "novice"
+    concepts: ["term_weighting"]
+    prerequisites: []
+    next: ["06"]
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "One keyphrase picked by the model reply."
+        - name: "score"
+          type: "number"
+          description: "Placeholder; the model gives the order, never scores."
+      order_by: ["model_rank"]
+      ties: "Model ranks are total; one row holds one position."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Rows carry 0.0; the model reply order is the rank."
   - id: "08"
     name: "Classical topic modeling (NMF or LDA)"
     summary: "Factor the document-term matrix or model documents as topic mixtures for exploratory navigation."
@@ -368,6 +444,10 @@ methods:
       - "How many topics fit this corpus best?"
       - "Which documents mix topics strongly?"
       - "What wording sits outside every topic?"
+    difficulty: "intermediate"
+    concepts: ["topic_modeling", "term_weighting"]
+    prerequisites: []
+    next: []
   - id: "09"
     name: "Unsupervised BERTopic"
     summary: "Embed text, group similar representations, and describe each group with class-based TF-IDF terms."
@@ -413,6 +493,10 @@ methods:
       - "Which clusters look like real topics?"
       - "What did the model treat as outliers?"
       - "How stable are topics across settings?"
+    difficulty: "intermediate"
+    concepts: ["topic_modeling", "clustering", "vector_similarity"]
+    prerequisites: []
+    next: ["10", "11"]
   - id: "10"
     name: "Guided BERTopic"
     summary: "Seed words steer topic formation toward topics of interest. Records are not forced onto a label list."
@@ -457,6 +541,10 @@ methods:
       - "How does the guided run differ from the unguided one?"
       - "Which seeds failed to shape a topic?"
       - "What topics formed outside my seeds?"
+    difficulty: "intermediate"
+    concepts: ["topic_modeling", "clustering", "weak_supervision"]
+    prerequisites: []
+    next: []
   - id: "11"
     name: "Zero-shot BERTopic"
     summary: "Match records to supplied topic descriptions by similarity, then discover topics in the remaining records."
@@ -501,6 +589,10 @@ methods:
       - "Which records landed on no supplied topic?"
       - "What new topics formed in the rest?"
       - "How sensitive is routing to the threshold?"
+    difficulty: "intermediate"
+    concepts: ["topic_modeling", "clustering", "vector_similarity"]
+    prerequisites: []
+    next: []
   - id: "12"
     name: "Embedding clustering (including interactive clustering)"
     summary: "Group similar text representations. Human feedback can refine the groups or the representation."
@@ -545,6 +637,26 @@ methods:
       - "Which records sit between two groups?"
       - "How do groups change with different settings?"
       - "What makes each group's examples similar?"
+    difficulty: "intermediate"
+    concepts: ["clustering", "vector_similarity"]
+    prerequisites: []
+    next: ["04"]
+    output_table:
+      columns:
+        - name: "cluster_id"
+          type: "integer"
+          description: "The cluster label from the fit. Noise never becomes a row."
+        - name: "size"
+          type: "integer"
+          description: "The member count of the cluster."
+        - name: "exemplar_chunk_ids"
+          type: "id_list"
+          description: "Up to 3 member chunk ids nearest the centroid, distance then id order."
+      order_by: ["-size", "cluster_id"]
+      ties: "Equal sizes order by cluster id ascending."
+      denominators: ["screened_count"]
+      caveats:
+        - "Structure (sizes, noise, exemplars) is deterministic on one machine; coordinates are never claimed."
   - id: "13"
     name: "Embedding-centroid classification"
     summary: "Represent each category by the mean embedding of its examples, then assign records by similarity."
@@ -589,6 +701,30 @@ methods:
       - "Which categories attract the most abstentions?"
       - "Do any categories hide two subgroups?"
       - "How do thresholds move precision and recall?"
+    difficulty: "intermediate"
+    concepts: ["classification", "vector_similarity"]
+    prerequisites: ["04"]
+    next: ["14"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The scored chunk."
+        - name: "label"
+          type: "text"
+          description: "The nearest centroid label. A suggestion when abstained is true."
+        - name: "abstained"
+          type: "boolean"
+          description: "True when the best-vs-second margin sits below abstain_margin."
+        - name: "margin"
+          type: "number"
+          description: "Gap between the best and second-best centroid similarities."
+          unit: "cosine gap"
+      order_by: ["chunk_id"]
+      ties: "Label ties at the top go to the alphabetically first label."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "14"
     name: "Nearest-neighbor classification"
     summary: "Predict a category from the labels of nearby examples. The individual examples are kept."
@@ -633,6 +769,28 @@ methods:
       - "Which predictions rest on weak neighbor support?"
       - "Where are labeled examples sparse?"
       - "Which records get the most disagreement among neighbors?"
+    difficulty: "intermediate"
+    concepts: ["classification", "vector_similarity"]
+    prerequisites: ["04"]
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The predicted chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning vote label. Vote ties pick the alphabetically first label."
+        - name: "votes"
+          type: "object_list"
+          description: "Label and vote rows, count descending then label ascending."
+        - name: "neighbor_ids"
+          type: "id_list"
+          description: "The k winning neighbors, similarity descending then chunk id ascending."
+      order_by: ["chunk_id"]
+      ties: "Predictions order by chunk id ascending."
+      denominators: ["screened_count"]
+      caveats: []
   - id: "15"
     name: "TF-IDF with logistic regression or linear SVM"
     summary: "Train a logistic or linear SVM classifier on word or character features for narrow categories."
@@ -677,6 +835,27 @@ methods:
       - "Which words dominate each coefficient?"
       - "Which labels confuse the classifier most?"
       - "Does the baseline hold on shifted vocabulary?"
+    difficulty: "intermediate"
+    concepts: ["classification", "term_weighting"]
+    prerequisites: ["04"]
+    next: ["16", "17"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The scored chunk."
+        - name: "label"
+          type: "text"
+          description: "The argmax class. Ties pick the first class in sorted order."
+        - name: "probability"
+          type: "number"
+          description: "The winning class probability from the logistic head."
+          unit: "probability"
+      order_by: ["chunk_id"]
+      ties: "Rows order by chunk id ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "16"
     name: "Frozen embeddings with a linear classifier"
     summary: "Keep the embedding model fixed and fit a small classifier on its outputs."
@@ -721,6 +900,10 @@ methods:
       - "Which categories does the encoder separate least?"
       - "Where do classifier errors cluster?"
       - "Should the encoder stay frozen for new categories?"
+    difficulty: "intermediate"
+    concepts: ["classification", "vector_similarity"]
+    prerequisites: []
+    next: ["17", "20"]
   - id: "17"
     name: "SetFit few-shot classification"
     summary: "Adapt a sentence encoder with labeled text pairs, then fit a classifier on the new representation."
@@ -765,6 +948,10 @@ methods:
       - "How few examples still move accuracy?"
       - "Which pairs improved the encoder most?"
       - "Does the adapted encoder transfer to sibling categories?"
+    difficulty: "advanced"
+    concepts: ["classification", "vector_similarity"]
+    prerequisites: []
+    next: []
   - id: "18"
     name: "Zero-shot NLI classification"
     summary: "Turn each label into a statement and score whether the text supports it. No task training is needed."
@@ -809,6 +996,31 @@ methods:
       - "Which label statements overlap too much?"
       - "Where does negation flip the verdict?"
       - "Which categories need labeled examples next?"
+    difficulty: "intermediate"
+    concepts: ["classification"]
+    prerequisites: []
+    next: ["04"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The judged chunk."
+        - name: "label"
+          type: "text"
+          description: "The best hypothesis label. Score ties pick the alphabetically first label."
+        - name: "entailment_score"
+          type: "number"
+          description: "The winning verdict score: contradict 0, neutral 1, entailment 2."
+          unit: "verdict score"
+        - name: "scores"
+          type: "object_list"
+          description: "Every label with its score, score descending then label ascending."
+      order_by: ["chunk_id"]
+      ties: "Score ties pick the alphabetically first label."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "The score is a three-way verdict map, not a calibrated probability."
   - id: "19"
     name: "Programmatic weak supervision (Snorkel)"
     summary: "Combine imperfect labeling functions into training labels, then optionally train a classifier on them."
@@ -853,6 +1065,10 @@ methods:
       - "Which rules conflict most often?"
       - "How much coverage do the rules miss?"
       - "Where do model labels disagree with humans?"
+    difficulty: "advanced"
+    concepts: ["weak_supervision", "keyword_rules"]
+    prerequisites: []
+    next: ["16"]
   - id: "20"
     name: "Active learning loop"
     summary: "A classifier picks records for human labeling, then retrains. This allocates annotation work."
@@ -897,6 +1113,37 @@ methods:
       - "How much did accuracy move per batch?"
       - "Does this strategy beat random sampling here?"
       - "Which records stay uncertain after retraining?"
+    difficulty: "advanced"
+    concepts: ["active_learning", "classification"]
+    prerequisites: ["16"]
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The chunk to label next."
+        - name: "set_id"
+          type: "id"
+          description: "The prediction set the row came from."
+        - name: "label"
+          type: "text"
+          description: "The stored winning label."
+        - name: "probability"
+          type: "number"
+          description: "The stored winning probability."
+          unit: "probability"
+        - name: "review"
+          type: "boolean"
+          description: "The stored review flag."
+        - name: "score"
+          type: "number"
+          description: "The strategy score: margin is 1 - p; entropy is the binary entropy."
+          unit: "strategy score"
+      order_by: ["-score", "chunk_id"]
+      ties: "Equal scores order by chunk id ascending."
+      precision: 6
+      caveats:
+        - "The margin score is a proxy: the store keeps the winning probability only."
   - id: "21"
     name: "Human-in-the-loop computational grounded theory"
     summary: "Combine computational pattern detection with human interpretation and further testing of explanations."
@@ -941,6 +1188,10 @@ methods:
       - "What evidence challenges my current explanation?"
       - "Which patterns survived the close reading test?"
       - "Should the next cycle test a rival reading?"
+    difficulty: "advanced"
+    concepts: ["qualitative_coding"]
+    prerequisites: []
+    next: []
   - id: "22"
     name: "Extract, embed, cluster, summarize (EECS)"
     summary: "Extract source spans, cluster their embeddings, then summarize with representative passages or human summaries."
@@ -985,6 +1236,10 @@ methods:
       - "What did extraction drop that groups cannot recover?"
       - "Which summaries need the original passages?"
       - "How faithful is each summary to its group?"
+    difficulty: "advanced"
+    concepts: ["clustering", "vector_similarity"]
+    prerequisites: []
+    next: []
   - id: "23"
     name: "Hybrid retrieval with reranking"
     summary: "Combine lexical and embedding retrieval, then reorder candidates with a second model. Return evidence."
@@ -1029,6 +1284,10 @@ methods:
       - "Which relevant passages did retrieval miss?"
       - "How do scores differ across retriever types?"
       - "What wording of the question finds counter evidence?"
+    difficulty: "novice"
+    concepts: ["information_retrieval", "vector_similarity"]
+    prerequisites: []
+    next: ["28"]
   - id: "24"
     name: "Extractive question answering"
     summary: "Select an answer span from supplied passages. The passage must state the answer."
@@ -1073,6 +1332,10 @@ methods:
       - "Which answers rest on one passage only?"
       - "Where did no-answer handling refuse correctly?"
       - "Do answer spans hold under rephrased questions?"
+    difficulty: "novice"
+    concepts: ["information_retrieval"]
+    prerequisites: []
+    next: []
   - id: "25"
     name: "Named entity recognition (including GLiNER)"
     summary: "Find spans such as product names, organizations, or locations. Supplied type descriptions are supported."
@@ -1118,6 +1381,10 @@ methods:
       - "Which entity types confuse the extractor?"
       - "How do boundaries fail on unfamiliar names?"
       - "Which mentions never matched a declared type?"
+    difficulty: "novice"
+    concepts: ["entity_extraction"]
+    prerequisites: []
+    next: []
   - id: "26"
     name: "Sentiment or emotion classification"
     summary: "Assign defined affect categories to text. Rules, classifiers, or the methods above can implement it."
@@ -1162,6 +1429,31 @@ methods:
       - "Which records look mixed or neutral?"
       - "Does tone match the words screened?"
       - "Which categories need their own test set?"
+    difficulty: "novice"
+    concepts: ["sentiment_analysis", "keyword_rules"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The screened chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning lexicon vote: positive or negative."
+        - name: "probability"
+          type: "number"
+          description: "The winning class vote share from the vote aggregation."
+          unit: "vote share"
+        - name: "review"
+          type: "boolean"
+          description: "True when the two lexicons tied and the row routed to review."
+      order_by: ["chunk_id"]
+      ties: "Tied votes route to review instead of picking a winner."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Preset lexicon vote, not a trained model. The evidence note rides every success."
   - id: "27"
     name: "Aspect-based sentiment analysis"
     summary: "Identify the target or aspect of an opinion and its sentiment, then report both together."
@@ -1206,6 +1498,31 @@ methods:
       - "Which aspects get conflicting sentiment?"
       - "What opinions fall outside declared aspects?"
       - "How do targets link across sentences?"
+    difficulty: "intermediate"
+    concepts: ["sentiment_analysis", "classification"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The screened chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning lexicon vote: positive or negative."
+        - name: "probability"
+          type: "number"
+          description: "The winning class vote share from the vote aggregation."
+          unit: "vote share"
+        - name: "review"
+          type: "boolean"
+          description: "True when the two lexicons tied and the row routed to review."
+      order_by: ["chunk_id"]
+      ties: "Tied votes route to review instead of picking a winner."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "The current screen has no aspect columns; rows are document-level votes."
   - id: "28"
     name: "NLI-based contradiction screening"
     summary: "Compare statement pairs with a three-way NLI model and flag possible contradictions for review."
@@ -1250,6 +1567,25 @@ methods:
       - "Which pairs only differ by time or place?"
       - "Do flagged pairs survive reading the context?"
       - "Which speakers change position across records?"
+    difficulty: "intermediate"
+    concepts: ["contradiction_detection", "vector_similarity"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id_i"
+          type: "id"
+          description: "The lower chunk id of the pair."
+        - name: "chunk_id_j"
+          type: "id"
+          description: "The higher chunk id of the pair."
+        - name: "verdict"
+          type: "text"
+          description: "The model verdict. Only CONTRADICT rows return."
+      order_by: ["chunk_id_i", "chunk_id_j"]
+      ties: "Candidates dedupe; pairs order by the lower then the higher chunk id."
+      denominators: ["screened_count"]
+      caveats: []
   - id: "29"
     name: "Near-duplicate and paraphrase detection"
     summary: "Find records with the same or similar wording. Use exact matching and semantic comparison together."
@@ -1294,6 +1630,27 @@ methods:
       - "Which near duplicates are genuinely separate speakers?"
       - "How do thresholds split review from merge?"
       - "What paraphrases survived the exact-match pass?"
+    difficulty: "novice"
+    concepts: ["vector_similarity"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "similarity"
+          type: "number"
+          description: "Cosine similarity of the pair at or above the threshold."
+          unit: "cosine"
+        - name: "chunk_id_i"
+          type: "id"
+          description: "The lower chunk id of the pair."
+        - name: "chunk_id_j"
+          type: "id"
+          description: "The higher chunk id of the pair."
+      order_by: ["-similarity", "chunk_id_i", "chunk_id_j"]
+      ties: "Equal similarities order by the lower id, then the higher id."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "30"
     name: "Outlier or novelty detection"
     summary: "Rank records that differ from a reference distribution or from their neighbors."
@@ -1338,3 +1695,21 @@ methods:
       - "Which flagged records are rare but normal?"
       - "How does the detector change with the reference group?"
       - "What does the nearest ordinary example show?"
+    difficulty: "novice"
+    concepts: ["vector_similarity"]
+    prerequisites: []
+    next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The ranked chunk."
+        - name: "knn_distance"
+          type: "number"
+          description: "Distance to the k-th nearest other chunk (1 - cosine similarity)."
+          unit: "cosine distance"
+      order_by: ["-knn_distance", "chunk_id"]
+      ties: "Equal distances order by chunk id ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []

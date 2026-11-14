@@ -140,6 +140,7 @@ async def test_duplicates_screen_no_pairs_is_success(monkeypatch: pytest.MonkeyP
         "pairs": [],
         "threshold": 0.99,
         "screened_count": 2,
+        "excluded_zero_count": 0,
     }
 
 
@@ -267,3 +268,55 @@ async def test_outliers_rank_k_above_corpus_shrinks_and_stays_finite(
     assert len(out["outliers"]) == 3
     for row in out["outliers"]:
         assert -1.0 <= row["knn_distance"] <= 2.0
+
+
+# ---------------------------------------------------------------------------
+# excluded_zero_count surfacing (novice-UX program, wave 2)
+
+
+def test_catalogue_envelopes_declare_excluded_zero_count() -> None:
+    """Both screen envelopes name the excluded zero-vector count."""
+    from corpus_kb.contracts.catalogue_analysis import (
+        DUPLICATES_ENVELOPE,
+        OUTLIERS_ENVELOPE,
+    )
+
+    assert "excluded_zero_count" in DUPLICATES_ENVELOPE
+    assert "excluded_zero_count" in OUTLIERS_ENVELOPE
+
+
+async def test_duplicates_screen_reports_excluded_zero_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space = _space(
+        ["a", "b"],
+        [[1.0, 0.0], [1.0, 0.0]],
+        excluded=3,
+    )
+    _patch_screen_vectors(monkeypatch, space)
+    out = await vector_screen_tools.duplicates_screen(None, None, "t", threshold=0.9)
+    assert out["excluded_zero_count"] == 3
+
+
+async def test_outliers_rank_reports_excluded_zero_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space = _space(["a", "b"], [[1.0, 0.0], [0.0, 1.0]], excluded=1)
+    _patch_screen_vectors(monkeypatch, space)
+    out = await vector_screen_tools.outliers_rank(None, None, "t", k=1)
+    assert out["excluded_zero_count"] == 1
+
+
+async def test_screen_guard_envelopes_carry_zero_excluded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The honest no-data envelopes still report the count (0 here)."""
+    _patch_screen_vectors(monkeypatch, _space([], []))
+    dupes = await vector_screen_tools.duplicates_screen(None, None, "t")
+    assert dupes["excluded_zero_count"] == 0
+    singles = await vector_screen_tools.outliers_rank(None, None, "t")
+    singles_space = _space(["a"], [[1.0, 0.0]], excluded=2)
+    _patch_screen_vectors(monkeypatch, singles_space)
+    single = await vector_screen_tools.outliers_rank(None, None, "t")
+    assert singles["excluded_zero_count"] == 0
+    assert single["excluded_zero_count"] == 2

@@ -61,7 +61,11 @@ def queue_enqueue(
     strategy_config_json: str = typer.Option(
         None, "--strategy-config", help="Strategy config as a JSON object"
     ),
-    project_id: str = typer.Option(None, "--project-id", help="Research project id"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project id. corpus-kb research projects prints the list.",
+    ),
     tenant_id: str = _TENANT_OPT,
     json_output: bool = _JSON_OPT,
 ) -> int:

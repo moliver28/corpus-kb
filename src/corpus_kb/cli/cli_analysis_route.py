@@ -48,6 +48,7 @@ def _route_emit(result: dict[str, object], json_output: bool) -> None:
             if why:
                 print(f"  why: {why}")
     _print_suggestions(result)
+    _print_next_methods(result)
     _print_readings(result)
 
 
@@ -60,6 +61,27 @@ def _print_suggestions(result: dict[str, object]) -> None:
     for row in suggestions:
         if isinstance(row, str):
             print(f"  - {row}")
+
+
+def _print_next_methods(result: dict[str, object]) -> None:
+    """The chosen method's chain, one run command + why per row.
+
+    An empty or missing ``next_methods`` (degraded, ambiguous, or a
+    method with no ``next:`` ids) prints nothing — the honest empty.
+    """
+    rows = result.get("next_methods")
+    if not isinstance(rows, list) or not rows:
+        return
+    print("  try next:")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        run = row.get("run")
+        if not isinstance(run, str) or not run:
+            continue
+        why = row.get("why")
+        suffix = f": {why}" if isinstance(why, str) and why else ""
+        print(f"  - {run}{suffix}")
 
 
 def _print_readings(result: dict[str, object]) -> None:
