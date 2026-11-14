@@ -180,6 +180,8 @@ The browser pages and the notebooks console are separate extras:
 
 ```bash
 pip install -e ".[ui,notebook,dev]"
+
+Optional chat rungs (Claude subscription or local Ollama): `pip install -e ".[chat]"` — see docs/CHAT.md.
 ```
 
 Without them the server runs headless and logs one line per missing extra.

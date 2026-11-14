@@ -26,6 +26,10 @@ pnpm -C ui_src install
 pnpm -C ui_src build
 ```
 
+Optional chat with your corpus (Claude subscription rung or local
+Ollama) needs one extra: `pip install -e ".[chat]"`, then
+docs/CHAT.md.
+
 Then start the stack. `corpus-kb setup` starts Postgres and loads the
 schema. `corpus-kb start` starts the server and opens your browser:
 

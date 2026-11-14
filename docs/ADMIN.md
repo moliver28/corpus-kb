@@ -306,6 +306,17 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_UI_OPEN` | (no config key; set to `0` to keep the server from opening a browser tab) | `server_wiring.browser_open_enabled` |
 | `CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN` | `chat.claude.oauth_token` (the long-lived token from `claude setup-token`; never stored in a file) | `load_config`, `chat.claude_rung`, `_setup.doctor_chat` |
 
+### Chat
+
+Chat ships OFF (`chat.enabled: false`). The default rung
+(`claude-agent-sdk`) bills the owner's Claude subscription and runs for
+one owner on one machine only: a non-loopback `server.host` or
+`chat.single_owner: false` is refused at load. Use `ollama` for a
+shared server; the `anthropic-api` rung refuses at session start until
+its wave lands. The agent's only tool is a read-only corpus search.
+Setup, the precedence refusal, the `claude setup-token` escape, and the
+release ritual live in [docs/CHAT.md](CHAT.md).
+
 ### Embedding dimensions and the vector schema
 
 The vector column `chunks_vectors.embedding` is a FIXED `halfvec(2560)` typmod (migration 025). pgvector enforces the exact width — verified on pgvector 0.8.x / Postgres 16:

@@ -135,6 +135,14 @@ pynvml = ["pynvml"]
 # pytz: DuckDB TIMESTAMPTZ fetches and binds need it at runtime (three
 # independent WPs hit the missing wheel on the phase C/D ports).
 duckdb = ["duckdb>=1.5,<2.0", "pytz"]
+# Chat rungs (Phase-2 Wave 7): the claude-agent-sdk rung. The floor is
+# the verified 0.2.181 (ToolAnnotations arrive there); the <0.3 cap
+# holds the 0.x churn down (PyPI showed 8 patch releases in as many
+# days at verification, 2026-11-13). CI NEVER installs this extra; the
+# base install never imports it (lazy imports in chat/claude_rung.py,
+# chat/claude_stream.py, chat/agent_tools.py — a test asserts the SDK
+# stays out of sys.modules at package import).
+chat = ["claude-agent-sdk>=0.2.181,<0.3"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
 # permissive set: sentence-transformers Apache-2.0, transformers Apache-2.0,
@@ -427,6 +435,7 @@ known_first_party = ["corpus_kb"]
 # comments above.
 DEP002 = [
     "graphqlite",
+    "claude-agent-sdk",
     "langextract",
     "sentence-transformers",
     "transformers",
