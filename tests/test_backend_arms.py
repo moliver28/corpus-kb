@@ -313,9 +313,13 @@ async def test_doctor_snapshot_marks_postgres_not_used_on_duckdb(monkeypatch: An
     assert result["postgres"]["reachable"] is False
     assert "not used" in result["postgres"]["message"]
     research = result["research_checks"]
-    assert len(research) == 1
+    # The DuckDB INFO notice first, then the W3 journey's honest omitted
+    # check (the file has no analysis tables to read).
+    assert len(research) == 2
     assert research[0]["status"] == "info"
     assert "DuckDB" in research[0]["name"]
+    assert research[1]["name"] == "journey"
+    assert research[1]["status"] == "info"
 
 
 # --- lazy handler builds (tools fall back to the given store) ---------------------
