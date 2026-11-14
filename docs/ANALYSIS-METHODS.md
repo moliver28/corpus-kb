@@ -161,6 +161,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "What words come up most often across these documents?" / "Which terms stand out as unusual in this corpus?" / "Show the most distinctive wording in the collection."
   - Follow-ups: "Which top terms look meaningless here?" / "What rare words rank surprisingly high?" / "How does filtering change the ranked list?"
   - Evidence: https://scikit-learn.org/1.5/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html (Documentation)
+  - Table: `phrase` (text), `score` (number, tfidf). Order: `-score`, `phrase`. Round to 6 places.
+  - Ties: Equal scores order by phrase ascending.
+  - Shares divide by `screened_count`.
 - **06 — Embedding-based keyphrase extraction (KeyBERT)** (op: `keyphrases_extract`). Create document previews, search suggestions, and candidate descriptors.
   - Validate: Review candidate generation, model choice, diversity settings, and an output sample.
   - Claim only: Phrases similar in meaning to the document, by embedding similarity.
@@ -174,6 +177,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Which phrases best describe what each document says?" / "Suggest key phrases for a summary preview of documents." / "Find candidate phrases similar in meaning to the document."
   - Follow-ups: "Do these phrases match what the document argues?" / "How does a seed term change the ranking?" / "Which documents share the same key phrases?"
   - Evidence: https://maartengr.github.io/KeyBERT/guides/embeddings.html (Documentation)
+  - Table: `phrase` (text), `score` (number, cosine). Order: `-score`, `phrase`. Round to 6 places.
+  - Ties: Equal scores order by phrase ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Stored chunk vectors and the live embedder can give slightly different scores.
 - **07 — Statistical keyphrase extraction (YAKE)** (op: `keyphrases_extract`). Get a quick lexical overview and compare it with embedding-based extraction.
   - Validate: Review language and filtering settings. Inspect short and long texts separately.
   - Claim only: Statistically salient phrases for the supplied texts.
@@ -188,6 +195,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Give me a quick phrase list without any model." / "Extract salient phrases using text statistics alone." / "What are the top phrases by statistical salience?"
   - Follow-ups: "How does this list compare with embedding-based phrases?" / "Which phrases survive stricter filtering?" / "Do short texts rank differently here?"
   - Evidence: https://doi.org/10.1016/j.ins.2019.09.013 (Journal 2019)
+  - Table: `phrase` (text), `score` (number). Order: the model reply order. Round to 6 places.
+  - Ties: Model ranks are total; one row holds one position.
+  - Shares divide by `screened_count`.
+  - Caveats: Rows carry 0.0; the model reply order is the rank.
 - **08 — Classical topic modeling (NMF or LDA)**. Navigate a corpus and form questions for close reading.
   - Validate: Compare preprocessing and topic counts. Inspect representative and poorly fitting records.
   - Claim only: Exploratory topic descriptions for navigation.
@@ -255,6 +266,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Group similar comments together so I can review them." / "Cluster the embeddings and show example records per group." / "How can I organize thousands of records into groups?"
   - Follow-ups: "Which records sit between two groups?" / "How do groups change with different settings?" / "What makes each group's examples similar?"
   - Evidence: https://aclanthology.org/2026.nlp4dh-1.36.pdf (Workshop 2026)
+  - Table: `cluster_id` (integer), `size` (integer), `exemplar_chunk_ids` (id_list). Order: `-size`, `cluster_id`.
+  - Ties: Equal sizes order by cluster id ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Structure (sizes, noise, exemplars) is deterministic on one machine; coordinates are never claimed.
 - **13 — Embedding-centroid classification** (op: `centroids_classify`). Apply a small set of concrete categories with inspectable prototypes.
   - Validate: Inspect the examples. Measure category precision, recall, and abstention. Tune thresholds on separate data.
   - Claim only: Category assignments with similarities and recorded abstentions.
@@ -270,6 +285,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Classify records into a few categories from example averages." / "I have labeled examples; assign new records by similarity." / "Which category is each record closest to overall?"
   - Follow-ups: "Which categories attract the most abstentions?" / "Do any categories hide two subgroups?" / "How do thresholds move precision and recall?"
   - Evidence: https://ar5iv.labs.arxiv.org/html/2211.16285 (Preprint 2022)
+  - Table: `chunk_id` (id), `label` (text), `abstained` (boolean), `margin` (number, cosine gap). Order: `chunk_id`. Round to 6 places.
+  - Ties: Label ties at the top go to the alphabetically first label.
+  - Shares divide by `screened_count`.
 - **14 — Nearest-neighbor classification** (op: `neighbors_classify`). Support example-based review and find missing training examples.
   - Validate: Review example coverage. Tune the neighbor count and rejection rules on held-out labels.
   - Claim only: Category assignments backed by listed neighbor examples.
@@ -284,6 +302,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Label this record from its nearest labeled neighbors." / "Which known examples support each predicted category?" / "I want predictions that show their supporting examples."
   - Follow-ups: "Which predictions rest on weak neighbor support?" / "Where are labeled examples sparse?" / "Which records get the most disagreement among neighbors?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
+  - Table: `chunk_id` (id), `label` (text), `votes` (object_list), `neighbor_ids` (id_list). Order: `chunk_id`.
+  - Ties: Predictions order by chunk id ascending.
+  - Shares divide by `screened_count`.
 - **15 — TF-IDF with logistic regression or linear SVM** (op: `lexical_classify`). Set a reproducible classification baseline before a more expensive model.
   - Validate: Fit the baseline. Inspect errors. Measure performance on independent test records. Tune features without the final test set.
   - Claim only: Baseline performance on independent test records.
@@ -299,6 +320,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Train a cheap text classifier for my narrow categories." / "Set a baseline classifier on word features first." / "Which words drive this linear text classifier?"
   - Follow-ups: "Which words dominate each coefficient?" / "Which labels confuse the classifier most?" / "Does the baseline hold on shifted vocabulary?"
   - Evidence: https://scikit-learn.org/stable/auto_examples/text/plot_document_classification_20newsgroups.html (Documentation)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, probability). Order: `chunk_id`. Round to 6 places.
+  - Ties: Rows order by chunk id ascending.
+  - Shares divide by `screened_count`.
 - **16 — Frozen embeddings with a linear classifier** (op: `classification_build`). Run bounded classification when the frozen representation preserves the categories.
   - Validate: Measure category-level performance on a labeled evaluation set. Audit errors.
   - Claim only: Category-level results tied to the recorded embedding-model version.
@@ -340,6 +364,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Test candidate labels before any labeled data exists." / "Does this text support the statement my label makes?" / "Score records against written label descriptions."
   - Follow-ups: "Which label statements overlap too much?" / "Where does negation flip the verdict?" / "Which categories need labeled examples next?"
   - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
+  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, verdict score), `scores` (object_list). Order: `chunk_id`. Round to 6 places.
+  - Ties: Score ties pick the alphabetically first label.
+  - Shares divide by `screened_count`.
+  - Caveats: The score is a three-way verdict map, not a calibrated probability.
 - **19 — Programmatic weak supervision (Snorkel)** (op: `labeling_build`). Turn reusable domain rules into training data. Keep an independent human evaluation set.
   - Validate: Inspect the labeling functions. Measure conflicts and coverage. Evaluate on independent labels.
   - Claim only: Training labels with coverage and conflict reports.
@@ -368,6 +396,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Which records should I label next to save effort?" / "Pick the most useful examples for my annotation round." / "I want the classifier to choose what I label."
   - Follow-ups: "How much did accuracy move per batch?" / "Does this strategy beat random sampling here?" / "Which records stay uncertain after retraining?"
   - Evidence: https://burrsettles.com/pub/settles.activelearning.pdf (Survey 2009)
+  - Table: `chunk_id` (id), `set_id` (id), `label` (text), `probability` (number, probability), `review` (boolean), `score` (number, strategy score). Order: `-score`, `chunk_id`. Round to 6 places.
+  - Ties: Equal scores order by chunk id ascending.
+  - Caveats: The margin score is a proxy: the store keeps the winning probability only.
 - **21 — Human-in-the-loop computational grounded theory**. Develop and challenge an explanation with the corpus.
   - Validate: Test the explanation against close reading, alternative readings, and further evidence.
   - Claim only: An interpreted account that survived stated tests.
@@ -447,6 +478,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "How positive or negative is the tone of these records?" / "Screen records for evaluative or emotional language." / "Which records express frustration or satisfaction?"
   - Follow-ups: "Which records look mixed or neutral?" / "Does tone match the words screened?" / "Which categories need their own test set?"
   - Evidence: https://aclanthology.org/2023.wassa-1.59/ (Workshop 2023)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, vote share), `review` (boolean). Order: `chunk_id`. Round to 6 places.
+  - Ties: Tied votes route to review instead of picking a winner.
+  - Shares divide by `screened_count`.
+  - Caveats: Preset lexicon vote, not a trained model. The evidence note rides every success.
 - **27 — Aspect-based sentiment analysis** (op: `sentiment_screen`). Compare evaluations of defined product or service attributes.
   - Validate: Evaluate aspect extraction and target-linked sentiment separately, then jointly.
   - Claim only: Aspect-linked sentiment for the declared aspects.
@@ -460,6 +495,10 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "What do reviewers say about the battery life specifically?" / "Compare opinions about each product feature separately." / "I want sentiment linked to the aspect it targets."
   - Follow-ups: "Which aspects get conflicting sentiment?" / "What opinions fall outside declared aspects?" / "How do targets link across sentences?"
   - Evidence: https://aclanthology.org/S14-2004/ (Workshop 2014)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, vote share), `review` (boolean). Order: `chunk_id`. Round to 6 places.
+  - Ties: Tied votes route to review instead of picking a winner.
+  - Shares divide by `screened_count`.
+  - Caveats: The current screen has no aspect columns; rows are document-level votes.
 - **28 — NLI-based contradiction screening** (op: `contradictions_screen`). Build a contradiction-review queue for human reviewers.
   - Validate: Test negation, entity identity, time, conditions, and statements that merely differ. Use labeled statement pairs.
   - Claim only: Candidate contradictions for human adjudication.
@@ -473,6 +512,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Find statements that contradict each other across records." / "Which claims conflict when compared pair by pair?" / "I want a review queue of possible contradictions."
   - Follow-ups: "Which pairs only differ by time or place?" / "Do flagged pairs survive reading the context?" / "Which speakers change position across records?"
   - Evidence: https://aclanthology.org/P19-1334/ (Conference 2019)
+  - Table: `chunk_id_i` (id), `chunk_id_j` (id), `verdict` (text). Order: `chunk_id_i`, `chunk_id_j`.
+  - Ties: Candidates dedupe; pairs order by the lower then the higher chunk id.
+  - Shares divide by `screened_count`.
 - **29 — Near-duplicate and paraphrase detection** (op: `duplicates_screen`). Remove duplicate ingestion and find repeated material. Preserve independent participant records.
   - Validate: Measure pairwise precision and recall at the action threshold. Label candidate pairs.
   - Claim only: Duplicate candidates at a recorded threshold, for human approval.
@@ -486,6 +528,9 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Find duplicate or paraphrased records before analysis." / "Which records say nearly the same thing?" / "I want to merge near duplicates without losing speakers."
   - Follow-ups: "Which near duplicates are genuinely separate speakers?" / "How do thresholds split review from merge?" / "What paraphrases survived the exact-match pass?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
+  - Table: `similarity` (number, cosine), `chunk_id_i` (id), `chunk_id_j` (id). Order: `-similarity`, `chunk_id_i`, `chunk_id_j`. Round to 6 places.
+  - Ties: Equal similarities order by the lower id, then the higher id.
+  - Shares divide by `screened_count`.
 - **30 — Outlier or novelty detection** (op: `outliers_rank`). Find exceptions, data problems, and possibly overlooked experiences.
   - Validate: Define the reference group. Inspect flagged records. Compare detectors and representations. Compare detector scores against the reference distribution before ranking.
   - Claim only: A ranked review list with the detector and reference recorded.
@@ -499,4 +544,13 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Which records are unusual compared with the rest?" / "Rank the strangest records for my review." / "I want to find exceptions and possible data problems."
   - Follow-ups: "Which flagged records are rare but normal?" / "How does the detector change with the reference group?" / "What does the nearest ordinary example show?"
   - Evidence: https://scikit-learn.org/stable/modules/outlier_detection.html (Documentation)
+  - Table: `chunk_id` (id), `knn_distance` (number, cosine distance). Order: `-knn_distance`, `chunk_id`. Round to 6 places.
+  - Ties: Equal distances order by chunk id ascending.
+  - Shares divide by `screened_count`.
+
+## Backend proof
+
+The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). The screens, the classifiers, the cluster report, the keyphrase ranks, the sentiment screen, the active-learning rank, and the NLI pair all run on both engines. The deep surface gate pins the same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG store) and on DuckDB (the graph store).
+
+One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored value can differ from Postgres in far decimals.
 <!-- amr-register:generated:end -->

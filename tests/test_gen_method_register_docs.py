@@ -122,3 +122,89 @@ def test_progression_lines_ignore_empty_link_lists() -> None:
     method["next"] = []
     lines = gen._progression_lines(method, {})
     assert len(lines) == 2
+
+
+# ---------------------------------------------------------------------------
+# Table-contract bullets + backend proof block (novice-UX program, wave 2)
+# ---------------------------------------------------------------------------
+
+
+def _table_method() -> dict[str, Any]:
+    """One method row carrying a full output_table block."""
+    method = _full_method()
+    method["output_table"] = {
+        "columns": [
+            {"name": "phrase", "type": "text", "description": "The candidate phrase."},
+            {
+                "name": "score",
+                "type": "number",
+                "description": "TF-IDF weight.",
+                "unit": "tfidf",
+            },
+        ],
+        "order_by": ["-score", "phrase"],
+        "ties": "Equal scores order by phrase ascending.",
+        "precision": 6,
+        "denominators": ["screened_count"],
+        "caveats": ["Stored vectors and the live embedder can differ slightly."],
+    }
+    return method
+
+
+def test_table_lines_skip_rows_without_tables() -> None:
+    assert gen._table_lines(_full_method()) == []
+
+
+def test_table_lines_render_columns_order_and_precision() -> None:
+    lines = gen._table_lines(_table_method())
+    assert lines[0] == (
+        "  - Table: `phrase` (text), `score` (number, tfidf). "
+        "Order: `-score`, `phrase`. Round to 6 places."
+    )
+    assert lines[1] == "  - Ties: Equal scores order by phrase ascending."
+    assert lines[2] == "  - Shares divide by `screened_count`."
+    assert lines[3] == ("  - Caveats: Stored vectors and the live embedder can differ slightly.")
+
+
+def test_table_lines_omit_empty_optional_fields() -> None:
+    method = _table_method()
+    table = method["output_table"]
+    table["denominators"] = None
+    table["caveats"] = []
+    table["precision"] = None
+    lines = gen._table_lines(method)
+    assert len(lines) == 2
+    assert "Round to" not in lines[0]
+    assert "Shares divide" not in "".join(lines)
+
+
+def test_table_lines_model_rank_reads_plain() -> None:
+    method = _table_method()
+    method["output_table"]["order_by"] = ["model_rank"]
+    lines = gen._table_lines(method)
+    assert "Order: the model reply order." in lines[0]
+
+
+def _register_payload() -> dict[str, Any]:
+    method = _table_method()
+    method["inputs_required"] = ["raw_text"]
+    method["output_family"] = "themes"
+    method["calibration_effort"] = "low"
+    method["autonomy"] = "automated_with_audit"
+    method["complexity_tier"] = "baseline"
+    method["difficulty"] = "novice"
+    method["implementation_status"] = "implemented_new"
+    method["op"] = "keyphrases_extract"
+    return {
+        "register_version": "3.2.0",
+        "methods": [method],
+    }
+
+
+def test_build_block_ends_with_the_backend_proof() -> None:
+    block = gen.build_block(_register_payload())
+    proof_at = block.index("## Backend proof")
+    end_at = block.index(gen.END_MARKER)
+    assert proof_at < end_at
+    assert "run on Postgres and on DuckDB" in block[proof_at:end_at]
+    assert "coding confidences as `DOUBLE`" in block[proof_at:end_at]

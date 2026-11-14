@@ -111,6 +111,69 @@ def _link_text(link: str, names: dict[str, str]) -> str:
     return f"{_code(link)} {name}" if name else _code(link)
 
 
+def _table_lines(method: dict[str, Any]) -> list[str]:
+    """The table-contract bullets for one method (novice-UX program, wave 2).
+
+    Renders nothing when the row declares no table, so envelope-only ops
+    and test fixtures stay clean. The first bullet names the columns in
+    order (with the unit when present), the result order, and the
+    rounding; the rest carry the tie rule, the denominators, and the
+    caveats. The reserved ``model_rank`` order entry reads as plain
+    text: the rows keep the producing model's reply order.
+    """
+    table = method.get("output_table")
+    if not table:
+        return []
+    parts: list[str] = []
+    for column in table["columns"]:
+        rendered = f"`{column['name']}` ({column['type']}"
+        if column.get("unit"):
+            rendered += f", {column['unit']}"
+        parts.append(rendered + ")")
+    order = table["order_by"]
+    order_text = (
+        "the model reply order"
+        if order == ["model_rank"]
+        else ", ".join(f"`{key}`" for key in order)
+    )
+    head = f"  - Table: {', '.join(parts)}. Order: {order_text}."
+    if table.get("precision") is not None:
+        head += f" Round to {table['precision']} places."
+    lines = [head]
+    if table.get("ties"):
+        lines.append(f"  - Ties: {_prose(table['ties'])}")
+    denominators = table.get("denominators") or []
+    if denominators:
+        keys = ", ".join(_code(key) for key in denominators)
+        lines.append(f"  - Shares divide by {keys}.")
+    caveats = table.get("caveats") or []
+    if caveats:
+        joined = " ".join(_prose(caveat) for caveat in caveats)
+        lines.append(f"  - Caveats: {joined}")
+    return lines
+
+
+# The wave-2 parity statement: which op families the DuckDB gate proves,
+# the graph reads, and the one declared numeric drift (the coding tables'
+# numeric -> DOUBLE mirror; values can differ in far decimals).
+_BACKEND_PROOF = [
+    "",
+    "## Backend proof",
+    "",
+    "The analysis ops behind these methods run on Postgres and on DuckDB. "
+    "The parity gate proves it on a migrated DuckDB file "
+    "(`tests/test_backend_operation_parity.py`). The screens, the "
+    "classifiers, the cluster report, the keyphrase ranks, the sentiment "
+    "screen, the active-learning rank, and the NLI pair all run on both "
+    "engines. The deep surface gate pins the same envelope keys on every "
+    "surface. The six graph reads run on Postgres (the AGE or PG store) "
+    "and on DuckDB (the graph store).",
+    "",
+    "One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored "
+    "value can differ from Postgres in far decimals.",
+]
+
+
 def _routing_lines(method: dict[str, Any]) -> list[str]:
     """The routing-axes bullets for one method (analysis-routing program).
 
@@ -195,6 +258,8 @@ def build_block(register: dict[str, Any]) -> str:
         )
         lines += _progression_lines(method, names)
         lines += _routing_lines(method)
+        lines += _table_lines(method)
+    lines += _BACKEND_PROOF
     lines.append(END_MARKER)
     return "\n".join(lines)
 
