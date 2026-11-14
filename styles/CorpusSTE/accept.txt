@@ -195,6 +195,7 @@ spa
 ubuntu
 unwaived
 ui
+pipx
 px
 basename
 holm
