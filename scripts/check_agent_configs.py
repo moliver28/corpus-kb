@@ -1,9 +1,10 @@
 """Cross-editor MCP config consistency checker.
 
-Reads the MCP configuration files for OpenCode, Claude Code, Cursor, and
-Codex and verifies that every tool defined in one config is also defined in
-the others with matching descriptions and command invocations. It ALSO runs
-the harness-pack drift gate (``scripts/gen_harness_pack.py --check``) so
+Reads the MCP configuration files for OpenCode, Claude Code, Cursor,
+Codex, and ZCode and verifies that every tool defined in one config is
+also defined in the others with matching descriptions and command
+invocations. It ALSO runs the harness-pack drift gate
+(``scripts/gen_harness_pack.py --check``) so
 registry <-> wrapper <-> config parity fails loudly (todo 18, r7.2/r9).
 
 Usage:
@@ -29,6 +30,7 @@ CONFIG_PATHS: dict[str, Path] = {
     "claude": Path("mcp-configs/claude-code.json"),
     "cursor": Path("mcp-configs/cursor.json"),
     "codex": Path("mcp-configs/codex.json"),
+    "zcode": Path("mcp-configs/zcode.json"),
 }
 
 GEN_HARNESS_PACK_REL = Path("scripts") / "gen_harness_pack.py"
@@ -46,7 +48,13 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def get_tool_map(config: dict[str, Any], format_name: str) -> dict[str, dict[str, Any]]:
     """Return a mapping of tool name -> tool config for a given format."""
-    container = config.get("mcp", {}) if format_name == "opencode" else config.get("mcpServers", {})
+    if format_name == "opencode":
+        container = config.get("mcp", {})
+    elif format_name == "zcode":
+        # ZCode nests its servers one level deeper: mcp.servers.
+        container = config.get("mcp", {}).get("servers", {})
+    else:
+        container = config.get("mcpServers", {})
 
     if not isinstance(container, dict):
         return {}
@@ -62,8 +70,9 @@ def normalize_command(tool_config: dict[str, Any], format_name: str) -> list[str
     """Return the full command invocation as a list of strings.
 
     OpenCode stores the command as an array under the ``command`` key, while
-    Claude Code and Cursor split it into ``command`` (string) and ``args``
-    (list). This function normalizes both shapes to a single comparable list.
+    Claude Code, Cursor, and ZCode split it into ``command`` (string) and
+    ``args`` (list). This function normalizes both shapes to a single
+    comparable list.
     """
     if format_name == "opencode":
         command = tool_config.get("command", [])

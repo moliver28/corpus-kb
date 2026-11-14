@@ -5,6 +5,7 @@ of error strings (empty = valid):
   - OpenCode native (mcp key, command as array)
   - Claude Code (mcpServers key, command as string + args)
   - Cursor (mcpServers key, command as string + args, no autoApprove)
+  - ZCode (mcp.servers key, command as string + args, no autoApprove)
 
 Codex configs reuse the Claude Code validator (same mcpServers +
 autoApprove shape — the copy-template for Codex CLI users).
@@ -234,6 +235,86 @@ def _validate_cursor_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 
     # Cursor requires: name, description, command, args, env
     # autoApprove is NOT required (Cursor doesn't use it)
+    for field in ("name", "description", "command", "args", "env"):
+        if field not in tool_config:
+            errors.append(f"{prefix}: missing required field '{field}'")
+
+    # command must be a string
+    command = tool_config.get("command")
+    if command is not None and not isinstance(command, str):
+        errors.append(
+            f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), got {type(command).__name__}"
+        )
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# ZCode format validator
+# ---------------------------------------------------------------------------
+
+
+def validate_zcode_config(config: dict[str, Any]) -> list[str]:
+    """Validate a ZCode format config (mcp.servers key).
+
+    Required structure:
+        {
+            "mcp": {
+                "servers": {
+                    "<tool-name>": {
+                        "name": "...",
+                        "description": "...",
+                        "command": "executable",      # MUST be string
+                        "args": ["arg1", ...],
+                        "env": {},
+                        # autoApprove is NOT used by ZCode
+                    }
+                }
+            }
+        }
+
+    ZCode reads the nested ``mcp.servers`` envelope from its config files;
+    a top-level ``mcpServers`` key is only the ``.agents/mcp.json``
+    fallback, not the shape this template publishes.
+
+    Returns a list of error strings (empty = valid).
+    """
+    errors: list[str] = []
+
+    if not isinstance(config, dict):
+        return ["Config must be a JSON object"]
+
+    mcp = config.get("mcp")
+    if not isinstance(mcp, dict) or "servers" not in mcp:
+        errors.append("Missing required 'mcp.servers' key for ZCode format")
+        return errors
+
+    if "mcpServers" in config:
+        errors.append(
+            "Found 'mcpServers' key — that is the fallback file shape; use nested 'mcp.servers'"
+        )
+
+    servers = mcp["servers"]
+    if not isinstance(servers, dict) or not servers:
+        errors.append("'mcp.servers' must be a non-empty object")
+        return errors
+
+    for tool_name, tool_config in servers.items():
+        prefix = f"mcp.servers.{tool_name}"
+        errors.extend(_validate_zcode_tool(prefix, tool_config))
+
+    return errors
+
+
+def _validate_zcode_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]:
+    """Validate a single server entry within ZCode mcp.servers."""
+    errors: list[str] = []
+
+    if not isinstance(tool_config, dict):
+        return [f"{prefix}: tool config must be an object"]
+
+    # ZCode requires: name, description, command, args, env
+    # autoApprove is NOT required (ZCode doesn't use it)
     for field in ("name", "description", "command", "args", "env"):
         if field not in tool_config:
             errors.append(f"{prefix}: missing required field '{field}'")
