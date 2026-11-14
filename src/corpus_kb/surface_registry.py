@@ -1635,46 +1635,127 @@ SERVER_DESCRIPTION = (
 )
 SERVER_COMMAND = "corpus-kb"
 SERVER_ARGS: tuple[str, ...] = ("--transport", "stdio")
-# autoApprove entries for emitted editor templates (legacy master tool set,
-# kept in lockstep with claude-code.json).
+# autoApprove for the emitted editor templates (novice-UX W3c): ONE
+# registry-derived set, not a hand list. The rule: a tool is
+# auto-approvable only when it performs NO store write and NO ingest
+# write under ANY declared parameter. ``AUTO_APPROVE_WRITE_TOOLS`` names
+# the write side; the derived list is every MCP tool minus those rows,
+# sorted. The lockstep test (``tests/test_auto_approve_lockstep.py``)
+# recomputes the universe from the catalogue plus this registry and
+# fails when a new op is not classified into exactly one of the two
+# sets. Two judgment calls the rule allows: ``coding_export`` and
+# ``research_report`` write a file the caller names — no store row, no
+# ingest — so they ride. The legacy master-tool names (``sql_query``,
+# ``retrieve_context``, and friends) are no longer live MCP tools, so
+# no host list carries them.
+AUTO_APPROVE_WRITE_TOOLS: frozenset[str] = frozenset(
+    {
+        # ingest writes: documents, chunks, vectors, entities, relations
+        "ingest_text",
+        "ingest_file",
+        "ingest_directory",
+        "ingest_url",
+        "research_ingest",
+        "research_ingest_transcript",
+        "ingest_reembed",
+        "ingest_reingest",
+        "research_cycle",
+        "research_demo",
+        "demo_load",
+        # store writes: rows, tables, graph, queue, lifecycle decisions
+        "delete_document",
+        "add_entity",
+        "add_relation",
+        "extraction_tune",
+        "conflicts_scan",
+        "conflicts_resolve",
+        "beliefs_current",
+        "labeling_build",
+        "classification_build",
+        "topics_build",
+        "topics_trends",
+        "analysis_backfill_dates",
+        "analyze_run",
+        "analysis_embed_meta",
+        "project_provision",
+        "project_drop",
+        "queue_enqueue",
+        "queue_cancel",
+        "codebook_promote",
+        "coding_embed_codebook",
+        "coding_code_batch",
+        "coding_calibrate_floors",
+        "coding_run",
+        "inductive_run",
+        "review_execute",
+        "calibrate_apply",
+        "release_request",
+        "release_review",
+        "release_execute",
+    }
+)
+
 SERVER_AUTO_APPROVE: tuple[str, ...] = (
+    "active_learn_next",
+    "analysis_route",
+    "analysis_select_method",
+    "ask",
+    "beliefs_compare",
+    "beliefs_predict",
+    "beliefs_timeline",
+    "centroids_classify",
+    "classification_list",
+    "clusters_inspect",
+    "codebook_proposals",
+    "codebooks_list",
+    "coding_assignments",
+    "coding_export",
+    "coding_pool",
+    "coding_reliability",
+    "coding_saturation",
+    "coding_status",
+    "conflicts_list",
+    "contradictions_screen",
+    "doctor",
+    "duplicates_screen",
+    "events_summary",
+    "get_document_tags",
+    "get_entity_relations",
+    "get_metadata",
+    "graph_neighbors",
+    "graph_traverse",
+    "ingest_status",
+    "keyphrases_extract",
+    "labeling_gold_check",
+    "labeling_lfs",
+    "labeling_list",
+    "labeling_triage",
+    "lexical_classify",
+    "list_documents",
+    "neighbors_classify",
+    "nli_classify",
+    "notebook_ask",
+    "notebook_evidence",
+    "notebook_overlap",
+    "notebook_uncoded",
+    "outliers_rank",
+    "project_list",
+    "projects_list",
+    "query",
+    "queue_status",
+    "release_assess",
+    "release_compare",
+    "release_status",
+    "research_report",
     "search",
     "search_context",
-    "search_similar",
-    "retrieve_context",
-    "list_documents",
-    "get_stats",
-    "list_versions",
-    "list_branches",
-    "get_entity_relations",
     "search_graph",
-    "sql_query",
-    "sql_tables",
-    "get_document_tags",
-    "get_metadata",
-    "query_document_stats",
-    "sync_database",
-    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py,
-    # tools/ingest_reingest.py for the #202 bulk re-embed)
-    "ingest_status",
-    "ingest_reembed",
-    "ingest_reingest",
-    # Wave 4 topics layer (tools/topics_tools.py)
-    "topics_build",
+    "search_similar",
+    "sentiment_screen",
+    "statements_list",
+    "statements_timeline",
     "topics_list",
-    # Corpus analysis program (tools/labeling_tools.py,
-    # tools/classification_tools.py, tools/analysis_tools.py, and the
-    # topics_trends stub in tools/topics_tools.py)
-    "topics_trends",
-    "labeling_build",
-    "labeling_list",
-    "labeling_lfs",
-    "classification_build",
-    "classification_list",
-    "analysis_backfill_dates",
-    "analyze_run",
-    # Ask operation (UX Wave 1, tools/ask_tools.py)
-    "ask",
+    "verify_answer",
 )
 
 # Marker fences for the generated .claude/CLAUDE.md research-commands section.

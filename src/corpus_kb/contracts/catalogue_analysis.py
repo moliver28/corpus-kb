@@ -49,8 +49,10 @@ SELECT_ENVELOPE = ("status", "register_version", "recommendations")
 # only; ``suggestions`` is present iff the intent resolved and a method
 # was chosen, and omitted otherwise. Conditional keys never take
 # per-surface extras: the shared handler answers all surfaces alike,
-# and extras are for surface-ADDED keys only.
-ROUTE_ENVELOPE = ("status", "intent", "ranked", "trace")
+# and extras are for surface-ADDED keys only. ``next_methods`` is
+# unconditional — ``[]`` on every ambiguous or degraded answer — so it
+# joins the guaranteed tuple (novice-UX W3c).
+ROUTE_ENVELOPE = ("status", "intent", "ranked", "next_methods", "trace")
 KEYPHRASES_ENVELOPE = ("status", "keyphrases", "variant", "screened_count")
 PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")
 NLI_PREDICTIONS_ENVELOPE = ("status", "predictions", "model", "screened_count")
