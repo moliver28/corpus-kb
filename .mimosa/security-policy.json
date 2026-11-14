@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "threatModel": {
+    "inherit": true,
+    "assets": [
+      "The corpus store (documents, chunks, embeddings, research tables)",
+      "The HTTP, socket, and MCP API surfaces",
+      "The migrate-data swap tool and its source and target databases"
+    ],
+    "attackerControlledInputs": [
+      "HTTP API request bodies and query parameters (src/corpus_kb/api)",
+      "MCP tool arguments (src/corpus_kb/tools)",
+      "URLs submitted to website ingestion (corpus-kb ingest-url)"
+    ],
+    "trustBoundaries": [
+      "Operator configuration (config.yaml, CLI flags, environment, DSNs) is operator-owned and is not attacker-controlled",
+      "Database catalog names, migration table plans, and corpus identifiers are operator-scoped storage metadata",
+      "src/corpus_kb/ui_dist is generated build output; the reviewed source of truth is ui_src",
+      "Tests and research probes run on operator machines only. Their fake credentials and probe URLs are not product attack surface"
+    ],
+    "securityInvariants": [
+      "Attacker-controlled queries go through bind parameters only",
+      "DDL and PRAGMA statements interpolate only validated and quoted operator values (storage.sql_ident)",
+      "Outbound fetches default to loopback hosts; remote rerank endpoints are opt-in (allow_remote_urls)"
+    ],
+    "exclusions": [
+      "src/corpus_kb/ui_dist/**",
+      "ui_src/scripts/record-fixtures.ts",
+      "tests/conftest.py",
+      "tests/test_tier3_live_nli.py",
+      "tests/test_v1_openai_sdk.py",
+      "findings/**"
+    ]
+  },
+  "network": {
+    "allowedProtocols": [
+      "https:",
+      "http:"
+    ],
+    "allowedHosts": [
+      "localhost",
+      "127.0.0.1",
+      "[::1]"
+    ],
+    "blockPrivateNetworks": true,
+    "maxRedirects": 0
+  },
+  "command": {
+    "forbidShell": true,
+    "allowedBinaries": []
+  },
+  "path": {
+    "allowedWriteRoots": [],
+    "requireBasename": true
+  },
+  "data": {
+    "allowedSortFields": [],
+    "requireOwnerScope": true
+  }
+}
