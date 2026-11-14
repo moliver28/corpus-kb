@@ -49,7 +49,12 @@ def _require_int(name: str, value: int, floor: int) -> int:
 
 
 def _empty(
-    status: str, pairs_key: str, reason: str, remedy: str, screened: int
+    status: str,
+    pairs_key: str,
+    reason: str,
+    remedy: str,
+    screened: int,
+    excluded: int = 0,
 ) -> dict[str, object]:
     """The honest no-data envelope on this family's contract keys."""
     return {
@@ -58,6 +63,7 @@ def _empty(
         "remedy": remedy,
         pairs_key: [],
         "screened_count": screened,
+        "excluded_zero_count": excluded,
     }
 
 
@@ -70,18 +76,19 @@ async def duplicates_screen(
 ) -> dict[str, object]:
     """Cosine pairs at or above ``threshold``, most similar first.
 
-    Returns ``{status, pairs, threshold, screened_count}``. Each pair is
-    ``{similarity, chunk_id_i, chunk_id_j}`` with ``chunk_id_i`` the
-    smaller id. Order: similarity desc, then id_i asc, then id_j asc,
-    computed on the 6-place rounded values; capped at ``limit``.
-    Zero vectors are excluded by the loader (cosine undefined).
+    Returns ``{status, pairs, threshold, screened_count,
+    excluded_zero_count}``. Each pair is ``{similarity, chunk_id_i,
+    chunk_id_j}`` with ``chunk_id_i`` the smaller id. Order: similarity
+    desc, then id_i asc, then id_j asc, computed on the 6-place rounded
+    values; capped at ``limit``. Zero vectors are excluded by the loader
+    (cosine undefined) and the honest count rides the envelope.
     """
     if not -1.0 <= float(threshold) <= 1.0:
         raise ValidationError("threshold must sit between -1 and 1.")
     _require_int("limit", limit, 1)
     space = await _load_vectors(pg_pool, tenant_id, config)
     if not space.ids:
-        return _empty("empty", "pairs", _EMPTY_REASON, _EMPTY_REMEDY, 0)
+        return _empty("empty", "pairs", _EMPTY_REASON, _EMPTY_REMEDY, 0, space.excluded_zero_count)
     with vectors.pin_numeric_threads():
         units = vectors.unit_rows(space.matrix)
         found: list[tuple[float, str, str]] = []
@@ -102,6 +109,7 @@ async def duplicates_screen(
         "pairs": pairs,
         "threshold": round(float(threshold), 6),
         "screened_count": len(space.ids),
+        "excluded_zero_count": space.excluded_zero_count,
     }
 
 
@@ -114,20 +122,29 @@ async def outliers_rank(
 ) -> dict[str, object]:
     """Rank chunks by distance to their k-th nearest neighbor (cosine).
 
-    Returns ``{status, outliers, screened_count}``. Each row is
-    ``{chunk_id, knn_distance}`` with ``knn_distance = 1 - similarity``
-    to the k-th nearest OTHER chunk, rounded to 6 places. Order:
-    distance desc, then chunk_id asc; capped at ``limit``. ``k`` larger
-    than the corpus shrinks to corpus size minus one.
+    Returns ``{status, outliers, screened_count, excluded_zero_count}``.
+    Each row is ``{chunk_id, knn_distance}`` with ``knn_distance = 1 -
+    similarity`` to the k-th nearest OTHER chunk, rounded to 6 places.
+    Order: distance desc, then chunk_id asc; capped at ``limit``. ``k``
+    larger than the corpus shrinks to corpus size minus one.
     """
     _require_int("k", k, 1)
     _require_int("limit", limit, 1)
     space = await _load_vectors(pg_pool, tenant_id, config)
     total = len(space.ids)
     if total == 0:
-        return _empty("empty", "outliers", _EMPTY_REASON, _EMPTY_REMEDY, 0)
+        return _empty(
+            "empty", "outliers", _EMPTY_REASON, _EMPTY_REMEDY, 0, space.excluded_zero_count
+        )
     if total == 1:
-        return _empty("empty", "outliers", _SINGLE_CHUNK_REASON, _SINGLE_CHUNK_REMEDY, total)
+        return _empty(
+            "empty",
+            "outliers",
+            _SINGLE_CHUNK_REASON,
+            _SINGLE_CHUNK_REMEDY,
+            total,
+            space.excluded_zero_count,
+        )
     effective_k = min(int(k), total - 1)
     with vectors.pin_numeric_threads():
         units = vectors.unit_rows(space.matrix)
@@ -149,4 +166,9 @@ async def outliers_rank(
     outliers = [
         {"chunk_id": chunk_id, "knn_distance": distance} for distance, chunk_id in rounded[:limit]
     ]
-    return {"status": "success", "outliers": outliers, "screened_count": total}
+    return {
+        "status": "success",
+        "outliers": outliers,
+        "screened_count": total,
+        "excluded_zero_count": space.excluded_zero_count,
+    }
