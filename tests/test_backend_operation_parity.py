@@ -86,7 +86,6 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     from corpus_kb.handlers import (
         graph_handler,
         idempotency,
-        query_handler,
         router_handler,
         tag_handler,
         versioning_handler,
@@ -101,7 +100,9 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     tag_handler.reset_tag_handler()
     versioning_handler.reset_versioning_handler()
     router_handler.reset_router_handler()
-    monkeypatch.setattr(query_handler, "_query_handler", None)
+    from corpus_kb.handlers.query_wiring import reset_query_handler
+
+    reset_query_handler()
 
     db_path = tmp_path / "parity.duckdb"
     dsn = f"duckdb:///{db_path.as_posix()}"

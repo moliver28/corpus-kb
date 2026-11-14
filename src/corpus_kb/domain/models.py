@@ -233,54 +233,11 @@ class DocumentChunkResult(BaseModel):
     end_line: int | None = None
 
 
-class RelationListResult(BaseModel):
-    """One relation row in the relations-list window (Wave 6 Map)."""
-
-    relation_id: UUID
-    source_entity_id: UUID
-    target_entity_id: UUID
-    relation_type: str
-    weight: float
-    source_name: str
-    target_name: str
-
-
-class EntityResult(BaseModel):
-    """Entity in list/search responses."""
-
-    entity_id: UUID
-    name: str
-    entity_type: str
-    metadata: dict[str, object] = Field(default_factory=dict)
-
-
-class ClaimVerdict(BaseModel):
-    """Verdict for a single claim extracted from an answer."""
-
-    claim: str
-    label: str
-    confidence: float
-    cited_chunk_ids: list[UUID]
-
-
-class VerifyAnswerResult(BaseModel):
-    """Result of verifying an answer's claims against cited chunks."""
-
-    verdicts: list[ClaimVerdict]
-    groundedness: float
-    abstained: bool
-
-
-class RouteDecision(BaseModel):
-    """The route chosen for a query, plus confidence and fallback flag."""
-
-    route: str
-    confidence: float
-    fallback: bool
-
-
-class RoutedResult(BaseModel):
-    """Result of a routed query: the decision plus the underlying results."""
-
-    decision: RouteDecision
-    results: list[dict[str, object]]
+# The tail result models moved to ``domain/results.py`` (the 250-line
+# rule); the re-exports keep every existing import path byte-identical.
+from corpus_kb.domain.results import ClaimVerdict as ClaimVerdict  # noqa: E402
+from corpus_kb.domain.results import EntityResult as EntityResult  # noqa: E402
+from corpus_kb.domain.results import RelationListResult as RelationListResult  # noqa: E402
+from corpus_kb.domain.results import RouteDecision as RouteDecision  # noqa: E402
+from corpus_kb.domain.results import RoutedResult as RoutedResult  # noqa: E402
+from corpus_kb.domain.results import VerifyAnswerResult as VerifyAnswerResult  # noqa: E402

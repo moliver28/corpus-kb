@@ -1,29 +1,16 @@
 """Generate the UI op manifest and the typed client artifacts (UI SPA Task 4).
 
-Outputs (all COMMITTED — ``--check`` regenerates in memory and exits 1 on
-drift, ``gen_harness_pack`` precedent):
-
-  * ``src/corpus_kb/ui_manifest.json``         — the op manifest (sorted JSON)
-  * ``ui_src/src/api/manifest.json``           — the browser-bundled copy:
-    the same entries WITHOUT the ``description`` keys (the SPA never
-    renders them, so the bundle does not pay for them; the repo copy
-    keeps them for harness parity)
-  * ``ui_src/src/api/ops.generated.ts``        — typed op table: id, path,
-    method, longRunning (an ``@generated`` file humans must not edit)
-  * ``ui_src/src/api/thresholds.generated.ts`` — verify-badge thresholds
-
+Four COMMITTED outputs (``--check`` regenerates in memory and exits 1 on
+drift): ``ui_manifest.json`` (sorted op manifest), ``manifest.json``
+(the bundled copy without ``description`` keys), ``ops.generated.ts``
+(typed op table), and ``thresholds.generated.ts`` (verify thresholds).
 The renderers live in ``gen_ui_manifest_render.py`` (the 250-line rule).
 
-Sources (exactly two, zero-drift rule 1):
-
-  * ``surface_registry.SURFACES``, loaded BY PATH — the registry is
-    strictly stdlib-only and is never imported as a package member;
-  * ``corpus_kb.api.research_http.tool_routes()`` for the required/optional
-    body keys (imported lazily; the registry load stays dependency-free).
-
-One declared exception: the multipart upload route is not a JSON tool
-route, so its required form field (``file``) is named in
-:data:`MULTIPART_BODY_KEYS` below — the third input this one row needs.
+Sources (exactly two, zero-drift rule 1): ``surface_registry.SURFACES``
+loaded BY PATH (stdlib-only, never a package member), and
+``research_http.tool_routes()`` for the body keys (lazy import). One
+declared exception: the multipart upload row names its ``file`` form
+field in :data:`MULTIPART_BODY_KEYS` below.
 
 Usage:
     python src/corpus_kb/_setup/gen_ui_manifest.py [--check] [--project-root PATH]

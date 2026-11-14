@@ -1,23 +1,13 @@
 """The claude-agent-sdk rung: the owner's Claude subscription.
 
-Session contract ([D3]-[D5]):
-- env refusal at session start for every auth variable that outranks the
-  subscription login (verified against the authentication precedence
-  list, 2026-11-13) — never a silent billing-path switch, never env
-  scrubbing;
-- deny-by-default tooling: ``strict_mcp_config`` plus the one corpus
-  server, the one pre-approved tool, the disallowed built-ins (including
-  the auto-allowed read-only ones), a ``PreToolUse`` hook that gates
-  every call (the only per-call gate; ``can_use_tool`` fires only when
-  the CLI's rules say "ask"), and the ``can_use_tool`` backstop;
-- ``setting_sources=[]`` — no filesystem settings load (None would load
-  ALL sources; the SDK reference is explicit);
-- the work-account pin via ``CLAUDE_CONFIG_DIR`` and a stable ``cwd``.
+The session contract ([D3]-[D5]: the precedence refusal at start, the
+deny-by-default tool list, the per-call hook plus the ``can_use_tool``
+backstop, ``setting_sources=[]``, and the ``CLAUDE_CONFIG_DIR`` pin)
+lives in ``docs/CHAT.md`` — this module is its implementation.
 
-Every ``claude_agent_sdk`` import is lazy (``importlib`` at call time),
-so base installs never import the SDK — and the import edge stays
-invisible to static resolution, so pyright passes without the extra
-(the ``ast_chunks`` contract for optional extras).
+Every ``claude_agent_sdk`` import is lazy (``importlib`` at call time):
+base installs never import the SDK, and the import edge stays invisible
+to static resolution, so pyright passes without the extra.
 """
 
 from __future__ import annotations
@@ -40,10 +30,9 @@ __all__ = ["PRECEDENCE_ENV_VARS", "build_session", "env_refusal", "list_transcri
 def _sdk_module() -> Any:
     """The SDK module, resolved at call time (the ``[chat]`` extra contract).
 
-    ``importlib`` on purpose: the extra is optional and CI never installs
-    it, so the import edge must stay invisible to static resolution (the
-    ``ast_chunks`` contract). A missing extra answers the typed
-    dependency error, never a bare ``ImportError``.
+    ``importlib`` on purpose: CI never installs the extra, so the import
+    edge must stay invisible to static resolution. A missing extra
+    answers the typed dependency error, never a bare ``ImportError``.
     """
     import importlib
 

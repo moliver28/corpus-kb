@@ -8,6 +8,7 @@ module holds no behavior.
 
 from __future__ import annotations
 
+from corpus_kb.api._socket_rows_analysis import STATEMENTS_SPECS
 from corpus_kb.api._socket_rows_chunks import CHUNK_SPECS
 from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
 from corpus_kb.api._socket_rows_entities import ENTITY_SPECS
@@ -23,11 +24,6 @@ _LABEL = "corpus_kb.tools.labeling_tools"
 _GOLD = "corpus_kb.tools.labeling_gold_tools"
 _CLASS = "corpus_kb.tools.classification_tools"
 _ANALYSIS = "corpus_kb.tools.analysis_tools"
-_STMT = "corpus_kb.tools.statements_tools"
-_CONF = "corpus_kb.tools.conflicts_tools"
-_QUEUE = "corpus_kb.tools.queue_tools"
-_PROJECT = "corpus_kb.tools.project_tools"
-_BELIEFS = "corpus_kb.tools.beliefs_tools"
 _KEY = "corpus_kb.tools.keyphrase_tools"
 _LEX = "corpus_kb.tools.lexical_tools"
 _NEIGH = "corpus_kb.tools.neighbor_tools"
@@ -42,10 +38,10 @@ _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
 _RELATION = "corpus_kb.tools.relation_read_tools"
 _SEARCH = "corpus_kb.tools.search_tools"
-_VERSIONING = "corpus_kb.tools.versioning_tools"
 
 # Mechanical arms: pool fetch + strict coercion, said once in _spec_arm.
 _SPECS: dict[str, _Spec] = {
+    **STATEMENTS_SPECS,
     "ingest_directory": _Spec(
         _INGEST,
         "ingest_directory",
@@ -125,69 +121,6 @@ _SPECS: dict[str, _Spec] = {
         opts=(_Opt("strategy", "sdef", "margin"), _Opt("batch", "int", 10)),
     ),
     "analysis_embed_meta": _Spec(_MEMBED, "analysis_embed_meta", opts=(_Opt("kinds", "str"),)),
-    "statements_list": _Spec(
-        _STMT,
-        "statements_list",
-        opts=(_Opt("template_id", "str"), _Opt("document_id", "str"), _Opt("limit", "int", 50)),
-    ),
-    "statements_timeline": _Spec(
-        _STMT, "statements_timeline", opts=(_Opt("text_query", "str"), _Opt("limit", "int", 200))
-    ),
-    "conflicts_scan": _Spec(_CONF, "conflicts_scan"),
-    "conflicts_list": _Spec(
-        _CONF, "conflicts_list", opts=(_Opt("verdict", "str"), _Opt("limit", "int", 50))
-    ),
-    "conflicts_resolve": _Spec(
-        _CONF,
-        "conflicts_resolve",
-        opts=(
-            _Opt("conflict_id", "sdef", ""),
-            _Opt("resolved_verdict", "sdef", ""),
-            _Opt("resolved_by", "sdef", ""),
-        ),
-    ),
-    "beliefs_current": _Spec(
-        _BELIEFS,
-        "beliefs_current",
-        opts=(_Opt("subject", "str"), _Opt("limit", "int", 50), _Opt("rebuild", "bool", True)),
-    ),
-    "beliefs_timeline": _Spec(
-        _BELIEFS,
-        "beliefs_timeline",
-        opts=(_Opt("subject", "str"), _Opt("relation", "str"), _Opt("object", "str")),
-    ),
-    "beliefs_predict": _Spec(
-        _BELIEFS,
-        "beliefs_predict",
-        opts=(_Opt("subject", "str"), _Opt("relation", "str"), _Opt("object", "str")),
-    ),
-    "beliefs_compare": _Spec(_BELIEFS, "beliefs_compare", opts=(_Opt("subject", "str"),)),
-    # Phase-2 Wave 3: the corpus stats pair (tools/versioning_tools.py).
-    "stats": _Spec(_VERSIONING, "stats"),
-    "document_stats": _Spec(_VERSIONING, "document_stats"),
-    "queue_enqueue": _Spec(
-        _QUEUE,
-        "queue_enqueue",
-        opts=(
-            _Opt("path", "sdef", ""),
-            _Opt("title", "str"),
-            _Opt("profile", "str"),
-            _Opt("strategy_config", "raw"),
-            _Opt("project_id", "str"),
-        ),
-    ),
-    "queue_status": _Spec(
-        _QUEUE, "queue_status", opts=(_Opt("queue_id", "str"), _Opt("limit", "int", 50))
-    ),
-    "queue_cancel": _Spec(_QUEUE, "queue_cancel", opts=(_Opt("queue_id", "sdef", ""),)),
-    # -- Track C: the per-project raw-table ops --
-    "project_provision": _Spec(
-        _PROJECT,
-        "project_provision",
-        opts=(_Opt("slug", "sdef", ""), _Opt("project_id", "str")),
-    ),
-    "project_list": _Spec(_PROJECT, "project_list"),
-    "project_drop": _Spec(_PROJECT, "project_drop", opts=(_Opt("slug", "sdef", ""),)),
     "ask": _Spec(
         _ASK,
         "ask",
