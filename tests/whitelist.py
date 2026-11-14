@@ -485,6 +485,8 @@ _input_kinds
 _sources_floor
 _vocabularies_and_op
 _routing_axes
+_progression_fields
+_progression_graph
 _semver
 _rules_present
 _ids_unique
