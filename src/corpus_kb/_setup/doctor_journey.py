@@ -130,10 +130,8 @@ def _next_check(
         )
     builds = [
         row
-        for row in implemented
-        if row.op in BUILD_PRODUCTS
-        and not _missing(row, register, state, ollama_ok)
-        and getattr(state, BUILD_PRODUCTS[row.op][0]) == 0
+        for row in _runnable_sorted(register, state, ollama_ok)
+        if row.op in BUILD_PRODUCTS and getattr(state, BUILD_PRODUCTS[row.op][0]) == 0
     ]
     if not builds:
         return ResearchCheck(

@@ -195,6 +195,18 @@ def test_labels_built_next_is_classification() -> None:
     assert "It unlocks methods 20." in nxt.detail
 
 
+def test_next_picks_lowest_difficulty_not_lowest_id() -> None:
+    """The promise holds when id order and difficulty order disagree."""
+    reg = _register(
+        _record("05", op="labeling_build", difficulty="advanced"),
+        _record("09", op="topics_build", difficulty="novice"),
+    )
+    found = _by_name(build_journey_checks(reg, HEALTHY, ollama_ok=True))
+    nxt = found["journey_next"]
+    assert "Next: build topics with method 09." in nxt.detail
+    assert nxt.fix == "corpus-kb topics-build"
+
+
 def test_all_products_built_is_terminal() -> None:
     done = JourneyState(
         chunks=120, vectors=120, labels=5, predictions=4, topics=3, dated_documents=6
