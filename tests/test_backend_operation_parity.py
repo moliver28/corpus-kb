@@ -21,6 +21,8 @@ from uuid import uuid4
 import pytest
 from test_surface_parity_deep import DOC_ID, LEGS, TENANT
 
+from tests.live_embed import live_embed_dimensions, live_embed_model
+
 ParityLegs = tuple[str, ...]
 
 #: The 27 operations issue #330 names for the DuckDB parity proof,
@@ -114,14 +116,15 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
         "  backend: duckdb\n"
         "extraction:\n"
         "  backend: regex\n"
-        # CI pulls nomic-embed-text only; the packaged default (qwen3) 404s
-        # there. Dimensions travel with the model (768) so the embedder's
-        # width validation passes, and a width-mismatched vector arm fails
-        # open into the degraded lexical arm (the search contract).
+        # Name the model this leg actually pulled (zero-drift F3
+        # follow-up); a stale hardcoded name 404s here. Dimensions
+        # travel with the model so the embedder's width validation
+        # passes, and a width-mismatched vector arm fails open into the
+        # degraded lexical arm (the search contract).
         "embedding:\n"
         "  provider: ollama\n"
-        "  model: nomic-embed-text\n"
-        "  dimensions: 768\n",
+        f"  model: {live_embed_model()}\n"
+        f"  dimensions: {live_embed_dimensions()}\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg_path))
