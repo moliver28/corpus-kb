@@ -30,6 +30,7 @@ from corpus_kb.analysis.settings import (
     DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
     DEFAULT_ROUTING_MARGIN,
 )
+from tests.live_embed import live_embed_dimensions, live_embed_model
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = REPO_ROOT / "tests" / "fixtures" / "routing_golden.jsonl"
@@ -219,18 +220,23 @@ def _ollama_up() -> bool:
         return False
 
 
-def _nomic_embedder() -> OllamaEmbedder:
-    """The live embedder the CI jobs pull: nomic-embed-text, 768 dims."""
+def _live_embedder() -> OllamaEmbedder:
+    """The live embedder this leg pulled, derived never hardcoded.
+
+    Zero-drift F3 follow-up: the legs pull the shipped default, so the
+    name and width come from tests/live_embed. A stale hardcoded name
+    404s against the pulled server.
+    """
     from corpus_kb.rag.embedder import OllamaEmbedder
 
     return OllamaEmbedder(
         {
             "embedding": {
                 "provider": "ollama",
-                "model": "nomic-embed-text",
+                "model": live_embed_model(),
                 "base_url": OLLAMA_URL,
                 "batch_size": 8,
-                "dimensions": 768,
+                "dimensions": live_embed_dimensions(),
             }
         }
     )
@@ -268,7 +274,7 @@ def test_phrase_path_regret_is_zero() -> None:
 def test_embedding_path_regret_meets_the_recorded_ceiling() -> None:
     """The live embedding path must stay at or under the additive ceiling."""
     rows = load_golden_rows()
-    outcomes = run_bench(rows, _register(), embedder=_nomic_embedder())
+    outcomes = run_bench(rows, _register(), embedder=_live_embedder())
     measured = regret_mean(outcomes)
     ceiling = read_regret_ceiling()
     assert measured <= ceiling, f"embedding-path regret {measured} above the ceiling {ceiling}"
@@ -282,10 +288,10 @@ def test_embedding_path_run_is_byte_identical_when_rerun() -> None:
     determinism is measured end-to-end, not between cache hits.
     """
     rows = load_golden_rows()
-    outcomes = run_bench(rows, _register(), embedder=_nomic_embedder())
+    outcomes = run_bench(rows, _register(), embedder=_live_embedder())
     # A degraded status would mean the zero-vector fallback ran, not the
     # embedding path under test.
     assert {outcome.status for outcome in outcomes} <= {"resolved", "ambiguous"}
     first = outcome_blob(outcomes)
-    second = outcome_blob(run_bench(rows, _register(), embedder=_nomic_embedder()))
+    second = outcome_blob(run_bench(rows, _register(), embedder=_live_embedder()))
     assert first == second

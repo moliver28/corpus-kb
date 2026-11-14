@@ -40,7 +40,15 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
-  OLLAMA_MODEL: "nomic-embed-text"
+  # The cross-OS pull must serve the model the shipped config requests:
+  # embedding.model = qwen3-embedding:4b (config.yaml). The old value,
+  # nomic-embed-text, is 768-dim and the shipped halfvec(2560) column
+  # rejects every one of its vectors (docs/ADMIN.md, SQLSTATE 22000) —
+  # so the old pull could never serve a live embed, and gate-on runs on
+  # windows/macos silently degraded to zero vectors. The model is 2.5
+  # GB; the per-OS caches below keep the pull a cache hit after the
+  # first run.
+  OLLAMA_MODEL: "qwen3-embedding:4b"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
@@ -112,6 +120,19 @@ jobs:
               # status, which needs a live embedder.
               - 'tests/test_ingest*.py'
               - 'tests/test_integration_e2e.py'
+              # Gate symmetry (zero-drift F2): the surfaces the gated tests
+              # exercise must gate the same way. The old set gated
+              # tests/test_retrieval*.py but not research/**, ingest_common
+              # but not the sibling ingest tools, and nothing in handlers/,
+              # demo_kb.py, or the e2e driver — so f604fb0 (a retrieval-seam
+              # change) merged with zero live-embedding coverage of the code
+              # it changed. The principle is the one in the job comment
+              # above: err toward inclusion.
+              - 'src/corpus_kb/research/**'
+              - 'src/corpus_kb/handlers/**'
+              - 'src/corpus_kb/tools/ingest_*.py'
+              - 'src/corpus_kb/demo_kb.py'
+              - 'scripts/ui_e2e.py'
 
   # ─────────────────────────────────────────────────────────────────────
   # Lint: ruff check + format check (fast, ~10s, no deps needed)
@@ -538,9 +559,10 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test steps:
-  #   - ubuntu timeout-minutes: 30 (rule 20 floor is 20; the covered suite
+  #   - ubuntu timeout-minutes: 40 (rule 20 floor is 20; the covered suite
   #     measured 19:57 of pytest alone and hit the old 20-min cap after
-  #     every test had passed) — cross-OS legs keep 10 (hang protection)
+  #     every test had passed; the locked-env leg outgrew 30 later) —
+  #     cross-OS legs carry the same 40
   # ─────────────────────────────────────────────────────────────────────
   # ─────────────────────────────────────────────────────────────────────
   # ui-e2e: the SPA Playwright smoke + axe scan against a REAL corpus-kb
@@ -631,6 +653,19 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm -C ui_src exec playwright install --with-deps chromium
 
+      - name: Cache Ollama models
+        # Path-gated: pointless to restore when nothing below pulls.
+        # Own key, not the test legs' key: actions/cache keys are
+        # first-saver-wins, and this job's model set (qwen3-embedding:4b
+        # plus qwen3:4b) differs from the test legs' three embedding
+        # models. The cache kills the two 2.5 GB registry pulls on
+        # every gated run (zero-drift F5).
+        if: needs.changes.outputs.ollama_code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-ui-e2e-qwen3-embedding-4b-qwen3-4b-${{ runner.os }}
+
       - name: Install Ollama (Ubuntu)
         # Path-gated (embedding-surface changes only). Without it this
         # job degrades exactly like the pytest suite: the demo load falls
@@ -643,12 +678,27 @@ jobs:
           sleep 5
 
       - name: Pull models for the smoke
-        # Path-gated (embedding-surface changes only).
-        # The committed config embeds with qwen3-embedding:4b and the ask
-        # pipeline generates with qwen3:4b; pull BOTH so the demo load
-        # makes real vectors and the ask renders real citations. If a
-        # pull fails, the ask degrades to the evidence list and this
-        # REQUIRED job fails — the honest signal.
+        # Path-gated, and armed by the WIDENED ollama_code filter
+        # (zero-drift F2): ask-LLM surface changes (handlers/,
+        # research/, the e2e driver itself) now re-arm these pulls,
+        # not only embedding-surface changes.
+        #
+        # What each model does here, honestly (zero-drift F5):
+        # qwen3-embedding:4b (the shipped config default) gives the
+        # demo preload real vectors. qwen3:4b is the ask pipeline's
+        # generation model, but this job's ask leg points llm.base_url
+        # at a closed port (scripts/ui_e2e.py write_llm_override), so
+        # generation NEVER runs in this job — the ask always renders
+        # the degraded evidence list, by design. No green run of this
+        # job certifies the citation path.
+        #
+        # Failure and skip semantics: this step has no
+        # continue-on-error, so a failed pull fails the job for real.
+        # But a SKIPPED pull (gate off) passes: the smoke then accepts
+        # the fully degraded outcome (zero-vector demo load,
+        # evidence-list ask) as a green run. The gate map row in
+        # docs/research/harness-zero-drift-program.md states the rule:
+        # a skipped REQUIRED run is INVALID, not a pass.
         if: needs.changes.outputs.ollama_code == 'true'
         run: |
           ollama pull qwen3-embedding:4b
@@ -711,20 +761,36 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
+
+      - name: Install uv
+        # Locked installs (zero-drift F4, owner ruling 2026-11-13): the
+        # test legs run exactly what uv.lock pins, so audit-deps audits
+        # the artifact the tests actually exercise. setup-uv caches the
+        # uv cache keyed on pyproject.toml + uv.lock (enable-cache
+        # defaults to auto, which is on for hosted runners); the old
+        # setup-python pip cache is gone because pip no longer installs
+        # anything on this leg.
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install system dependencies (Ubuntu)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential
 
-      - name: Install dependencies
-        # Rule 1 (storage portability program): the extra ships from the
-        # first `import duckdb` commit onward.
+      - name: Install the locked environment
+        # uv sync installs the project itself in editable mode (the lock
+        # carries corpus-kb as `editable = "."`), so this replaces
+        # `pip install -e ".[dev,duckdb]"` one-for-one with pinned
+        # versions. --locked fails on a stale lock instead of
+        # re-resolving: PR reds come from the lock, never the float.
+        # The venv goes on GITHUB_PATH so later steps keep the plain
+        # python/poe commands; both bin layouts are harmless to append.
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,duckdb]"
+          uv sync --locked --extra dev --extra duckdb
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.venv/Scripts" >> "$GITHUB_PATH"
 
       - name: Warm the DuckDB extension cache (fts, vss, postgres)
         # The gateway loads DuckDB extensions with autoinstall off, so the
@@ -850,11 +916,14 @@ jobs:
           done
 
       - name: Run tests
-        # timeout-minutes: 30 — rule 20 requires >= 20 min on the ubuntu leg.
-        # The covered suite ran 19:57 of pytest here and hit the old 20-min
-        # cap after every test had passed (run 40471314193); 30 keeps the
-        # hang protection with headroom.
-        timeout-minutes: 30
+        # timeout-minutes: 40 — rule 20 requires >= 20 min on the ubuntu
+        # leg, and this is now the same budget the cross-OS legs carry.
+        # History: the covered suite ran 19:57 of pytest and hit the old
+        # 20-min cap after every test had passed (run 40471314193; PR
+        # #189 raised it to 30). The locked-env leg outgrew 30 again
+        # (run 43530817482: the step timed out — install plus the
+        # 3-model pull plus the covered suite no longer fit 30).
+        timeout-minutes: 40
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=xml --cov-report=term-missing
 
       # Coverage gates (PR-F, zero-drift rule 10). ONE suite run feeds
@@ -887,24 +956,39 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
 
-      - name: Install dependencies
-        # shell: bash ensures the if-statement works on all OSes (Windows
-        # defaults to powershell which has different if-syntax)
-        # python-magic-bin provides the libmagic DLL that the `unstructured`
-        # package needs on Windows. Without it, Python crashes with
-        # "Windows fatal exception: access violation" in magic.compat.py.
-        # --force-reinstall --no-deps keeps its `magic` module winning the
-        # file race against the pure python-magic package: both ship a
-        # `magic/` package, and the dev-group dependency can unpack
-        # python-magic-bin BEFORE pip unpacks python-magic, leaving the
-        # DLL-less loader in place (observed 2026-10-25).
+      - name: Install uv
+        # Locked installs (zero-drift F4, owner ruling 2026-11-13): the
+        # same pattern as the ubuntu test leg. setup-python pins the
+        # interpreter (uv sync picks it up from PATH); setup-uv adds uv
+        # plus its own pyproject/uv.lock-keyed cache.
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the locked environment
+        # shell: bash keeps the OS conditional working (Windows defaults
+        # to powershell, which has different if-syntax).
+        #
+        # uv sync installs the project editable plus the pinned dev and
+        # duckdb sets. --locked fails on a stale lock instead of
+        # re-resolving (zero-drift F4): the legs run what the lock pins.
+        # The venv goes on GITHUB_PATH so later steps keep plain
+        # python/poe commands.
+        #
+        # python-magic-bin still gets the manual force-reinstall on
+        # Windows. It rides the dev extra too, but python-magic (a
+        # runtime dependency via unstructured) and python-magic-bin both
+        # ship a `magic/` package and the last writer wins on disk.
+        # --force-reinstall --no-deps pins the DLL-carrying loader as
+        # the winner (observed 2026-10-25; same mechanics under uv pip).
+        # Without it, Python crashes with "Windows fatal exception:
+        # access violation" in magic.compat.py.
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,duckdb]"
-          if [ "$RUNNER_OS" = "Windows" ]; then pip install --force-reinstall --no-deps python-magic-bin==0.4.14; fi
+          uv sync --locked --extra dev --extra duckdb
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.venv/Scripts" >> "$GITHUB_PATH"
+          if [ "$RUNNER_OS" = "Windows" ]; then uv pip install --force-reinstall --no-deps python-magic-bin==0.4.14; fi
         shell: bash
 
       - name: Warm the DuckDB extension cache (fts, vss, postgres)
@@ -925,11 +1009,27 @@ jobs:
       - name: Cache Ollama models (Windows)
         # Path-gated (embedding-surface changes only): no pull below on a
         # skipped gate, so the restore is pointless.
+        # The key is a sanitized literal, not env.OLLAMA_MODEL: the
+        # model tag carries a colon, and the key changed from the
+        # nomic-embed-text name on purpose (zero-drift F3) — the old
+        # caches hold a model the schema cannot ingest, so they must
+        # miss once and be replaced with the shipped 2560-dim model.
         if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ format('{0}\ollama\models', env.APPDATA) }}
-          key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
+          key: ollama-qwen3-embedding-4b-${{ runner.os }}
+
+      - name: Cache Ollama models (macOS)
+        # Same rationale as the Windows cache: the 2.5 GB qwen3 pull is
+        # a cache hit after the first gated run, so the leg stays fast.
+        # The models dir on macOS is ~/.ollama/models (same layout the
+        # ubuntu test leg caches).
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen3-embedding-4b-${{ runner.os }}
 
       - name: Install Ollama (macOS)
         # Path-gated (embedding-surface changes only). Skipped steps mean
@@ -979,6 +1079,13 @@ jobs:
 
       - name: Pull embedding model
         # Path-gated (embedding-surface changes only).
+        # Assertion (zero-drift F3): this pull must name the model the
+        # shipped config actually requests — embedding.model =
+        # qwen3-embedding:4b (config.yaml), whose 2560-dim output
+        # matches the shipped halfvec(2560) column. nomic-embed-text
+        # (the old value) cannot insert into that column at all
+        # (docs/ADMIN.md), so gate-on cross-OS runs used to embed
+        # nothing but zero vectors while staying green.
         # continue-on-error: true because ollama may not be installed
         # (Windows install may have failed). Tests use zero-vector
         # fallback when the model is unavailable.
@@ -1095,18 +1202,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
+
+      - name: Install uv
+        # Locked installs (zero-drift F4, owner ruling 2026-11-13): the
+        # same pattern as the ubuntu test leg.
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install system dependencies (Ubuntu)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential
 
-      - name: Install dependencies (pinned extras set for the measurement)
+      - name: Install the locked environment (pinned extras set)
+        # dev+duckdb+inductive is the pinned measurement population for
+        # the warning ceiling (scripts/warning_ratchet.py docstring).
+        # uv sync --locked pins that population to the lock, so the
+        # measured environment is reproducible instead of floating.
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,duckdb,inductive]"
+          uv sync --locked --extra dev --extra duckdb --extra inductive
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.venv/Scripts" >> "$GITHUB_PATH"
 
       - name: Warm the DuckDB extension cache (fts, vss, postgres)
         # The gateway loads DuckDB extensions with autoinstall off, so the

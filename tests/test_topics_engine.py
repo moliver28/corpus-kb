@@ -131,6 +131,37 @@ class _FakeUmapModule:
     UMAP = _FakeUMAP
 
 
+class _CompatLayoutUMAP:
+    """umap-0.6-shaped UMAP: the constructor declares the layout kwarg."""
+
+    last_kwargs: ClassVar[dict[str, Any]] = {}
+
+    def __init__(
+        self,
+        *,
+        random_state: int = 42,
+        n_components: int = 5,
+        min_dist: float = 0.0,
+        metric: str = "cosine",
+        n_neighbors: int = 15,
+        n_jobs: int = 1,
+        compatibility_layout: bool = False,
+    ) -> None:
+        type(self).last_kwargs = {
+            "random_state": random_state,
+            "n_components": n_components,
+            "min_dist": min_dist,
+            "metric": metric,
+            "n_neighbors": n_neighbors,
+            "n_jobs": n_jobs,
+            "compatibility_layout": compatibility_layout,
+        }
+
+
+class _CompatUmapModule:
+    UMAP = _CompatLayoutUMAP
+
+
 @pytest.fixture
 def fake_bertopic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(engine, "load_bertopic", lambda: _FakeBertopicModule())
@@ -186,6 +217,31 @@ def test_umap_gets_the_pinned_random_state(fake_bertopic: None) -> None:
     engine.build_topics(_chunks(), TopicsSettings(enabled=True))
     assert _FakeUMAP.last_kwargs["random_state"] == 42
     assert _FakeUMAP.last_kwargs["metric"] == "cosine"
+
+
+def test_make_umap_06_shape_passes_the_layout_kwarg() -> None:
+    """umap 0.6 keeps the 0.5.x pipeline on the topics fit and on inspect.
+
+    The locked env pins umap 0.5.12, so the 0.6 branches never run
+    live; this fake drives them (run 43535441474: diff-cover red on
+    the uncovered guard branches).
+    """
+    umap_module = _CompatUmapModule()
+    engine._make_umap(umap_module)
+    assert _CompatLayoutUMAP.last_kwargs["compatibility_layout"] is True
+    # 15 is the fake's declared default: the engine passed no override.
+    assert _CompatLayoutUMAP.last_kwargs["n_neighbors"] == 15
+    engine._make_umap(umap_module, n_neighbors=7)
+    assert _CompatLayoutUMAP.last_kwargs["compatibility_layout"] is True
+    assert _CompatLayoutUMAP.last_kwargs["n_neighbors"] == 7
+
+
+def test_make_umap_05_shape_omits_the_layout_kwarg() -> None:
+    """umap 0.5.12 (the lock's pin) must never see the kwarg (a TypeError)."""
+    engine._make_umap(_FakeUmapModule())
+    assert "compatibility_layout" not in _FakeUMAP.last_kwargs
+    engine._make_umap(_FakeUmapModule(), n_neighbors=7)
+    assert "compatibility_layout" not in _FakeUMAP.last_kwargs
 
 
 def test_min_topic_size_auto_resolves_and_reports(fake_bertopic: None) -> None:
