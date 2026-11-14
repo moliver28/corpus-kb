@@ -43,7 +43,7 @@ class _NoopClient:
         return None
 
     async def query(self, prompt: str) -> None:
-        self._pending = prompt
+        return None  # a rung with no subprocess stores nothing
 
     def receive_response(self) -> AsyncIterator[object]:
         return _empty_stream()
@@ -56,8 +56,7 @@ class _NoopClient:
 
 
 async def _empty_stream() -> AsyncIterator[object]:
-    return
-    yield None  # pragma: no cover — marks the function a generator
+    yield None  # pragma: no cover — the bare yield marks the generator
 
 
 def build_session(

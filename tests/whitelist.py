@@ -606,3 +606,9 @@ multi_label
 # only DEMO_KEYS needs the bare reference. Vulture scans src only and
 # sees the tests' use as outside its reach.
 DEMO_KEYS
+
+# Response-contract fields on the pydantic window models (Wave 5/6):
+# constructed by the query handlers and consumed by model_dump -> JSON ->
+# the SPA shapes; vulture sees the attribute as never read in Python.
+chunk_type
+source_name

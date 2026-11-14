@@ -1,4 +1,4 @@
-# corpus-rag
+# Corpus-rag
 
 The Corpus-KB plugin for Claude Code and ZCode. It connects your agent to a
 local Corpus-KB engine: one database and one server per study. The plugin

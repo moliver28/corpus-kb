@@ -156,10 +156,6 @@ class ChatManager:
             return None
         return session
 
-    def live_ids(self) -> list[str]:
-        """The ids of the sessions that are open right now."""
-        return [sid for sid, s in self._sessions.items() if not s.expired()]
-
     async def close(self, session_id: str) -> bool:
         """Close one session by id; True when it existed."""
         session = self._sessions.pop(session_id, None)

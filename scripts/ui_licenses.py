@@ -50,6 +50,13 @@ ALLOWED_EXACT = frozenset({"MIT", "Apache-2.0", "ISC", "0BSD", "CC0-1.0", "MIT-0
 # the Wave-7 step-6 build), so the entries gate a tree-only risk.
 ALLOWED_TREE_ONLY = frozenset({"MPL-2.0", "Unlicense"})
 ALLOWED_EXACT |= ALLOWED_TREE_ONLY
+# pnpm reports "Unknown" when a package's only license evidence is a
+# lowercase `license` file (case-sensitive runners miss the name) and
+# its package.json carries no `license` field. Each override names the
+# verified license and where it was read.
+LICENSE_OVERRIDES = {
+    "khroma": "MIT",  # khroma@2.1.0 `license` file, read 2026-11-14
+}
 _ALLOWED_PREFIXES = ("BSD",)
 _BRANCH_RX = re.compile(r"\s+(?:OR|AND)\s+")
 
@@ -87,6 +94,9 @@ def _pnpm_licenses(project_root: Path, prod_only: bool) -> dict[str, str]:
         for package in packages:
             name = str(package.get("name", ""))
             flat[name] = str(package.get("license", license_name))
+    for name, license_name in LICENSE_OVERRIDES.items():
+        if flat.get(name) == "Unknown":
+            flat[name] = license_name
     return dict(sorted(flat.items()))
 
 

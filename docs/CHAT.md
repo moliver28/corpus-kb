@@ -95,7 +95,7 @@ policy page that can move. Each release:
 
 1. Re-check
    `https://code.claude.com/docs/en/legal-and-compliance` and note the
-   page's lastModified.
+   page's `lastModified`.
 2. If the end-user carve-out moved, flip the default guidance to the
    api-key or ollama rung and record the change here.
 3. Re-verify the authentication precedence list
@@ -105,5 +105,5 @@ policy page that can move. Each release:
    subscription login.
 
 Live check on 2026-11-13: the carve-out held. Conditions: an unmodified
-binary, no auth-method removal, no login intermediation, per-user
+binary, no auth-method removal, no login changes, per-user
 credentials.
