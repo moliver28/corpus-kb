@@ -1,9 +1,10 @@
 """Docker-stack and model setup steps (zero-drift split of _setup/install.py).
 
 Compose-stack start, Postgres image signature verification, the bounded
-subprocess runner, extension verification, and the required-model pulls.
-``install.py`` re-exports these so its orchestrators (and the
-``install_module.*`` test patches) keep working.
+subprocess runner, and extension verification. The model pulls moved to
+``setup_pulls.py`` (the concurrent pull pair). ``install.py`` re-exports
+these so its orchestrators (and the ``install_module.*`` test patches)
+keep working.
 
 Patch seam: the tests patch ``corpus_kb._setup.install.confirm`` /
 ``install.check_extensions`` and then call some of these functions
@@ -21,7 +22,6 @@ from pathlib import Path
 from corpus_kb._setup.setup_steps import (
     EXTENSION_REMEDIATION,
     EXTENSIONS,
-    SETUP_REQUIRED_MODELS,
     ExtensionMap,
 )
 
@@ -173,20 +173,6 @@ async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
         else:
             print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
     return 0
-
-
-def setup_pull_models(apply: bool) -> int:
-    """Pull the models required by the default configuration."""
-    exit_code = 0
-    for model in SETUP_REQUIRED_MODELS:
-        if not apply:
-            print(f"  (dry run) ollama pull {model}")
-            continue
-        if not _confirm_fn()(f"Pull Ollama model '{model}'."):
-            print(f"  Skipped {model}.")
-            continue
-        exit_code |= _run_cmd(["ollama", "pull", model], timeout=600)
-    return exit_code
 
 
 def setup_pull_weights(apply: bool) -> int:
