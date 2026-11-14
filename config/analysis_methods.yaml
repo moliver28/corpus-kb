@@ -6,9 +6,11 @@
 # corpus_kb.analysis.method_register_routing. Progression axes
 # (novice-UX program, wave 1) - difficulty, concepts, prerequisites,
 # and next - validate against the vocabularies in
-# corpus_kb.analysis.method_register_progression. This file and
+# corpus_kb.analysis.method_register_progression. Table contracts
+# (novice-UX program, wave 2) validate against the schema in
+# corpus_kb.analysis.method_register_tables. This file and
 # src/corpus_kb/config/analysis_methods.yaml must stay byte-identical.
-register_version: "3.1.0"
+register_version: "3.2.0"
 source_document:
   title: "I want to understand the NLP Analysis landscape so that I can ensure a team of non-NLP researchers are selected methods appropriately when using an NLP harness around a claude code like tool"
   path_note: "Owner research document with 30 methods and four linked tables that share ids 01-30. Per-method sources are the document footnotes."
@@ -259,6 +261,20 @@ methods:
     concepts: ["term_weighting"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "The candidate word sequence, lowercased as the vectorizer emits it."
+        - name: "score"
+          type: "number"
+          description: "TF-IDF weight; the maximum across the selected chunks."
+          unit: "tfidf"
+      order_by: ["-score", "phrase"]
+      ties: "Equal scores order by phrase ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "06"
     name: "Embedding-based keyphrase extraction (KeyBERT)"
     summary: "Rank candidate phrases by embedding similarity to the document. Seed terms can steer the ranking."
@@ -307,6 +323,21 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "The candidate phrase; candidates come from the shared TF-IDF pass."
+        - name: "score"
+          type: "number"
+          description: "Cosine similarity from the phrase vector to the selected corpus centroid."
+          unit: "cosine"
+      order_by: ["-score", "phrase"]
+      ties: "Equal scores order by phrase ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Stored chunk vectors and the live embedder can give slightly different scores."
   - id: "07"
     name: "Statistical keyphrase extraction (YAKE)"
     summary: "Extract phrases from text features alone. No fitted model or embedding step is needed."
@@ -355,6 +386,20 @@ methods:
     concepts: ["term_weighting"]
     prerequisites: []
     next: ["06"]
+    output_table:
+      columns:
+        - name: "phrase"
+          type: "text"
+          description: "One keyphrase picked by the model reply."
+        - name: "score"
+          type: "number"
+          description: "Placeholder; the model gives the order, never scores."
+      order_by: ["model_rank"]
+      ties: "Model ranks are total; one row holds one position."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Rows carry 0.0; the model reply order is the rank."
   - id: "08"
     name: "Classical topic modeling (NMF or LDA)"
     summary: "Factor the document-term matrix or model documents as topic mixtures for exploratory navigation."
@@ -596,6 +641,22 @@ methods:
     concepts: ["clustering", "vector_similarity"]
     prerequisites: []
     next: ["04"]
+    output_table:
+      columns:
+        - name: "cluster_id"
+          type: "integer"
+          description: "The cluster label from the fit. Noise never becomes a row."
+        - name: "size"
+          type: "integer"
+          description: "The member count of the cluster."
+        - name: "exemplar_chunk_ids"
+          type: "id_list"
+          description: "Up to 3 member chunk ids nearest the centroid, distance then id order."
+      order_by: ["-size", "cluster_id"]
+      ties: "Equal sizes order by cluster id ascending."
+      denominators: ["screened_count"]
+      caveats:
+        - "Structure (sizes, noise, exemplars) is deterministic on one machine; coordinates are never claimed."
   - id: "13"
     name: "Embedding-centroid classification"
     summary: "Represent each category by the mean embedding of its examples, then assign records by similarity."
@@ -644,6 +705,26 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: ["04"]
     next: ["14"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The scored chunk."
+        - name: "label"
+          type: "text"
+          description: "The nearest centroid label. A suggestion when abstained is true."
+        - name: "abstained"
+          type: "boolean"
+          description: "True when the best-vs-second margin sits below abstain_margin."
+        - name: "margin"
+          type: "number"
+          description: "Gap between the best and second-best centroid similarities."
+          unit: "cosine gap"
+      order_by: ["chunk_id"]
+      ties: "Label ties at the top go to the alphabetically first label."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "14"
     name: "Nearest-neighbor classification"
     summary: "Predict a category from the labels of nearby examples. The individual examples are kept."
@@ -692,6 +773,24 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: ["04"]
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The predicted chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning vote label. Vote ties pick the alphabetically first label."
+        - name: "votes"
+          type: "object_list"
+          description: "Label and vote rows, count descending then label ascending."
+        - name: "neighbor_ids"
+          type: "id_list"
+          description: "The k winning neighbors, similarity descending then chunk id ascending."
+      order_by: ["chunk_id"]
+      ties: "Predictions order by chunk id ascending."
+      denominators: ["screened_count"]
+      caveats: []
   - id: "15"
     name: "TF-IDF with logistic regression or linear SVM"
     summary: "Train a logistic or linear SVM classifier on word or character features for narrow categories."
@@ -740,6 +839,23 @@ methods:
     concepts: ["classification", "term_weighting"]
     prerequisites: ["04"]
     next: ["16", "17"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The scored chunk."
+        - name: "label"
+          type: "text"
+          description: "The argmax class. Ties pick the first class in sorted order."
+        - name: "probability"
+          type: "number"
+          description: "The winning class probability from the logistic head."
+          unit: "probability"
+      order_by: ["chunk_id"]
+      ties: "Rows order by chunk id ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "16"
     name: "Frozen embeddings with a linear classifier"
     summary: "Keep the embedding model fixed and fit a small classifier on its outputs."
@@ -884,6 +1000,27 @@ methods:
     concepts: ["classification"]
     prerequisites: []
     next: ["04"]
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The judged chunk."
+        - name: "label"
+          type: "text"
+          description: "The best hypothesis label. Score ties pick the alphabetically first label."
+        - name: "entailment_score"
+          type: "number"
+          description: "The winning verdict score: contradict 0, neutral 1, entailment 2."
+          unit: "verdict score"
+        - name: "scores"
+          type: "object_list"
+          description: "Every label with its score, score descending then label ascending."
+      order_by: ["chunk_id"]
+      ties: "Score ties pick the alphabetically first label."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "The score is a three-way verdict map, not a calibrated probability."
   - id: "19"
     name: "Programmatic weak supervision (Snorkel)"
     summary: "Combine imperfect labeling functions into training labels, then optionally train a classifier on them."
@@ -980,6 +1117,33 @@ methods:
     concepts: ["active_learning", "classification"]
     prerequisites: ["16"]
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The chunk to label next."
+        - name: "set_id"
+          type: "id"
+          description: "The prediction set the row came from."
+        - name: "label"
+          type: "text"
+          description: "The stored winning label."
+        - name: "probability"
+          type: "number"
+          description: "The stored winning probability."
+          unit: "probability"
+        - name: "review"
+          type: "boolean"
+          description: "The stored review flag."
+        - name: "score"
+          type: "number"
+          description: "The strategy score: margin is 1 - p; entropy is the binary entropy."
+          unit: "strategy score"
+      order_by: ["-score", "chunk_id"]
+      ties: "Equal scores order by chunk id ascending."
+      precision: 6
+      caveats:
+        - "The margin score is a proxy: the store keeps the winning probability only."
   - id: "21"
     name: "Human-in-the-loop computational grounded theory"
     summary: "Combine computational pattern detection with human interpretation and further testing of explanations."
@@ -1269,6 +1433,27 @@ methods:
     concepts: ["sentiment_analysis", "keyword_rules"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The screened chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning lexicon vote: positive or negative."
+        - name: "probability"
+          type: "number"
+          description: "The winning class vote share from the vote aggregation."
+          unit: "vote share"
+        - name: "review"
+          type: "boolean"
+          description: "True when the two lexicons tied and the row routed to review."
+      order_by: ["chunk_id"]
+      ties: "Tied votes route to review instead of picking a winner."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Preset lexicon vote, not a trained model. The evidence note rides every success."
   - id: "27"
     name: "Aspect-based sentiment analysis"
     summary: "Identify the target or aspect of an opinion and its sentiment, then report both together."
@@ -1317,6 +1502,27 @@ methods:
     concepts: ["sentiment_analysis", "classification"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The screened chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning lexicon vote: positive or negative."
+        - name: "probability"
+          type: "number"
+          description: "The winning class vote share from the vote aggregation."
+          unit: "vote share"
+        - name: "review"
+          type: "boolean"
+          description: "True when the two lexicons tied and the row routed to review."
+      order_by: ["chunk_id"]
+      ties: "Tied votes route to review instead of picking a winner."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "The current screen has no aspect columns; rows are document-level votes."
   - id: "28"
     name: "NLI-based contradiction screening"
     summary: "Compare statement pairs with a three-way NLI model and flag possible contradictions for review."
@@ -1365,6 +1571,21 @@ methods:
     concepts: ["contradiction_detection", "vector_similarity"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id_i"
+          type: "id"
+          description: "The lower chunk id of the pair."
+        - name: "chunk_id_j"
+          type: "id"
+          description: "The higher chunk id of the pair."
+        - name: "verdict"
+          type: "text"
+          description: "The model verdict. Only CONTRADICT rows return."
+      order_by: ["chunk_id_i", "chunk_id_j"]
+      ties: "Candidates dedupe; pairs order by the lower then the higher chunk id."
+      denominators: ["screened_count"]
+      caveats: []
   - id: "29"
     name: "Near-duplicate and paraphrase detection"
     summary: "Find records with the same or similar wording. Use exact matching and semantic comparison together."
@@ -1413,6 +1634,23 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "similarity"
+          type: "number"
+          description: "Cosine similarity of the pair at or above the threshold."
+          unit: "cosine"
+        - name: "chunk_id_i"
+          type: "id"
+          description: "The lower chunk id of the pair."
+        - name: "chunk_id_j"
+          type: "id"
+          description: "The higher chunk id of the pair."
+      order_by: ["-similarity", "chunk_id_i", "chunk_id_j"]
+      ties: "Equal similarities order by the lower id, then the higher id."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []
   - id: "30"
     name: "Outlier or novelty detection"
     summary: "Rank records that differ from a reference distribution or from their neighbors."
@@ -1461,3 +1699,17 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The ranked chunk."
+        - name: "knn_distance"
+          type: "number"
+          description: "Distance to the k-th nearest other chunk (1 - cosine similarity)."
+          unit: "cosine distance"
+      order_by: ["-knn_distance", "chunk_id"]
+      ties: "Equal distances order by chunk id ascending."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats: []

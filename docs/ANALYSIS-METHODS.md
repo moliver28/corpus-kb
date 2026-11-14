@@ -57,7 +57,7 @@ footnotes. They have no register rows and no ops.
 4. Run `poe gen` again; this page's table updates from the YAML.
 
 <!-- amr-register:generated:start -->
-Register version: 3.1.0. Source: the research document named in `config/analysis_methods.yaml`.
+Register version: 3.2.0. Source: the research document named in `config/analysis_methods.yaml`.
 
 | Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Difficulty | Status | Op |
 |----|--------|---------------|--------|-------------|----------|------------|------------|--------|----|
