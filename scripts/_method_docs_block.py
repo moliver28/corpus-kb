@@ -67,10 +67,10 @@ _BACKEND_PROOF = [
     "",
     "The analysis ops behind these methods run on Postgres and on DuckDB. "
     "The parity gate proves it on a migrated DuckDB file "
-    "(`tests/test_backend_operation_parity.py`). The screens, the "
-    "classifiers, the cluster report, the keyphrase ranks, the sentiment "
-    "screen, the active-learning rank, and the NLI pair all run on both "
-    "engines. The deep surface gate pins the same envelope keys on every "
+    "(`tests/test_backend_operation_parity.py`). The screens, classifiers, "
+    "cluster report, keyphrase ranks, sentiment screen, active-learning "
+    "rank, and NLI pair run on both engines. "
+    "The deep surface gate pins the same envelope keys on every "
     "surface. The six graph reads run on Postgres (the AGE or PG store) "
     "and on DuckDB (the graph store).",
     "",

@@ -550,7 +550,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
 
 ## Backend proof
 
-The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). The screens, the classifiers, the cluster report, the keyphrase ranks, the sentiment screen, the active-learning rank, and the NLI pair all run on both engines. The deep surface gate pins the same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG store) and on DuckDB (the graph store).
+The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). The screens, classifiers, cluster report, keyphrase ranks, sentiment screen, active-learning rank, and NLI pair run on both engines. The deep surface gate pins the same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG store) and on DuckDB (the graph store).
 
 One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored value can differ from Postgres in far decimals.
 <!-- amr-register:generated:end -->
