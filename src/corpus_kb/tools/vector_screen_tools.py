@@ -29,7 +29,7 @@ __all__ = ["duplicates_screen", "outliers_rank"]
 _BLOCK = 1024
 
 _EMPTY_REASON = "the tenant has no embedded chunks to screen."
-_EMPTY_REMEDY = "Ingest documents with embeddings first, then retry."
+_EMPTY_REMEDY = "Ingest documents with embeddings first (corpus-kb research ingest), then retry."
 _SINGLE_CHUNK_REASON = "the tenant has only one embedded chunk; no neighbors exist."
 _SINGLE_CHUNK_REMEDY = "Ingest more documents, then retry."
 

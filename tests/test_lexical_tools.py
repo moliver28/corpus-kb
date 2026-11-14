@@ -91,6 +91,7 @@ async def test_no_stored_labels_answer_empty(monkeypatch: pytest.MonkeyPatch) ->
     assert result["status"] == "empty"
     assert "label" in str(result["reason"]).lower()
     assert "labeling-build" in str(result["remedy"])
+    assert "method 04" in str(result["remedy"])
 
 
 async def test_single_class_answers_empty(monkeypatch: pytest.MonkeyPatch) -> None:

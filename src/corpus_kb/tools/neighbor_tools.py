@@ -32,11 +32,13 @@ __all__ = ["neighbors_classify"]
 LABEL_READ_LIMIT = 200_000
 
 _NO_LABELS_REASON = "no labeled chunks with stored vectors for this tenant."
-_NO_LABELS_REMEDY = "Run labeling-build to label chunks, then retry."
+_NO_LABELS_REMEDY = "Build labels first: run method 04 (labeling-build), then retry."
 _NO_TARGETS_REASON = "none of the requested chunk ids have stored vectors."
 _NO_TARGETS_REMEDY = "List chunk ids that exist in this tenant, then retry."
 _EMPTY_CORPUS_REASON = "the tenant has no embedded chunks to classify."
-_EMPTY_CORPUS_REMEDY = "Ingest documents with embeddings first, then retry."
+_EMPTY_CORPUS_REMEDY = (
+    "Ingest documents with embeddings first (corpus-kb research ingest), then retry."
+)
 
 
 async def _load_vectors(

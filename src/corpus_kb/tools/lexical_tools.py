@@ -84,7 +84,7 @@ async def lexical_classify(
     if not label_rows:
         return _empty(
             "the tenant holds no built chunk labels.",
-            "Run labeling-build with an LF file first, then retry.",
+            "Build labels first: run method 04 (labeling-build) with an LF file, then retry.",
         )
     chunks = await engine.read_chunks(pg_pool, tenant_id, MAX_SCREEN_WINDOW)
     texts = {
@@ -100,7 +100,7 @@ async def lexical_classify(
     if not labeled:
         return _empty(
             "no stored label resolves to a stored chunk in this corpus window.",
-            "Rebuild labels over the ingested corpus (labeling-build), then retry.",
+            "Rebuild labels with method 04 (labeling-build) over this corpus, then retry.",
         )
     classes = sorted({label for _cid, label, _text in labeled})
     if len(classes) < 2:

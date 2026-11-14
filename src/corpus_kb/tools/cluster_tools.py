@@ -39,7 +39,7 @@ EXEMPLAR_COUNT = 3
 RANDOM_STATE = 42
 
 _EMPTY_REASON = "the tenant has no embedded chunks to cluster."
-_EMPTY_REMEDY = "Ingest documents with embeddings first, then retry."
+_EMPTY_REMEDY = "Ingest documents with embeddings first (corpus-kb research ingest), then retry."
 _SINGLE_REASON = "the tenant has fewer than two embedded chunks; no cluster structure exists."
 _SINGLE_REMEDY = "Ingest more documents, then retry."
 
