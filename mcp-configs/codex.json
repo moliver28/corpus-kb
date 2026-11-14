@@ -18,6 +18,7 @@
         "beliefs_predict",
         "beliefs_timeline",
         "centroids_classify",
+        "chunks_list",
         "classification_list",
         "clusters_inspect",
         "codebook_proposals",
@@ -31,6 +32,7 @@
         "conflicts_list",
         "contradictions_screen",
         "doctor",
+        "document_stats",
         "duplicates_screen",
         "events_summary",
         "get_document_tags",
@@ -46,6 +48,8 @@
         "labeling_triage",
         "lexical_classify",
         "list_documents",
+        "list_entities",
+        "list_relations",
         "neighbors_classify",
         "nli_classify",
         "notebook_ask",
@@ -68,6 +72,7 @@
         "sentiment_screen",
         "statements_list",
         "statements_timeline",
+        "stats",
         "topics_list",
         "verify_answer"
       ]
