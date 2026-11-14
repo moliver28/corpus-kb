@@ -136,6 +136,7 @@ PROJECT_ID = "44444444-4444-4444-4444-444444444444"
 ASSIGNMENT_ID = "77777777-7777-7777-7777-777777777777"
 ENTITY_A = "55555555-5555-5555-5555-555555555555"
 ENTITY_B = "66666666-6666-6666-6666-666666666666"
+RELATION_ID = "88888888-8888-8888-8888-888888888888"
 
 TEXT_BODY = "Corpus parity seed document. " * 4
 _URL_HTML = "<html><body><p>parity page body</p></body></html>"
@@ -937,6 +938,40 @@ async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+async def _shared_update_entity(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_update_entity(
+        UUID(TENANT),
+        UUID(ENTITY_A),
+        name="parity-renamed",
+        entity_type="concept",
+    )
+
+
+async def _shared_delete_entity(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_delete_entity(UUID(TENANT), UUID(ENTITY_B))
+
+
+async def _shared_update_relation(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_update_relation(
+        UUID(TENANT),
+        UUID(RELATION_ID),
+        relation_type="parity-updated",
+        weight=2.0,
+    )
+
+
+async def _shared_delete_relation(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_delete_relation(UUID(TENANT), UUID(RELATION_ID))
+
+
 async def _shared_search_graph(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.graph_read_tools import search_graph
 
@@ -1699,6 +1734,43 @@ LEGS: dict[str, _Leg] = {
             }
         ),
     ),
+    # -- Phase-2 Wave 8: graph U/D legs. POST path-slot routes (the
+    #    Wave-2 untag precedent); deletes answer the idempotent envelope. --
+    "update_entity": _Leg(
+        _shared_update_entity,
+        _post(
+            f"/api/entities/{ENTITY_A}/update", {"name": "parity-renamed", "entity_type": "concept"}
+        ),
+        _sock(
+            "update_entity",
+            {"entity_id": ENTITY_A, "name": "parity-renamed", "entity_type": "concept"},
+        ),
+        mcp=_mcp({"entity_id": ENTITY_A, "name": "parity-renamed", "entity_type": "concept"}),
+    ),
+    "delete_entity": _Leg(
+        _shared_delete_entity,
+        _post(f"/api/entities/{ENTITY_B}/delete", {}),
+        _sock("delete_entity", {"entity_id": ENTITY_B}),
+        mcp=_mcp({"entity_id": ENTITY_B}),
+    ),
+    "update_relation": _Leg(
+        _shared_update_relation,
+        _post(
+            f"/api/relations/{RELATION_ID}/update",
+            {"relation_type": "parity-updated", "weight": 2.0},
+        ),
+        _sock(
+            "update_relation",
+            {"relation_id": RELATION_ID, "relation_type": "parity-updated", "weight": 2.0},
+        ),
+        mcp=_mcp({"relation_id": RELATION_ID, "relation_type": "parity-updated", "weight": 2.0}),
+    ),
+    "delete_relation": _Leg(
+        _shared_delete_relation,
+        _post(f"/api/relations/{RELATION_ID}/delete", {}),
+        _sock("delete_relation", {"relation_id": RELATION_ID}),
+        mcp=_mcp({"relation_id": RELATION_ID}),
+    ),
     "search_graph": _Leg(
         _shared_search_graph,
         _post("/api/graph/search", {"query": "parity"}),
@@ -2202,9 +2274,6 @@ class _ParityGraphStore:
             )
         ]
 
-    async def get_entity(self, entity_id: str) -> Entity | None:
-        return None
-
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
         return [
             Relation(
@@ -2253,6 +2322,45 @@ class _ParityGraphStore:
                 "depth": 1,
             }
         ]
+
+    # -- Phase-2 Wave 8: the U/D canned answers. get_entity answers for
+    #    ENTITY_A so the update flow can read-merge-save; the relation
+    #    read/write pair answers for RELATION_ID so the endpoints-immutable
+    #    check sees the stored pair. ------------------------------------
+    async def get_entity(self, entity_id: str) -> Entity | None:
+        if entity_id != ENTITY_A:
+            return None
+        return Entity(
+            entity_id=ENTITY_A,
+            name="parity-entity",
+            entity_type="concept",
+            source_type="code",
+            metadata={},
+        )
+
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        return entity
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        return 0
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        if relation_id != RELATION_ID:
+            return None
+        return Relation(
+            relation_id=RELATION_ID,
+            source_entity_id=ENTITY_A,
+            target_entity_id=ENTITY_B,
+            relation_type="related_to",
+            weight=1.0,
+            metadata={},
+        )
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        return relation
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        return True
 
 
 class _ReleaseResult:
@@ -2911,6 +3019,10 @@ def test_catalogue_matches_surface_registry() -> None:
         # registry rows (list_entities was handler-only before Wave 4).
         "add_entity",
         "add_relation",
+        "update_entity",
+        "delete_entity",
+        "update_relation",
+        "delete_relation",
         "search_graph",
         "get_entity_relations",
         "graph_neighbors",

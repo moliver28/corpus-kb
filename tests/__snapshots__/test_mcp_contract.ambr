@@ -325,6 +325,36 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'weight': 'POSITIONAL_OR_KEYWORD',
       }),
+      'delete_entity': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'delete_relation': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'update_entity': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_id': 'POSITIONAL_OR_KEYWORD',
+        'entity_type': 'POSITIONAL_OR_KEYWORD',
+        'metadata': 'POSITIONAL_OR_KEYWORD',
+        'name': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'update_relation': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'metadata': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation_id': 'POSITIONAL_OR_KEYWORD',
+        'relation_type': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'weight': 'POSITIONAL_OR_KEYWORD',
+      }),
     }),
     'corpus_kb.tools.ingest_surface_tools': dict({
       'ingest_reembed': dict({
