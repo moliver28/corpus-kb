@@ -68,7 +68,11 @@ def _dispatch(op_name: str, kwargs: dict[str, object], json_output: bool) -> int
 
 def project_provision(
     slug: str = typer.Argument(..., help="The project slug, like meeting-notes"),
-    project_id: str = typer.Option(None, "--project-id", help="Research project id"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project id. corpus-kb research projects prints the list.",
+    ),
     tenant_id: str = _TENANT_OPT,
     json_output: bool = _JSON_OPT,
 ) -> int:

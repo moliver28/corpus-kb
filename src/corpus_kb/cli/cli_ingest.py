@@ -447,7 +447,10 @@ def ingest(
 def ingest_status(
     limit: int = typer.Option(20, "--limit", min=1, help="How many recent runs to show (max 200)"),
     project_id: str | None = typer.Option(
-        None, "--project-id", help="Show only the runs of this project UUID"
+        None,
+        "--project-id",
+        help="Show only the runs of this project UUID."
+        " corpus-kb research projects prints the list.",
     ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
 ) -> int:
@@ -474,7 +477,10 @@ def ingest_reembed(
 
 def ingest_reingest(
     project_id: str | None = typer.Option(
-        None, "--project-id", help="Limit to one project's documents (UUID)"
+        None,
+        "--project-id",
+        help="Limit to one project's documents (UUID)."
+        " corpus-kb research projects prints the list.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Count only: documents, chunks, estimated tokens"

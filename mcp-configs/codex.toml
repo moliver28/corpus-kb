@@ -1,0 +1,5 @@
+# Codex CLI reads MCP servers from ~/.codex/config.toml only.
+# Copy this table into that file, then restart Codex.
+[mcp_servers.corpus-kb]
+command = "corpus-kb"
+args = ["--transport", "stdio"]

@@ -14,7 +14,7 @@ One tag, `corpus-rag-v<version>`, marks the engine commit for each release.
 
 - Claude Code or ZCode.
 - A Corpus-KB engine install. See [INSTALL.md](INSTALL.md). You need Python
-  3.11 or newer, and Ollama with the `nomic-embed-text` model.
+  3.11 or newer, and Ollama with the `qwen3-embedding:4b` model.
 
 ## Step 1: Add the marketplace
 

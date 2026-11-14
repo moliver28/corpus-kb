@@ -64,6 +64,7 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
         print(f"{row.get('text', '')} [{cites}]")
     if not rows:
         print("no citable answer")
+        print("Next step: ingest more documents, or run corpus-kb search with broader words.")
     raw_sources = body.get("sources")
     sources = (
         [src for src in raw_sources if isinstance(src, dict)]
