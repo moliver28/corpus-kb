@@ -61,7 +61,7 @@ async def create_session(
             "Use claude-agent-sdk, anthropic-api, or ollama.",
             remediation="Set chat.backend to a wired rung. Then restart the server.",
         )
-    return _manager(settings).create(session)
+    return await _manager(settings).create(session)
 
 
 def _manager(settings: ChatSettings) -> ChatManager:

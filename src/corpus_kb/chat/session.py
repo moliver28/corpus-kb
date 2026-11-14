@@ -94,7 +94,13 @@ class ChatSession:
         await self._client.interrupt()
 
     async def aclose(self) -> None:
-        """Close the session for good; the rung client disconnects."""
+        """Close the session for good; the rung client disconnects.
+
+        Idempotent: the SSE pump and the disconnect handler can both
+        close in the same race; the second call is a no-op.
+        """
+        if self._closed:
+            return
         self._closed = True
         await self._client.disconnect()
 
@@ -118,8 +124,20 @@ class ChatManager:
         self._ttl_s = ttl_s
         self._sessions: dict[str, ChatSession] = {}
 
-    def create(self, session: ChatSession) -> ChatSession:
-        """Register one session; over the cap is a typed conflict."""
+    async def create(self, session: ChatSession) -> ChatSession:
+        """Register one session; over the cap is a typed conflict.
+
+        Creating with the id of a session that is still live answers the
+        live one and disconnects the duplicate spawn: one owner resuming
+        their own session never fights the cap (the page reload). A
+        closed leftover under the same id is popped first.
+        """
+        existing = self._sessions.get(session.session_id)
+        if existing is not None:
+            if not existing._closed:
+                await session.aclose()
+                return existing
+            await self.close(existing.session_id)
         if len(self._sessions) >= self._max_sessions:
             raise ConflictError("A chat session is already active. Stop it first.")
         self._sessions[session.session_id] = session

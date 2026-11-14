@@ -6,15 +6,15 @@ catalogue, never an op envelope. Every route no-ops with a typed error
 while chat is disabled — never a 404 drift. ``SERVER_AUTO_APPROVE`` is
 untouched ([D13]): chat is not an MCP op.
 
-SSE frames come from ``api/_chat_wire.ChatFramer``; disconnect closes
-the rung client ([D7]): interrupt, drain the pending receipt, aclose.
+The route layer awaits the manager's sweep before each create and get,
+so an idle past-TTL session frees the cap honestly (the ``ChatManager.get``
+contract). The SSE body lives in ``api/_chat_sse``; its disconnect close
+rides the manager so a closed session deregisters.
 """
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import suppress
+from collections.abc import AsyncGenerator
 from dataclasses import asdict
 from typing import cast
 
@@ -23,8 +23,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from corpus_kb.api._body import error_response, opt_int, parse_body, route_errors
+from corpus_kb.api._chat_sse import chat_sse
 from corpus_kb.api._chat_wire import SSE_MEDIA_TYPE, ChatFramer
-from corpus_kb.chat.events import ChatActivity, ChatDelta, ChatEnvelope, ChatWarning
+from corpus_kb.chat.events import ChatEnvelope
 from corpus_kb.chat.session import ChatManager, ChatSession
 from corpus_kb.errors import InternalError, NotFoundError
 
@@ -55,8 +56,15 @@ def _manager() -> ChatManager | None:
     return manager if isinstance(manager, ChatManager) else None
 
 
-def _session_or_error(session_id: str) -> ChatSession:
+async def _session_or_error(session_id: str) -> ChatSession:
+    """The live session, after the manager's sweep has run.
+
+    Expired sessions still registered answer None; the sweep has already
+    closed their clients, so the TTL is live and the cap slot is free.
+    """
     manager = _manager()
+    if manager is not None:
+        await manager.sweep()
     session = manager.get(session_id) if manager is not None else None
     if session is None:
         raise NotFoundError(f"No live chat session {session_id}. Open one first.")
@@ -73,6 +81,9 @@ async def create_chat_session(request: Request) -> Response:
     resume = resume_raw.strip() if isinstance(resume_raw, str) else ""
     config = _config()
     chat_core.enabled_rung(config)  # the typed refusals cost no pool work
+    manager = _manager()
+    if manager is not None:
+        await manager.sweep()
     session = await chat_core.create_session(config, await _pool(), resume or None)
     return JSONResponse(
         {
@@ -91,7 +102,8 @@ async def send_chat_message(request: Request) -> Response:
     then exactly one ``chat.envelope``, then ``[DONE]``. ``stream: false``
     returns the same receipt as JSON.
     """
-    session = _session_or_error(request.path_params["sid"])
+    session = await _session_or_error(request.path_params["sid"])
+    manager = _manager()
     body = await parse_body(request)
     text = str(body.get("text", "")).strip()
     if not text:
@@ -100,7 +112,7 @@ async def send_chat_message(request: Request) -> Response:
     events = session.send(text, k)
     if bool(body.get("stream", False)):
         return StreamingResponse(
-            _chat_sse(events, session, ChatFramer("")),
+            chat_sse(events, manager, session, ChatFramer("")),
             media_type=SSE_MEDIA_TYPE,
             headers={"Cache-Control": "no-cache"},
         )
@@ -153,80 +165,3 @@ async def chat_status(request: Request) -> Response:
             },
         }
     )
-
-
-async def _chat_sse(
-    events: AsyncGenerator[object, None], session: ChatSession, framer: ChatFramer
-) -> AsyncIterator[str]:
-    """The SSE body: frames, keep-alives, one receipt, ``[DONE]``.
-
-    A pump task moves turn events onto a queue so the writer can idle in
-    short waits and emit keep-alive comments during long agent turns. On
-    a client disconnect the pump is left running: it drains the pending
-    receipt, then closes the session ([D7]).
-    """
-    queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
-    close_after = False
-
-    async def pump() -> None:
-        try:
-            async for event in events:
-                await queue.put(("event", event))
-            await queue.put(("end", None))
-        except Exception as exc:  # the frame below needs any failure
-            await queue.put(("error", exc))
-        finally:
-            await events.aclose()
-            if close_after:
-                await session.aclose()
-
-    pump_task = asyncio.create_task(pump())
-    try:
-        while True:
-            try:
-                kind, payload = await asyncio.wait_for(queue.get(), timeout=framer.keep_alive_s)
-            except TimeoutError:
-                yield framer.keep_alive()
-                continue
-            if kind == "end":
-                break
-            if kind == "error":
-                raise cast(Exception, payload)
-            yield _frame_for(payload, framer)
-        yield framer.done()
-    except (asyncio.CancelledError, GeneratorExit):
-        # Client disconnect ([D7]): stop the turn, drain, then close. A
-        # pump still running closes the session after its drain; a pump
-        # that already finished leaves the close to this handler.
-        close_after = True
-        with suppress(Exception):
-            await session.interrupt()
-        if pump_task.done():
-            with suppress(Exception):
-                await session.aclose()
-        raise
-    except Exception as exc:
-        # ONE mid-stream error frame, then [DONE] — never a half-open
-        # stream; the taxonomy triple matches errors.ERROR_MAP.
-        status = getattr(exc, "http_status", 500)
-        error_type = getattr(exc, "error_type", "internal_error")
-        yield framer.error(int(status), str(exc), str(error_type))
-        yield framer.done()
-    finally:
-        if not close_after:
-            pump_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await pump_task
-
-
-def _frame_for(event: object, framer: ChatFramer) -> str:
-    """One turn event onto the wire."""
-    if isinstance(event, ChatDelta):
-        return framer.content(event.text)
-    if isinstance(event, ChatActivity):
-        return framer.activity(event.tool, event.summary, event.chunk_count)
-    if isinstance(event, ChatWarning):
-        return framer.warning(event.text)
-    if isinstance(event, ChatEnvelope):
-        return framer.envelope(event.to_payload())
-    return framer.error(500, "The turn produced an unknown event.", "internal_error")

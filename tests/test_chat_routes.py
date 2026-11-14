@@ -19,6 +19,7 @@ from starlette.testclient import TestClient
 
 import corpus_kb.chat as chat_core
 from corpus_kb.api import routes_chat
+from corpus_kb.api._chat_sse import chat_sse
 from corpus_kb.chat.events import ChatActivity, ChatDelta, ChatEnvelope, ChatWarning
 from corpus_kb.chat.session import ChatManager, ChatSession
 from corpus_kb.chat.settings import read_chat_settings
@@ -89,7 +90,11 @@ def _envelope() -> ChatEnvelope:
     )
 
 
-def _session(script: list[object] | None = None, raise_exc: Exception | None = None) -> ChatSession:
+def _session(
+    script: list[object] | None = None,
+    raise_exc: Exception | None = None,
+    ttl_s: int = 1800,
+) -> ChatSession:
     events = script if script is not None else _script()
 
     async def turn(
@@ -100,7 +105,7 @@ def _session(script: list[object] | None = None, raise_exc: Exception | None = N
         if raise_exc is not None:
             raise raise_exc
 
-    return ChatSession("s1", "claude-agent-sdk", FakeClient(), turn, 1800)
+    return ChatSession("s1", "claude-agent-sdk", FakeClient(), turn, ttl_s)
 
 
 def _app() -> Starlette:
@@ -121,7 +126,7 @@ def _app() -> Starlette:
 def _install(monkeypatch: pytest.MonkeyPatch, session: ChatSession | None) -> None:
     manager = ChatManager(max_sessions=4, ttl_s=1800)
     if session is not None:
-        manager.create(session)
+        asyncio.run(manager.create(session))
     monkeypatch.setattr(chat_core, "_MANAGER", manager)
 
 
@@ -259,9 +264,11 @@ class TestDisconnect:
         assert isinstance(client, FakeClient)
         events = session.send("q")
         framer = routes_chat.ChatFramer("")
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        asyncio.run(manager.create(session))
 
         async def scenario() -> None:
-            agen = routes_chat._chat_sse(events, session, framer)
+            agen = chat_sse(events, manager, session, framer)
             first = await agen.__anext__()
             assert "chat.completion.chunk" in first
             await agen.aclose()  # the client hung up mid-turn
@@ -273,6 +280,138 @@ class TestDisconnect:
             assert client.closed is True
 
         asyncio.run(scenario())
+
+
+class TestSessionLifecycle:
+    """The P0 contract: a stop or an idle gap never wedges the session cap.
+
+    The review's 409-forever scenario: the SSE disconnect left a closed,
+    still-registered session; the next create 409'd forever because no
+    route swept and ``aclose`` never deregistered. These pins are the
+    red-then-green record.
+    """
+
+    def test_disconnect_closes_and_deregisters(self) -> None:
+        session = _session()
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        asyncio.run(manager.create(session))
+        client = session._client
+        assert isinstance(client, FakeClient)
+        events = session.send("q")
+        framer = routes_chat.ChatFramer("")
+
+        async def scenario() -> None:
+            agen = chat_sse(events, manager, session, framer)
+            await agen.__anext__()
+            await agen.aclose()  # the client hung up mid-turn
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if manager.get("s1") is None:
+                    break
+            assert client.interrupts == 1
+            assert client.closed is True
+            # The cap slot is free again: a closed session is gone.
+            assert manager.get("s1") is None
+
+        asyncio.run(scenario())
+
+    def test_create_after_stop_succeeds(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Stop (the SSE disconnect) closed s1; the next create must open a
+        # fresh session, not answer 409 forever.
+        session = _session()
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        asyncio.run(manager.create(session))
+        monkeypatch.setattr(chat_core, "_MANAGER", manager)
+        events = session.send("q")
+
+        async def hang_up() -> None:
+            manager2 = chat_core.get_manager()
+            assert isinstance(manager2, ChatManager)
+            agen = chat_sse(events, manager2, session, routes_chat.ChatFramer(""))
+            await agen.__anext__()
+            await agen.aclose()
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                client = session._client
+                assert isinstance(client, FakeClient)
+                if client.closed:
+                    break
+
+        asyncio.run(hang_up())
+        _enable_routes(monkeypatch, _fresh_create)
+        response = client.post("/api/chat/sessions", json={})
+        assert response.status_code == 200
+        assert response.json()["result"]["session_id"] != "s1"
+
+    def test_create_resuming_a_live_session_answers_it(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A page reload mid-session resumes the live id; create answers
+        # the live session instead of fighting the cap with a second spawn.
+        session = _session()
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        asyncio.run(manager.create(session))
+        monkeypatch.setattr(chat_core, "_MANAGER", manager)
+        _enable_routes(monkeypatch, _resume_create)
+        response = client.post("/api/chat/sessions", json={"resume": "s1"})
+        assert response.status_code == 200
+        assert response.json()["result"]["session_id"] == "s1"
+        live_client = session._client
+        assert isinstance(live_client, FakeClient)
+        assert live_client.closed is False  # the live session answered
+
+    def test_idle_ttl_evicts_at_create(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An idle session past its TTL frees the cap (and closes its ~1 GiB
+        # subprocess) when the next create arrives.
+        session = _session(ttl_s=10)
+        session.last_activity -= 60
+        manager = ChatManager(max_sessions=1, ttl_s=10)
+        asyncio.run(manager.create(session))
+        monkeypatch.setattr(chat_core, "_MANAGER", manager)
+        _enable_routes(monkeypatch, _fresh_create)
+        response = client.post("/api/chat/sessions", json={})
+        assert response.status_code == 200
+        client_closed = session._client
+        assert isinstance(client_closed, FakeClient)
+        assert client_closed.closed is True
+
+
+def _enable_routes(monkeypatch: pytest.MonkeyPatch, create: Any) -> None:
+    """The enabled-config fakes the create route needs."""
+    monkeypatch.setattr(chat_core, "create_session", create)
+    monkeypatch.setattr(routes_chat, "_pool", _fake_pool)
+    monkeypatch.setattr(
+        "corpus_kb.config.load_config",
+        lambda path=None: {**_enabled_config()},
+    )
+
+
+async def _fresh_create(config: object, pool: object, resume: str | None = None) -> ChatSession:
+    """A real create path with a fresh server-generated session id."""
+    from uuid import uuid4
+
+    settings = read_chat_settings({})
+    manager = chat_core.get_manager()
+    assert isinstance(manager, ChatManager)
+    session = ChatSession(
+        str(uuid4()), "claude-agent-sdk", FakeClient(), _scripted_turn([]), settings.session_ttl_s
+    )
+    return await manager.create(session)
+
+
+async def _resume_create(config: object, pool: object, resume: str | None = None) -> ChatSession:
+    """A real create path that resumes into the requested id."""
+    settings = read_chat_settings({})
+    manager = chat_core.get_manager()
+    assert isinstance(manager, ChatManager)
+    session = ChatSession(
+        resume or "s1", "claude-agent-sdk", FakeClient(), _scripted_turn([]), settings.session_ttl_s
+    )
+    return await manager.create(session)
 
     def test_create_session_returns_ids(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -306,12 +445,14 @@ class TestDisconnect:
         async def fake_create(
             config: object, pool: object, resume: str | None = None
         ) -> ChatSession:
+            from uuid import uuid4
+
             settings = read_chat_settings({})
             manager = chat_core.get_manager()
             assert isinstance(manager, ChatManager)
-            return manager.create(
+            return await manager.create(
                 ChatSession(
-                    "sid-x",
+                    f"sid-{uuid4()}",
                     "claude-agent-sdk",
                     FakeClient(),
                     _scripted_turn([]),

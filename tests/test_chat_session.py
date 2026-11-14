@@ -30,6 +30,7 @@ class FakeAgentClient:
         self.script = script
         self.queries: list[str] = []
         self.interrupts = 0
+        self.disconnects = 0
         self.closed = False
 
     async def connect(self) -> None:
@@ -49,6 +50,7 @@ class FakeAgentClient:
         self.interrupts += 1
 
     async def disconnect(self) -> None:
+        self.disconnects += 1
         self.closed = True
 
 
@@ -83,9 +85,11 @@ def _result(**overrides: object) -> object:
     return SimpleNamespace(**base)
 
 
-def _claude_session(script: list[object], ttl_s: int = 1800) -> ChatSession:
+def _claude_session(
+    script: list[object], ttl_s: int = 1800, session_id: str = "sid-1"
+) -> ChatSession:
     return ChatSession(
-        session_id="sid-1",
+        session_id=session_id,
         backend="claude-agent-sdk",
         client=FakeAgentClient(script),
         turn_stream=claude_rung._turn_stream([]),
@@ -200,7 +204,7 @@ class TestSessionDiscipline:
         assert session.expired(session.last_activity + 11) is True
         assert session.expired(session.last_activity + 5) is False
         manager = ChatManager(max_sessions=1, ttl_s=10)
-        manager.create(session)
+        asyncio.run(manager.create(session))
         closed = asyncio.run(manager.sweep())
         assert closed == []
         assert asyncio.run(manager.sweep()) == []  # nothing expired yet (sweep just ran)
@@ -212,7 +216,7 @@ class TestSessionDiscipline:
         session = _claude_session([], ttl_s=10)
         session.last_activity -= 20
         manager = ChatManager(max_sessions=1, ttl_s=10)
-        manager.create(session)
+        asyncio.run(manager.create(session))
         closed = asyncio.run(manager.sweep())
         assert closed == ["sid-1"]
         client = session._client
@@ -222,14 +226,43 @@ class TestSessionDiscipline:
 
     def test_max_sessions_conflict(self) -> None:
         manager = ChatManager(max_sessions=1, ttl_s=1800)
-        manager.create(_claude_session([]))
+        asyncio.run(manager.create(_claude_session([])))
         with pytest.raises(ConflictError):
-            manager.create(_claude_session([]))
+            asyncio.run(manager.create(_claude_session([], session_id="sid-2")))
+
+    def test_create_with_live_id_answers_the_live_session(self) -> None:
+        # One owner resuming their own live session (the page reload):
+        # create answers the live session and disconnects the duplicate
+        # spawn, instead of fighting the cap.
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        live = _claude_session([])
+        asyncio.run(manager.create(live))
+        duplicate = _claude_session([])  # same id: a resume of the live one
+        answered = asyncio.run(manager.create(duplicate))
+        assert answered is live
+        assert manager.get("sid-1") is live
+        dup_client = duplicate._client
+        assert isinstance(dup_client, FakeAgentClient)
+        assert dup_client.closed is True  # the duplicate spawn disconnected
+        live_client = live._client
+        assert isinstance(live_client, FakeAgentClient)
+        assert live_client.closed is False
+
+    def test_aclose_is_idempotent(self) -> None:
+        # The SSE pump and the disconnect handler can both close in the
+        # same race; the second close must not re-disconnect.
+        session = _claude_session([])
+        asyncio.run(session.aclose())
+        asyncio.run(session.aclose())
+        client = session._client
+        assert isinstance(client, FakeAgentClient)
+        assert client.closed is True
+        assert client.disconnects == 1
 
     def test_close_by_id(self) -> None:
         manager = ChatManager(max_sessions=1, ttl_s=1800)
         session = _claude_session([])
-        manager.create(session)
+        asyncio.run(manager.create(session))
         assert asyncio.run(manager.close("sid-1")) is True
         assert asyncio.run(manager.close("sid-1")) is False
 
