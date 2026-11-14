@@ -58,7 +58,11 @@ _WAIVE_OPTION = typer.Option(
 # ---------------------------------------------------------------------------
 @release_app.command("assess")
 def release_assess_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     profile: str = typer.Option(None, "--profile", help="Release profile (default from config)"),
     run_id: str = typer.Option(None, "--run-id", help="Research run UUID (reliability evidence)"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),
@@ -96,7 +100,11 @@ def release_assess_cmd(
 
 @release_app.command("request")
 def release_request_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     creator: str = typer.Option(..., "--creator", help="Who opens the draft"),
     codebook_id: str = typer.Option(None, "--codebook-id", help="Codebook UUID (default: version)"),
     profile: str = typer.Option(None, "--profile", help="Release profile (default from config)"),
@@ -143,7 +151,11 @@ def release_request_cmd(
 
 @release_app.command("review")
 def release_review_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     release_id: str = typer.Option(..., "--release-id", help="Release UUID"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),
 ) -> int:
@@ -179,7 +191,11 @@ def release_review_cmd(
 
 @release_app.command("release")
 def release_execute_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     release_id: str = typer.Option(..., "--release-id", help="Draft release UUID"),
     approver: str = typer.Option(..., "--approver", help="Human approver (required)"),
     waive: list[str] = _WAIVE_OPTION,
@@ -201,7 +217,11 @@ def release_execute_cmd(
 
 @release_app.command("status")
 def release_status_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),
 ) -> int:
     """Active release, draft state, pending proposals, the next command."""
@@ -235,7 +255,11 @@ def release_status_cmd(
 
 @release_app.command("compare")
 def release_compare_cmd(
-    codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
+    codebook_version_id: str = typer.Option(
+        ...,
+        "--codebook-version-id",
+        help="Version UUID. corpus-kb codebook list prints the versions",
+    ),
     old_release_id: str = typer.Option(..., "--old-release-id", help="Release A UUID (older)"),
     new_release_id: str = typer.Option(..., "--new-release-id", help="Release B UUID (newer)"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),

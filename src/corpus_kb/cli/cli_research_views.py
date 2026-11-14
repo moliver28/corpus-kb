@@ -32,8 +32,16 @@ def register(research_app: typer.Typer) -> None:
 
 def research_evidence(
     code: str = typer.Argument(..., help="Code name or UUID"),
-    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
-    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Restrict to one project. corpus-kb research projects prints the list",
+    ),
+    version_id: str = typer.Option(
+        None,
+        "--codebook-version",
+        help="Codebook version UUID. corpus-kb codebook list prints the versions.",
+    ),
     limit: int = typer.Option(200, "--limit", min=1, help="Max units per tab"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
@@ -98,8 +106,16 @@ def _print_evidence_result(result: dict[str, object]) -> None:
 
 
 def research_uncoded(
-    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
-    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Restrict to one project. corpus-kb research projects prints the list",
+    ),
+    version_id: str = typer.Option(
+        None,
+        "--codebook-version",
+        help="Codebook version UUID. corpus-kb codebook list prints the versions.",
+    ),
     k: int = typer.Option(25, "--k", min=1, help="Max units to surface"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
@@ -145,8 +161,16 @@ def _print_uncoded_result(result: dict[str, object]) -> None:
 
 
 def research_overlap(
-    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
-    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Restrict to one project. corpus-kb research projects prints the list",
+    ),
+    version_id: str = typer.Option(
+        None,
+        "--codebook-version",
+        help="Codebook version UUID. corpus-kb codebook list prints the versions.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
     """Code overlap: flagged pairs + shared-unit confusion + borderline units."""
