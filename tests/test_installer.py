@@ -20,6 +20,7 @@ if str(_REPO_SRC) not in sys.path:
     sys.path.insert(0, str(_REPO_SRC))
 
 from corpus_kb._setup import install as install_module  # noqa: E402
+from corpus_kb._setup import setup_assets as setup_assets_module  # noqa: E402
 from corpus_kb._setup import setup_stack as setup_stack_module  # noqa: E402
 
 
@@ -454,11 +455,10 @@ def _record(calls: list[str], phase: str) -> None:
 async def test_setup_runs_compose_pull_and_ollama_pulls(tmp_path: Path) -> None:
     """The pull phase runs docker compose pull plus each required ollama pull."""
     config = _minimal_config(tmp_path)
-    src_dir = tmp_path / "src" / "corpus_kb"
-    src_dir.mkdir(parents=True)
-    # The installer looks for compose.yaml beside the corpus_kb package
-    # dir (REPO_ROOT.parent) — the same shipped convention as compose up.
-    (src_dir.parent / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    # The installer resolves compose.yaml through the setup-asset resolver
+    # (package data first, checkout fallback) — same seam as compose up.
+    compose_fixture = tmp_path / "compose.yaml"
+    compose_fixture.write_text("services: {}\n", encoding="utf-8")
     cmds: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: Any) -> int:
@@ -475,7 +475,7 @@ async def test_setup_runs_compose_pull_and_ollama_pulls(tmp_path: Path) -> None:
         patch.object(install_module, "setup_verify_extensions", return_value=0),
         patch.object(install_module, "setup_pull_weights", return_value=0),
         patch.object(install_module, "setup_update_config", return_value=0),
-        patch.object(setup_stack_module, "REPO_ROOT", src_dir),
+        patch.object(setup_assets_module, "resolve_setup_asset", return_value=compose_fixture),
         patch.object(setup_stack_module, "_run_cmd", side_effect=fake_run),
     ):
         result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
