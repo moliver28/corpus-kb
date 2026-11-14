@@ -6,8 +6,10 @@ sidecars, no network (the extension probe tests use doubles).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -381,3 +383,80 @@ def test_doctor_report_without_storage_omits_section(capsys: pytest.CaptureFixtu
 
     print_doctor_report(_doctor_info())
     assert "Storage backend:" not in capsys.readouterr().out
+
+
+# --- doctor end-to-end on a duckdb config (W1 install ease) -------------------------
+
+
+async def _provisioned_dsn(tmp_path: Path) -> str:
+    """A real migrations-provisioned duckdb file; returns its DSN."""
+    from corpus_kb._setup.migrate import run_migrations
+
+    dsn = duckdb_path_to_conn_string(str(tmp_path / "kb.duckdb"))
+    await run_migrations(dsn)
+    return dsn
+
+
+def _duckdb_doctor_config(dsn: str) -> dict[str, Any]:
+    return {
+        "installer": {},
+        "database": {"backend": "duckdb", "connection_string": dsn},
+    }
+
+
+async def _isolated_duckdb_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, Any]:
+    """Provision a real duckdb file and clear the CORPUS_KB_* env overrides."""
+    for name in ("CORPUS_KB_DATABASE_URL", "CORPUS_KB_DATABASE_BACKEND", "CORPUS_KB_CONFIG"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    dsn = await _provisioned_dsn(tmp_path)
+    return _duckdb_doctor_config(dsn)
+
+
+@pytest.mark.asyncio
+async def test_doctor_duckdb_config_exits_zero_and_reports_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A healthy duckdb setup exits 0 and never blames the unused Postgres."""
+    from corpus_kb._setup import install as install_module
+
+    config = await _isolated_duckdb_doctor(tmp_path, monkeypatch)
+
+    async def no_ollama(base_url: str) -> tuple[bool, str]:
+        return False, "no server"
+
+    monkeypatch.setattr(install_module, "check_ollama", no_ollama)
+    code = await install_module.doctor_cmd(config)
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "Engine: DuckDB" in out
+    assert "not used (database.backend: duckdb)" in out
+    assert "UNKNOWN" not in out
+    assert "needs the Postgres backend" in out
+
+
+@pytest.mark.asyncio
+async def test_doctor_duckdb_json_reports_backend_and_info_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The JSON report names the duckdb backend; the Postgres check is INFO."""
+    from corpus_kb._setup import install as install_module
+
+    config = await _isolated_duckdb_doctor(tmp_path, monkeypatch)
+
+    async def no_ollama(base_url: str) -> tuple[bool, str]:
+        return False, "no server"
+
+    monkeypatch.setattr(install_module, "check_ollama", no_ollama)
+    code = await install_module.doctor_cmd(config, json_output=True)
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert report["config"]["backend"] == "duckdb"
+    assert report["config"]["database"].endswith("kb.duckdb")
+    postgres = next(c for c in report["checks"] if c["name"] == "Postgres")
+    assert postgres["level"] == "INFO"
+    assert "fix" not in postgres

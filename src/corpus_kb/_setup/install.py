@@ -106,14 +106,9 @@ def detect_profile() -> dict[str, Any]:
     return _detect_profile(_detect_gpu_vram_gb)
 
 
-def print_doctor_report(
-    info: dict[str, Any],
-    research: list[Any] | None = None,
-    env_check: Any | None = None,
-    storage: list[Any] | None = None,
-    journey: list[Any] | None = None,
-) -> None:
-    """Print read-only diagnostic report."""
+def _print_doctor_system_lines(info: dict[str, Any]) -> str:
+    """The header through the Ollama line, backend-honest on DuckDB setups."""
+    backend = str(info.get("backend", "postgres"))
     print("\n=== Corpus-KB Doctor ===")
     print(f"OS:           {info['os']}")
     print(f"Python:       {info['python']}")
@@ -124,35 +119,61 @@ def print_doctor_report(
     else:
         print("GPU VRAM:     unknown (no NVIDIA VRAM detection available)")
     print(f"Profile:      {info['profile']}")
-    print(
-        f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})"
-    )
+    if backend == "duckdb":
+        print("Postgres:     not used (database.backend: duckdb)")
+    else:
+        print(
+            f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'}"
+            f" ({info['postgres_msg']})"
+        )
     print(f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})")
-    print("Extensions:")
-    extensions = info.get("extensions")
-    for name, label in EXTENSIONS:
-        if extensions is None:
-            print(f"  {label} ({name}): UNKNOWN (Postgres unreachable; cannot verify)")
-        else:
-            installed, version = extensions[name]
-            if installed:
-                print(f"  {label} ({name}): OK v{version}")
+    if backend != "duckdb":
+        print("Extensions:")
+        extensions = info.get("extensions")
+        for name, label in EXTENSIONS:
+            if extensions is None:
+                print(f"  {label} ({name}): UNKNOWN (Postgres unreachable; cannot verify)")
             else:
-                print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
-    if env_check is not None:
-        print("\nConfiguration:")
-        print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
-        if env_check.fix:
-            print(f"    fix: {env_check.fix}")
-        if env_check.doc:
-            print(f"    docs: {env_check.doc}")
-        # Issue #348: report the config file and the overlay paths, so a
-        # client never has to parse config.yaml to know what is in force.
-        print(f"  Config file: {info.get('config_file', 'packaged default')}")
-        overlays = info.get("overlay_paths") or []
-        print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
+                installed, version = extensions[name]
+                if installed:
+                    print(f"  {label} ({name}): OK v{version}")
+                else:
+                    print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
+    return backend
+
+
+def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
+    """The configuration block: env check, config file, and overlay paths."""
+    if env_check is None:
+        return
+    print("\nConfiguration:")
+    print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
+    if env_check.fix:
+        print(f"    fix: {env_check.fix}")
+    if env_check.doc:
+        print(f"    docs: {env_check.doc}")
+    # Issue #348: report the config file and the overlay paths, so a
+    # client never has to parse config.yaml to know what is in force.
+    print(f"  Config file: {info.get('config_file', 'packaged default')}")
+    overlays = info.get("overlay_paths") or []
+    print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
+
+
+def print_doctor_report(
+    info: dict[str, Any],
+    research: list[Any] | None = None,
+    env_check: Any | None = None,
+    storage: list[Any] | None = None,
+    journey: list[Any] | None = None,
+) -> None:
+    """Print read-only diagnostic report."""
+    backend = _print_doctor_system_lines(info)
+    _print_doctor_config_block(env_check, info)
     if research is None:
-        print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
+        if backend == "duckdb":
+            print("\nResearch subsystem: SKIPPED (needs the Postgres backend)")
+        else:
+            print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
     else:
         from corpus_kb._setup.doctor_research import print_research_checks
 
@@ -236,17 +257,28 @@ def doctor_json_report(
 
     Every check carries its name, level (OK, INFO, WARN, FAIL) and fix
     text; the config block carries the resolved values a client needs, so
-    clients stop parsing config.yaml or the text output.
+    clients stop parsing config.yaml or the text output. On a DuckDB
+    backend the Postgres check is INFO ("not used"), never a FAIL.
     """
-    checks: list[dict[str, str]] = [
-        {
-            "name": "Postgres",
-            "level": "OK" if info["postgres_ok"] else "FAIL",
-            "detail": str(info["postgres_msg"]),
-        }
-    ]
-    if not info["postgres_ok"]:
-        checks[0]["fix"] = "run: corpus-kb setup"
+    backend = resolved_backend(config)
+    if backend == "duckdb":
+        checks: list[dict[str, str]] = [
+            {
+                "name": "Postgres",
+                "level": "INFO",
+                "detail": "not used: database.backend is duckdb",
+            }
+        ]
+    else:
+        checks = [
+            {
+                "name": "Postgres",
+                "level": "OK" if info["postgres_ok"] else "FAIL",
+                "detail": str(info["postgres_msg"]),
+            }
+        ]
+        if not info["postgres_ok"]:
+            checks[0]["fix"] = "run: corpus-kb setup"
     checks.append(
         {
             "name": "Ollama",
@@ -299,9 +331,16 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     conn_str = os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
         db_cfg.get("connection_string", "")
     )
-    info["postgres_ok"], info["postgres_msg"] = (
-        await check_postgres(conn_str) if conn_str else (False, "no connection string")
-    )
+    backend = resolved_backend(config)
+    info["backend"] = backend
+    if backend == "duckdb":
+        # The deployment does not run Postgres: report that honestly and
+        # probe the DuckDB file through the storage checks below instead.
+        info["postgres_ok"], info["postgres_msg"] = False, "not used (database.backend: duckdb)"
+    else:
+        info["postgres_ok"], info["postgres_msg"] = (
+            await check_postgres(conn_str) if conn_str else (False, "no connection string")
+        )
     info["extensions"] = await check_extensions(conn_str) if info["postgres_ok"] else None
 
     emb_cfg = config.get("embedding", {})
@@ -326,7 +365,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
 
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
 
-    reachable = database_reachable(resolved_backend(config), bool(info["postgres_ok"]), storage)
+    reachable = database_reachable(backend, bool(info["postgres_ok"]), storage)
 
     # Novice journey section (novice-UX program W3): the same probe the SPA
     # snapshot composes, so the CLI and the UI cannot disagree. Read-only;
