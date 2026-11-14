@@ -1,11 +1,16 @@
-import { Button, Card, Typography } from "antd";
-import { useState } from "react";
+import { Button, Card, Spin, Typography } from "antd";
+import { Suspense, lazy, useState } from "react";
 import { strings } from "../strings";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "../components/ActionCard";
 import NotWiredCard from "../components/NotWiredCard";
+
+// The progression rail rides its own lazy chunk (React.lazy): its
+// generated register table and labels load only on this stage, so the
+// entry and landing bundles keep the gzip budget headroom.
+const ProgressionRail = lazy(() => import("../components/progression/ProgressionRail"));
 
 /** The honest not-wired rows for the analysis families (op id, line). */
 const NOT_WIRED = [
@@ -82,6 +87,9 @@ export default function Analyze() {
           setSeed({});
         }}
       />
+      <Suspense fallback={<Spin />}>
+        <ProgressionRail />
+      </Suspense>
       <Card title={strings.analyzeRunnerTitle}>
         <Typography.Paragraph type="secondary">
           {strings.analyzeRunnerBody}

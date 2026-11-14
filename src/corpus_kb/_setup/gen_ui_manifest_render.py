@@ -106,6 +106,7 @@ def render_methods_ts(entries: list[dict[str, object]]) -> str:
     for entry in entries:
         lines.append(
             f"  {{ id: {_ts_string(str(entry['id']))}, name: {_ts_string(str(entry['name']))}, "
+            f"summary: {_ts_string(str(entry['summary']))}, "
             f"op: {_ts_nullable(entry['op'])}, difficulty: {_ts_nullable(entry['difficulty'])}, "
             f"concepts: {_ts_string_list(entry['concepts'])}, "
             f"prerequisites: {_ts_string_list(entry['prerequisites'])}, "
