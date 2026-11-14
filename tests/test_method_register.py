@@ -17,6 +17,10 @@ import yaml
 
 from corpus_kb.analysis.method_register import MethodRegister
 from corpus_kb.analysis.method_register_loader import load_method_register
+from corpus_kb.analysis.method_register_progression import (
+    DIFFICULTY_LEVELS,
+    TEACHING_CONCEPTS,
+)
 from corpus_kb.analysis.method_register_routing import (
     COMPARISON_STRUCTURES,
     COST_TIERS,
@@ -26,6 +30,7 @@ from corpus_kb.analysis.method_register_routing import (
     TASK_TYPES,
 )
 from corpus_kb.analysis.method_register_rubric import rank_methods
+from corpus_kb.analysis.method_register_tables import COLUMN_TYPES
 from corpus_kb.api._body import error_response
 from corpus_kb.errors import ValidationError
 
@@ -141,7 +146,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "3.0.0"
+    assert register.register_version == "3.2.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -184,7 +189,7 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "3.0.0"
+    assert register.register_version == "3.2.0"
     assert len(register.methods) == 30
 
 
@@ -752,6 +757,403 @@ def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
             seen[phrase] = record.id
 
 
-def test_register_version_bumped_for_routing_schema(register: MethodRegister) -> None:
-    """The folded 10-field routing schema bumps the register to 3.0.0 (W2 caches per version)."""
-    assert register.register_version == "3.0.0"
+def test_register_version_bumped_for_progression_schema(register: MethodRegister) -> None:
+    """The routing fields bumped the register to 3.0.0, W1 progression to 3.1.0,
+    and the W2 table contracts to 3.2.0 (surfaces cache per version)."""
+    assert register.register_version == "3.2.0"
+
+
+# ---------------------------------------------------------------------------
+# Progression axes (novice-UX program, wave 1)
+# ---------------------------------------------------------------------------
+
+PROGRESSION_FIELD_NAMES = ("difficulty", "concepts", "prerequisites", "next")
+
+
+def test_progression_vocab_tuples_are_pinned() -> None:
+    """The difficulty rungs and the teaching concepts match the W1 brief."""
+    assert DIFFICULTY_LEVELS == ("novice", "intermediate", "advanced")
+    assert TEACHING_CONCEPTS == (
+        "active_learning",
+        "classification",
+        "clustering",
+        "contradiction_detection",
+        "entity_extraction",
+        "information_retrieval",
+        "keyword_rules",
+        "qualitative_coding",
+        "sentiment_analysis",
+        "term_weighting",
+        "topic_modeling",
+        "vector_similarity",
+        "weak_supervision",
+    )
+
+
+@pytest.mark.parametrize("field", PROGRESSION_FIELD_NAMES)
+def test_progression_fields_default_to_none(field: str) -> None:
+    register = MethodRegister.model_validate(_single_register(_valid_record()))
+    assert getattr(register.methods[0], field) is None
+
+
+def test_unknown_difficulty_rejected() -> None:
+    record = _mutate(_valid_record(), difficulty="expert")
+    with pytest.raises(ValueError) as excinfo:
+        MethodRegister.model_validate(_single_register(record))
+    message = str(excinfo.value)
+    assert "difficulty" in message
+    assert "novice" in message
+
+
+def test_unknown_concept_rejected() -> None:
+    record = _mutate(_valid_record(), concepts=["vibes"])
+    with pytest.raises(ValueError) as excinfo:
+        MethodRegister.model_validate(_single_register(record))
+    message = str(excinfo.value)
+    assert "concepts" in message
+    assert "clustering" in message
+
+
+def test_duplicate_concepts_rejected() -> None:
+    record = _mutate(_valid_record(), concepts=["clustering", "clustering"])
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_empty_concept_list_rejected() -> None:
+    record = _mutate(_valid_record(), concepts=[])
+    with pytest.raises(ValueError, match="1 to 5"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_concept_count_cap() -> None:
+    record = _mutate(_valid_record(), concepts=sorted(TEACHING_CONCEPTS))
+    with pytest.raises(ValueError, match="1 to 5"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_link_id_shape_rejected() -> None:
+    record = _mutate(_valid_record(), prerequisites=["4"])
+    with pytest.raises(ValueError, match="zero-padded"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(_valid_record(), next=["31"])
+    with pytest.raises(ValueError, match="31"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_self_prerequisite_rejected() -> None:
+    record = _mutate(_valid_record(), id="15", prerequisites=["15"])
+    with pytest.raises(ValueError, match="its own"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_self_next_rejected() -> None:
+    record = _mutate(_valid_record(), id="15", next=["15"])
+    with pytest.raises(ValueError, match="its own"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_dangling_prerequisite_rejected() -> None:
+    """A prerequisite must name a registered method id."""
+    record = _mutate(_valid_record(), id="15", prerequisites=["99"])
+    with pytest.raises(ValueError, match="99"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_dangling_next_rejected() -> None:
+    record = _mutate(_valid_record(), id="04", next=["99"])
+    with pytest.raises(ValueError, match="99"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_prerequisite_cycle_rejected() -> None:
+    """Two methods cannot each require the other."""
+    first = _mutate(_valid_record(), id="04", name="A", prerequisites=["15"])
+    second = _mutate(_valid_record(), id="15", name="B", prerequisites=["04"])
+    with pytest.raises(ValueError, match="cycle"):
+        MethodRegister.model_validate(_mini_register(first, second))
+
+
+def test_next_cycle_rejected() -> None:
+    first = _mutate(_valid_record(), id="15", name="A", next=["16"])
+    second = _mutate(_valid_record(), id="16", name="B", next=["15"])
+    with pytest.raises(ValueError, match="cycle"):
+        MethodRegister.model_validate(_mini_register(first, second))
+
+
+def test_known_progression_pair_round_trips() -> None:
+    """A prerequisite edge and its inverse next edge validate and dump cleanly."""
+    first = _mutate(
+        _valid_record(),
+        id="04",
+        name="A",
+        difficulty="novice",
+        concepts=["keyword_rules"],
+        next=["15"],
+    )
+    second = _mutate(
+        _valid_record(),
+        id="15",
+        name="B",
+        difficulty="intermediate",
+        concepts=["classification", "term_weighting"],
+        prerequisites=["04"],
+    )
+    register = MethodRegister.model_validate(_mini_register(first, second))
+    dump = register.model_dump(mode="json")
+    again = MethodRegister.model_validate(dump)
+    assert again == register
+    assert register.methods[1].prerequisites == ["04"]
+    assert register.methods[0].next == ["15"]
+
+
+def test_progression_populated_on_every_row(register: MethodRegister) -> None:
+    """Every real row carries a rung and taught concepts within the bounds."""
+    for record in register.methods:
+        assert record.difficulty in DIFFICULTY_LEVELS, f"{record.id} difficulty"
+        assert record.concepts, f"{record.id} concepts"
+        assert all(concept in TEACHING_CONCEPTS for concept in record.concepts)
+        assert len(record.concepts) <= 5, f"{record.id} concept count"
+        for link in (record.prerequisites or []) + (record.next or []):
+            assert link in EXPECTED_EXISTING_OPS or link in EXPECTED_NEW_OPS, (
+                f"{record.id} names unplanned method {link}"
+            )
+
+
+def test_difficulty_ladder_uses_all_three_rungs(register: MethodRegister) -> None:
+    seen = {record.difficulty for record in register.methods}
+    assert seen == set(DIFFICULTY_LEVELS)
+
+
+def test_prerequisite_targets_exist_and_are_first_builds(register: MethodRegister) -> None:
+    """Prerequisites point at labeling or classification builds (the data producers)."""
+    for record in register.methods:
+        for target in record.prerequisites or []:
+            target_row = next(row for row in register.methods if row.id == target)
+            assert target_row.op in ("labeling_build", "classification_build"), (
+                f"{record.id} requires {target} ({target_row.op}); prerequisites must "
+                "produce stored data."
+            )
+
+
+def test_next_edges_stay_groundable(register: MethodRegister) -> None:
+    """Every next target is an implemented method; none is not_planned."""
+    for record in register.methods:
+        for target in record.next or []:
+            target_row = next(row for row in register.methods if row.id == target)
+            assert target_row.implementation_status != "not_planned", (
+                f"{record.id} suggests {target}, which is not planned."
+            )
+
+
+# ---------------------------------------------------------------------------
+# Table contracts (novice-UX program, wave 2)
+# ---------------------------------------------------------------------------
+
+
+def test_table_column_types_are_pinned() -> None:
+    """The column type vocabulary matches the W2 brief."""
+    assert COLUMN_TYPES == (
+        "text",
+        "id",
+        "integer",
+        "number",
+        "boolean",
+        "id_list",
+        "object_list",
+    )
+
+
+def test_table_defaults_to_none() -> None:
+    register = MethodRegister.model_validate(_single_register(_valid_record()))
+    assert register.methods[0].output_table is None
+
+
+def _valid_table() -> dict[str, Any]:
+    """One fully valid output_table to mutate in rejection tests."""
+    return {
+        "columns": [
+            {"name": "similarity", "type": "number", "description": "The pair score."},
+            {"name": "chunk_id_i", "type": "id", "description": "The lower chunk id."},
+        ],
+        "order_by": ["-similarity", "chunk_id_i"],
+        "ties": "Equal scores order by the lower id.",
+        "precision": 6,
+        "denominators": ["screened_count"],
+        "caveats": [],
+    }
+
+
+def test_valid_table_round_trips_json() -> None:
+    record = _mutate(_valid_record(), output_table=_valid_table())
+    register = MethodRegister.model_validate(_single_register(record))
+    dump = register.model_dump(mode="json")
+    again = MethodRegister.model_validate(dump)
+    assert again == register
+    table = register.methods[0].output_table
+    assert table is not None
+    assert table.columns[0].unit is None
+    assert table.precision == 6
+
+
+@pytest.mark.parametrize(
+    ("mutation", "fragment"),
+    [
+        ({"type": "score"}, "number"),
+        ({"name": ""}, "non-empty"),
+        ({"description": ""}, "non-empty"),
+    ],
+)
+def test_table_column_rejections_name_the_fix(mutation: dict[str, str], fragment: str) -> None:
+    table = _valid_table()
+    table["columns"][0] = {**table["columns"][0], **mutation}
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError) as excinfo:
+        MethodRegister.model_validate(_single_register(record))
+    assert fragment in str(excinfo.value)
+
+
+def test_table_unit_must_be_text() -> None:
+    table = _valid_table()
+    table["columns"][0]["unit"] = "   "
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="unit"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_unknown_column_rejected() -> None:
+    table = _valid_table()
+    table["columns"][0] = {**table["columns"][0], "type": "score"}
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="output_table"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_unknown_key_rejected() -> None:
+    table = {**_valid_table(), "rows_hint": 20}
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="rows_hint"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_order_by_must_name_declared_columns() -> None:
+    table = _valid_table()
+    table["order_by"] = ["-similarity", "chunk_id_j"]
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="chunk_id_j"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_order_by_rejects_duplicates_and_emptiness() -> None:
+    table = _valid_table()
+    table["order_by"] = []
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="order_by"):
+        MethodRegister.model_validate(_single_register(record))
+    table["order_by"] = ["chunk_id_i", "chunk_id_i"]
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_model_rank_must_stand_alone() -> None:
+    """The reserved model_rank entry means the producer's reply order."""
+    table = _valid_table()
+    table["order_by"] = ["model_rank", "-similarity"]
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="model_rank"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_ties_required() -> None:
+    table = _valid_table()
+    table["ties"] = "   "
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="ties"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_precision_bounds() -> None:
+    table = _valid_table()
+    table["precision"] = -1
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="precision"):
+        MethodRegister.model_validate(_single_register(record))
+    table["precision"] = 13
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="precision"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_table_denominators_and_caveats_reject_junk() -> None:
+    table = _valid_table()
+    table["denominators"] = ["screened_count", "screened_count"]
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+    table["caveats"] = ["same words", "same words"]
+    record = _mutate(_valid_record(), output_table=table)
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+TABLE_IDS = {
+    "05",
+    "06",
+    "07",
+    "12",
+    "13",
+    "14",
+    "15",
+    "18",
+    "20",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+}
+TABLE_FREE_IDS = {
+    "01",
+    "02",
+    "03",
+    "04",
+    "08",
+    "09",
+    "10",
+    "11",
+    "16",
+    "17",
+    "19",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+}
+
+
+def test_real_rows_declare_tables_exactly_on_tabular_methods(
+    register: MethodRegister,
+) -> None:
+    """The 14 tabular-row methods carry a table; the other 16 carry none."""
+    declared = {r.id for r in register.methods if r.output_table is not None}
+    assert declared == TABLE_IDS
+    free = {r.id for r in register.methods if r.output_table is None}
+    assert free == TABLE_FREE_IDS
+
+
+def test_real_tables_are_well_formed(register: MethodRegister) -> None:
+    """Every declared table: order keys exist, floats carry precision."""
+    for record in register.methods:
+        table = record.output_table
+        if table is None:
+            continue
+        names = [column.name for column in table.columns]
+        assert len(names) == len(set(names)), f"{record.id} duplicate columns"
+        for key in table.order_by:
+            assert key.lstrip("-") in names or key == "model_rank", f"{record.id} order {key}"
+        if any(column.type == "number" for column in table.columns):
+            assert table.precision is not None, f"{record.id} number column without precision"
+        for denominator in table.denominators or []:
+            assert denominator, f"{record.id} empty denominator"

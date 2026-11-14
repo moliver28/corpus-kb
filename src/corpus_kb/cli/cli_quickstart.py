@@ -118,7 +118,7 @@ def _print_report(outcome: QuickstartOutcome, json_output: bool, config_error: s
     elif code:
         print("Quickstart failed. Fix the FAIL lines above, then re-run corpus-kb quickstart.")
     print("Next steps:")
-    print("  corpus-kb ingest docs")
+    print("  corpus-kb demo-kb")
     print('  corpus-kb search "your question here"')
     print("  corpus-kb quickstart --help")
     print("===========================\n")

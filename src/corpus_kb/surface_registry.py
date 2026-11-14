@@ -60,14 +60,17 @@ SURFACES: tuple[Surface, ...] = (
         name="coding-run",
         cli_path="coding run",
         mcp_tool="coding_run",
-        description="Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
+        description=(
+            "Deductive run: score text against a fixed codebook; "
+            "calibrated thresholds; claim sizes."
+        ),
         http_route="/api/coding/run",
     ),
     Surface(
         name="coding-inductive",
         cli_path="coding inductive",
         mcp_tool="inductive_run",
-        description="Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
+        description="Inductive pass: summaries, theme clusters, proposed codes.",
         http_route="/api/coding/inductive",
     ),
     Surface(
@@ -81,7 +84,9 @@ SURFACES: tuple[Surface, ...] = (
         name="research-report",
         cli_path="research report",
         mcp_tool="research_report",
-        description="Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
+        description=(
+            "Governance report: coverage, coding overlap, agreement between coders, gate checks."
+        ),
         http_route="/api/research/report",
     ),
     Surface(
@@ -1061,11 +1066,35 @@ def _amr_body(
     cautions: str,
     validation: str,
     claims: str,
+    difficulty: str | None = None,
+    teaches: str | None = None,
+    requires: str | None = None,
+    next_step: str | None = None,
 ) -> str:
-    """One method card: axis walk + run + cautions (all plain English)."""
+    """One method card: axis walk + run + cautions (all plain English).
+
+    The optional progression lines (novice-UX program, wave 1) mirror the
+    register's difficulty/concepts/prerequisites/next fields; they render
+    only when the caller supplies them, so the front-door cards stay bare.
+    """
+    progression: list[str] = []
+    if difficulty:
+        progression.append(f"- Difficulty: `{difficulty}`.")
+    if teaches:
+        progression.append(f"- Teaches: {teaches}.")
+    if requires:
+        progression.append(f"- Run first: {requires}.")
+    if next_step:
+        progression.append(f"- Next step: {next_step}.")
+    progression_block = (
+        "## Progression (the register's ladder)\n\n" + "\n".join(progression) + "\n\n"
+        if progression
+        else ""
+    )
     return (
         f"# corpus-{name} — analysis method card\n\n"
         + _AMR_WALK.format(family=family, inputs=inputs, calibration=calibration, autonomy=autonomy)
+        + progression_block
         + f"## Run\n\n  ```\n  corpus-kb {run}\n  ```\n\n"
         + _AMR_FOOT.format(cautions=cautions, validation=validation, claims=claims, cli=name)
     )
@@ -1121,6 +1150,8 @@ _KEYPHRASES_BODY = _amr_body(
     validation="review tokenization, common words, phrase lengths, and the "
     "top-ranked terms by hand.",
     claims="descriptions of distinctive wording in the corpus.",
+    difficulty="novice for tfidf and yake; intermediate for the embedding arm",
+    teaches="`term_weighting`, `vector_similarity`",
 )
 _LEXICAL_BODY = _amr_body(
     "lexical-classify",
@@ -1134,6 +1165,10 @@ _LEXICAL_BODY = _amr_body(
     validation="treat this as the baseline. Inspect errors. Tune features "
     "without the final test set.",
     claims="baseline performance on independent test records.",
+    difficulty="intermediate",
+    teaches="`classification`, `term_weighting`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
+    next_step="method 16, frozen embeddings with a linear classifier (`classification-build`)",
 )
 _NEIGHBORS_BODY = _amr_body(
     "neighbors-classify",
@@ -1145,6 +1180,9 @@ _NEIGHBORS_BODY = _amr_body(
     cautions="local label errors travel. Overrepresented examples can dominate nearby votes.",
     validation="review example coverage. Tune the neighbor count and the rejection rules.",
     claims="category assignments backed by the listed neighbor examples.",
+    difficulty="intermediate",
+    teaches="`classification`, `vector_similarity`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
 )
 _CENTROIDS_BODY = _amr_body(
     "centroids-classify",
@@ -1158,6 +1196,10 @@ _CENTROIDS_BODY = _amr_body(
     validation="inspect the examples. Measure precision, recall, and "
     "abstention. Tune the margin on separate data.",
     claims="category assignments with similarities and recorded abstentions.",
+    difficulty="intermediate",
+    teaches="`classification`, `vector_similarity`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
+    next_step="method 14, nearest-neighbor votes with the examples listed",
 )
 _CLUSTERS_BODY = _amr_body(
     "clusters-inspect",
@@ -1166,6 +1208,10 @@ _CLUSTERS_BODY = _amr_body(
     calibration="moderate",
     autonomy="human_in_loop",
     run="clusters-inspect [--min-cluster-size N] [--sample-cap N]",
+    difficulty="intermediate",
+    teaches="`clustering`, `vector_similarity`",
+    next_step="method 04, dictionary or rule-based classification (`labeling-build`), "
+    "once the groups suggest labels",
     cautions="a stable-looking group can reflect topic, style, speaker, or "
     "document format. The params record names the reduction that ran.",
     validation="compare representations and grouping settings. Review boundary cases by hand.",
@@ -1183,6 +1229,8 @@ _DUPLICATES_BODY = _amr_body(
     validation="label candidate pairs by hand. Measure pairwise precision "
     "and recall at the action threshold.",
     claims="duplicate candidates at a recorded threshold, for human approval.",
+    difficulty="novice",
+    teaches="`vector_similarity`",
 )
 _OUTLIERS_BODY = _amr_body(
     "outliers-rank",
@@ -1196,6 +1244,8 @@ _OUTLIERS_BODY = _amr_body(
     validation="define the reference group. Inspect the flagged records. "
     "Compare detectors when the stakes are high.",
     claims="a ranked review list with the detector and reference recorded.",
+    difficulty="novice",
+    teaches="`vector_similarity`",
 )
 _NLI_BODY = _amr_body(
     "nli-classify",
@@ -1209,6 +1259,11 @@ _NLI_BODY = _amr_body(
     validation="test paraphrased labels, negation, and overlapping labels. "
     "Tune thresholds on labeled data.",
     claims="pilot label proposals with support scores.",
+    difficulty="intermediate",
+    teaches="`classification`",
+    requires="a running Ollama NLI model (`corpus-kb setup` pulls it)",
+    next_step="method 04, dictionary or rule-based classification (`labeling-build`), "
+    "to act on the pilot labels",
 )
 _CONTRADICTIONS_BODY = _amr_body(
     "contradictions-screen",
@@ -1222,6 +1277,9 @@ _CONTRADICTIONS_BODY = _amr_body(
     validation="test negation, entity identity, time, and conditions. "
     "Adjudicate the pairs by hand.",
     claims="candidate contradictions for human adjudication.",
+    difficulty="intermediate",
+    teaches="`contradiction_detection`, `vector_similarity`",
+    requires="method 23, hybrid retrieval with reranking (`search`), for comparable candidates",
 )
 _SENTIMENT_BODY = _amr_body(
     "sentiment-screen",
@@ -1236,6 +1294,8 @@ _SENTIMENT_BODY = _amr_body(
     validation="define the construct. Label and test each category, "
     "including neutral and uncertain cases. Check a sample by hand.",
     claims="screening flags for evaluative language under the defined construct.",
+    difficulty="novice for method 26; intermediate for method 27",
+    teaches="`sentiment_analysis`, `keyword_rules`",
 )
 _ACTIVE_LEARN_BODY = _amr_body(
     "active-learn-next",
@@ -1249,6 +1309,9 @@ _ACTIVE_LEARN_BODY = _amr_body(
     "guards against that bias.",
     validation="assess the improvement per annotation effort. Compare against random sampling.",
     claims="annotation-order recommendations with the strategy recorded.",
+    difficulty="advanced",
+    teaches="`active_learning`, `classification`",
+    requires="method 16, frozen embeddings with a linear classifier (`classification-build`)",
 )
 
 # -- Chunk-coding ops (issue #350): the six routes the plugin reached only
@@ -1572,51 +1635,132 @@ ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planne
 # (check_agent_configs compares descriptions across editors).
 SERVER_NAME = "corpus-kb"
 SERVER_DESCRIPTION = (
-    "Local RAG system \u2014 search, ingest, knowledge graph, "
-    "SQL queries over your code and documents"
+    "Local knowledge base for files, transcripts, and code. "
+    "Search, ingest, and analyze on your own machine."
 )
 SERVER_COMMAND = "corpus-kb"
 SERVER_ARGS: tuple[str, ...] = ("--transport", "stdio")
-# autoApprove entries for emitted editor templates (legacy master tool set,
-# kept in lockstep with claude-code.json).
+# autoApprove for the emitted editor templates (novice-UX W3c): ONE
+# registry-derived set, not a hand list. The rule: a tool is
+# auto-approvable only when it performs NO store write and NO ingest
+# write under ANY declared parameter. ``AUTO_APPROVE_WRITE_TOOLS`` names
+# the write side; the derived list is every MCP tool minus those rows,
+# sorted. The lockstep test (``tests/test_auto_approve_lockstep.py``)
+# recomputes the universe from the catalogue plus this registry and
+# fails when a new op is not classified into exactly one of the two
+# sets. Two judgment calls the rule allows: ``coding_export`` and
+# ``research_report`` write a file the caller names — no store row, no
+# ingest — so they ride. The legacy master-tool names (``sql_query``,
+# ``retrieve_context``, and friends) are no longer live MCP tools, so
+# no host list carries them.
+AUTO_APPROVE_WRITE_TOOLS: frozenset[str] = frozenset(
+    {
+        # ingest writes: documents, chunks, vectors, entities, relations
+        "ingest_text",
+        "ingest_file",
+        "ingest_directory",
+        "ingest_url",
+        "research_ingest",
+        "research_ingest_transcript",
+        "ingest_reembed",
+        "ingest_reingest",
+        "research_cycle",
+        "research_demo",
+        "demo_load",
+        # store writes: rows, tables, graph, queue, lifecycle decisions
+        "delete_document",
+        "add_entity",
+        "add_relation",
+        "extraction_tune",
+        "conflicts_scan",
+        "conflicts_resolve",
+        "beliefs_current",
+        "labeling_build",
+        "classification_build",
+        "topics_build",
+        "topics_trends",
+        "analysis_backfill_dates",
+        "analyze_run",
+        "analysis_embed_meta",
+        "project_provision",
+        "project_drop",
+        "queue_enqueue",
+        "queue_cancel",
+        "codebook_promote",
+        "coding_embed_codebook",
+        "coding_code_batch",
+        "coding_calibrate_floors",
+        "coding_run",
+        "inductive_run",
+        "review_execute",
+        "calibrate_apply",
+        "release_request",
+        "release_review",
+        "release_execute",
+    }
+)
+
 SERVER_AUTO_APPROVE: tuple[str, ...] = (
+    "active_learn_next",
+    "analysis_route",
+    "analysis_select_method",
+    "ask",
+    "beliefs_compare",
+    "beliefs_predict",
+    "beliefs_timeline",
+    "centroids_classify",
+    "classification_list",
+    "clusters_inspect",
+    "codebook_proposals",
+    "codebooks_list",
+    "coding_assignments",
+    "coding_export",
+    "coding_pool",
+    "coding_reliability",
+    "coding_saturation",
+    "coding_status",
+    "conflicts_list",
+    "contradictions_screen",
+    "doctor",
+    "duplicates_screen",
+    "events_summary",
+    "get_document_tags",
+    "get_entity_relations",
+    "get_metadata",
+    "graph_neighbors",
+    "graph_traverse",
+    "ingest_status",
+    "keyphrases_extract",
+    "labeling_gold_check",
+    "labeling_lfs",
+    "labeling_list",
+    "labeling_triage",
+    "lexical_classify",
+    "list_documents",
+    "neighbors_classify",
+    "nli_classify",
+    "notebook_ask",
+    "notebook_evidence",
+    "notebook_overlap",
+    "notebook_uncoded",
+    "outliers_rank",
+    "project_list",
+    "projects_list",
+    "query",
+    "queue_status",
+    "release_assess",
+    "release_compare",
+    "release_status",
+    "research_report",
     "search",
     "search_context",
-    "search_similar",
-    "retrieve_context",
-    "list_documents",
-    "get_stats",
-    "list_versions",
-    "list_branches",
-    "get_entity_relations",
     "search_graph",
-    "sql_query",
-    "sql_tables",
-    "get_document_tags",
-    "get_metadata",
-    "query_document_stats",
-    "sync_database",
-    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py,
-    # tools/ingest_reingest.py for the #202 bulk re-embed)
-    "ingest_status",
-    "ingest_reembed",
-    "ingest_reingest",
-    # Wave 4 topics layer (tools/topics_tools.py)
-    "topics_build",
+    "search_similar",
+    "sentiment_screen",
+    "statements_list",
+    "statements_timeline",
     "topics_list",
-    # Corpus analysis program (tools/labeling_tools.py,
-    # tools/classification_tools.py, tools/analysis_tools.py, and the
-    # topics_trends stub in tools/topics_tools.py)
-    "topics_trends",
-    "labeling_build",
-    "labeling_list",
-    "labeling_lfs",
-    "classification_build",
-    "classification_list",
-    "analysis_backfill_dates",
-    "analyze_run",
-    # Ask operation (UX Wave 1, tools/ask_tools.py)
-    "ask",
+    "verify_answer",
 )
 
 # Marker fences for the generated .claude/CLAUDE.md research-commands section.

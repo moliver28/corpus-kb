@@ -41,9 +41,15 @@ register_ops(coding_app)
 @coding_app.command("run")
 def coding_run(
     codebook_version_id: str = typer.Option(
-        ..., "--codebook-version-id", help="Codebook version UUID to code against"
+        ...,
+        "--codebook-version-id",
+        help="Codebook version UUID to code against. corpus-kb codebook list prints the versions.",
     ),
-    project_id: str = typer.Option(None, "--project-id", help="Restrict to one research project"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Restrict to one research project. corpus-kb research projects prints the list.",
+    ),
     alpha: float = typer.Option(
         0.1, "--alpha", help="Conformal miscoverage level (1-alpha coverage)"
     ),
@@ -76,7 +82,11 @@ def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alph
 
 @coding_app.command("inductive")
 def coding_inductive(
-    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Restrict to one project. corpus-kb research projects prints the list.",
+    ),
 ) -> int:
     """Inductive pass (v5 §9): summaries -> UMAP/HDBSCAN -> proposed codes."""
     return _run_async(_inductive_coroutine(project_id))

@@ -485,6 +485,9 @@ _input_kinds
 _sources_floor
 _vocabularies_and_op
 _routing_axes
+_progression_fields
+_progression_graph
+_table_fields
 _semver
 _rules_present
 _ids_unique
@@ -598,6 +601,19 @@ flat_ner
 adjacency_threshold
 relation_threshold
 multi_label
+
+# Novice-UX journey wave (JourneyState): dated_documents is read
+# dynamically — doctor_journey.py calls getattr(state, INPUT_STATE[kind])
+# and doctor_journey_maps.py maps the "timestamps" input kind to the
+# "dated_documents" state key. tests/test_doctor_journey.py builds the
+# state with the keyword. Vulture sees no name read.
+dated_documents
+
+# Novice-UX W3c (surface_registry): AUTO_APPROVE_WRITE_TOOLS names the
+# write rows of the autoApprove derivation. tests/test_auto_approve_lockstep.py
+# imports and diffs it; the vulture gate scans src/ only, so the use is
+# outside its reach.
+AUTO_APPROVE_WRITE_TOOLS
 
 # Demo-load receipt contract (contracts/envelopes.py, momus F8 close-out):
 # DEMO_KEYS is the declared data surface the parity gate pins

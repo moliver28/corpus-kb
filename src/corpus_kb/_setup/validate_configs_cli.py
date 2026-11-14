@@ -44,6 +44,7 @@ try:
         validate_claude_config,
         validate_cursor_config,
         validate_opencode_config,
+        validate_zcode_config,
     )
     from corpus_kb._setup.validate_configs_runtime import validate_runtime_config
 except ImportError:  # pragma: no cover - script context (CI validate job)
@@ -61,6 +62,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     validate_claude_config = _mcp.validate_claude_config
     validate_cursor_config = _mcp.validate_cursor_config
     validate_opencode_config = _mcp.validate_opencode_config
+    validate_zcode_config = _mcp.validate_zcode_config
     _runtime = _importlib.import_module("validate_configs_runtime")
     validate_runtime_config = _runtime.validate_runtime_config
 
@@ -107,6 +109,11 @@ def _validate_mcp_config_dir(
             # Intentional reuse: codex.json shares the mcpServers+autoApprove shape.
             codex_config = config
             errs = validate_claude_config(config)
+            errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+        elif filename == "zcode.json":
+            # ZCode native envelope (mcp.servers); its per-server entry
+            # mirrors the Claude Code shape without autoApprove.
+            errs = validate_zcode_config(config)
             errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
         else:
             errors.append(f"mcp-configs/{filename}: unknown config format, skipping")

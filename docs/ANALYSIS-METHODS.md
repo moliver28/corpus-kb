@@ -57,40 +57,40 @@ footnotes. They have no register rows and no ops.
 4. Run `poe gen` again; this page's table updates from the YAML.
 
 <!-- amr-register:generated:start -->
-Register version: 3.0.0. Source: the research document named in `config/analysis_methods.yaml`.
+Register version: 3.2.0. Source: the research document named in `config/analysis_methods.yaml`.
 
-| Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Status | Op |
-|----|--------|---------------|--------|-------------|----------|------------|--------|----|
-| 01 | Full manual codebook analysis (baseline) | `themes` | `raw_text` | `high` | `human_led` | `advanced` | human-led | (none) |
-| 02 | Rapid Qualitative Analysis (RQA) matrix | `structures` | `raw_text` | `moderate` | `human_in_loop` | `baseline` | existing op | `analyze_run` |
-| 03 | Framework Method | `structures` | `raw_text` | `high` | `human_in_loop` | `advanced` | existing op | `analyze_run` |
-| 04 | Dictionary or rule-based classification | `labels` | `raw_text` | `low` | `automated_with_audit` | `baseline` | existing op | `labeling_build` |
-| 05 | TF-IDF keyphrase scan | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | new op | `keyphrases_extract` |
-| 06 | Embedding-based keyphrase extraction (KeyBERT) | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | new op | `keyphrases_extract` |
-| 07 | Statistical keyphrase extraction (YAKE) | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | new op | `keyphrases_extract` |
-| 08 | Classical topic modeling (NMF or LDA) | `themes` | `raw_text` | `moderate` | `automated_with_audit` | `standard` | not planned | (none) |
-| 09 | Unsupervised BERTopic | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | existing op | `topics_build` |
-| 10 | Guided BERTopic | `themes` | `raw_text`, `embeddings`, `seed_labels` | `moderate` | `human_in_loop` | `standard` | new op | `topics_build` |
-| 11 | Zero-shot BERTopic | `themes` | `raw_text`, `embeddings`, `labels` | `moderate` | `human_in_loop` | `standard` | new op | `topics_build` |
-| 12 | Embedding clustering (including interactive clustering) | `structures` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | new op | `clusters_inspect` |
-| 13 | Embedding-centroid classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | new op | `centroids_classify` |
-| 14 | Nearest-neighbor classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | new op | `neighbors_classify` |
-| 15 | TF-IDF with logistic regression or linear SVM | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `baseline` | new op | `lexical_classify` |
-| 16 | Frozen embeddings with a linear classifier | `labels` | `embeddings`, `labels` | `moderate` | `automated_with_audit` | `standard` | existing op | `classification_build` |
-| 17 | SetFit few-shot classification | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `advanced` | existing op | `classification_build` |
-| 18 | Zero-shot NLI classification | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | new op | `nli_classify` |
-| 19 | Programmatic weak supervision (Snorkel) | `labels` | `raw_text`, `predictions` | `high` | `human_in_loop` | `advanced` | existing op | `labeling_build` |
-| 20 | Active learning loop | `recommendations` | `labels`, `predictions` | `high` | `human_in_loop` | `advanced` | new op | `active_learn_next` |
-| 21 | Human-in-the-loop computational grounded theory | `themes` | `raw_text` | `high` | `human_led` | `advanced` | human-led | (none) |
-| 22 | Extract, embed, cluster, summarize (EECS) | `text` | `raw_text`, `embeddings` | `high` | `human_in_loop` | `advanced` | new op | `analyze_run` |
-| 23 | Hybrid retrieval with reranking | `text` | `raw_text`, `embeddings`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `search` |
-| 24 | Extractive question answering | `text` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `ask` |
-| 25 | Named entity recognition (including GLiNER) | `structures` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `ingest_text` |
-| 26 | Sentiment or emotion classification | `scores` | `raw_text` | `moderate` | `automated_with_audit` | `baseline` | new op | `sentiment_screen` |
-| 27 | Aspect-based sentiment analysis | `labels` | `raw_text`, `labels` | `high` | `human_in_loop` | `standard` | new op | `sentiment_screen` |
-| 28 | NLI-based contradiction screening | `errors` | `raw_text`, LLM, `timestamps` | `moderate` | `human_in_loop` | `standard` | new op | `contradictions_screen` |
-| 29 | Near-duplicate and paraphrase detection | `errors` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `baseline` | new op | `duplicates_screen` |
-| 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | new op | `outliers_rank` |
+| Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Difficulty | Status | Op |
+|----|--------|---------------|--------|-------------|----------|------------|------------|--------|----|
+| 01 | Full manual codebook analysis (baseline) | `themes` | `raw_text` | `high` | `human_led` | `advanced` | `advanced` | human-led | (none) |
+| 02 | Rapid Qualitative Analysis (RQA) matrix | `structures` | `raw_text` | `moderate` | `human_in_loop` | `baseline` | `novice` | existing op | `analyze_run` |
+| 03 | Framework Method | `structures` | `raw_text` | `high` | `human_in_loop` | `advanced` | `advanced` | existing op | `analyze_run` |
+| 04 | Dictionary or rule-based classification | `labels` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | existing op | `labeling_build` |
+| 05 | TF-IDF keyphrase scan | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | new op | `keyphrases_extract` |
+| 06 | Embedding-based keyphrase extraction (KeyBERT) | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | `intermediate` | new op | `keyphrases_extract` |
+| 07 | Statistical keyphrase extraction (YAKE) | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | new op | `keyphrases_extract` |
+| 08 | Classical topic modeling (NMF or LDA) | `themes` | `raw_text` | `moderate` | `automated_with_audit` | `standard` | `intermediate` | not planned | (none) |
+| 09 | Unsupervised BERTopic | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | `intermediate` | existing op | `topics_build` |
+| 10 | Guided BERTopic | `themes` | `raw_text`, `embeddings`, `seed_labels` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `topics_build` |
+| 11 | Zero-shot BERTopic | `themes` | `raw_text`, `embeddings`, `labels` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `topics_build` |
+| 12 | Embedding clustering (including interactive clustering) | `structures` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `clusters_inspect` |
+| 13 | Embedding-centroid classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | `intermediate` | new op | `centroids_classify` |
+| 14 | Nearest-neighbor classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | `intermediate` | new op | `neighbors_classify` |
+| 15 | TF-IDF with logistic regression or linear SVM | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `baseline` | `intermediate` | new op | `lexical_classify` |
+| 16 | Frozen embeddings with a linear classifier | `labels` | `embeddings`, `labels` | `moderate` | `automated_with_audit` | `standard` | `intermediate` | existing op | `classification_build` |
+| 17 | SetFit few-shot classification | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `advanced` | `advanced` | existing op | `classification_build` |
+| 18 | Zero-shot NLI classification | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `intermediate` | new op | `nli_classify` |
+| 19 | Programmatic weak supervision (Snorkel) | `labels` | `raw_text`, `predictions` | `high` | `human_in_loop` | `advanced` | `advanced` | existing op | `labeling_build` |
+| 20 | Active learning loop | `recommendations` | `labels`, `predictions` | `high` | `human_in_loop` | `advanced` | `advanced` | new op | `active_learn_next` |
+| 21 | Human-in-the-loop computational grounded theory | `themes` | `raw_text` | `high` | `human_led` | `advanced` | `advanced` | human-led | (none) |
+| 22 | Extract, embed, cluster, summarize (EECS) | `text` | `raw_text`, `embeddings` | `high` | `human_in_loop` | `advanced` | `advanced` | new op | `analyze_run` |
+| 23 | Hybrid retrieval with reranking | `text` | `raw_text`, `embeddings`, LLM | `moderate` | `automated_with_audit` | `standard` | `novice` | existing op | `search` |
+| 24 | Extractive question answering | `text` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `novice` | existing op | `ask` |
+| 25 | Named entity recognition (including GLiNER) | `structures` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `novice` | existing op | `ingest_text` |
+| 26 | Sentiment or emotion classification | `scores` | `raw_text` | `moderate` | `automated_with_audit` | `baseline` | `novice` | new op | `sentiment_screen` |
+| 27 | Aspect-based sentiment analysis | `labels` | `raw_text`, `labels` | `high` | `human_in_loop` | `standard` | `intermediate` | new op | `sentiment_screen` |
+| 28 | NLI-based contradiction screening | `errors` | `raw_text`, LLM, `timestamps` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `contradictions_screen` |
+| 29 | Near-duplicate and paraphrase detection | `errors` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `baseline` | `novice` | new op | `duplicates_screen` |
+| 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | `novice` | new op | `outliers_rank` |
 
 ## Method guidance
 
@@ -99,6 +99,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Interpreted claims, with the codebook version and analyst decisions recorded.
   - Do not claim: Do not claim human coding is an error-free reference standard.
   - Cautions: Coding procedures can drift as analysts meet new cases. Bias: Researcher expectations, selective attention, and premature code closure can shape the result.
+  - Difficulty: `advanced`.
+  - Teaches: `qualitative_coding`.
   - Routing axes: task `representation`, comparison `none`, output `narrative`, evidence `labels`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Selective attention and premature code closure can hide cases that do not fit.
   - Limits: Manual close reading wins for interpretive claims.
@@ -110,6 +112,9 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Bounded answers for the templated questions, with links to evidence.
   - Do not claim: Do not claim the matrix equals a full line-by-line analysis.
   - Cautions: Summary templates can omit detail that later analysis needs. Bias: Template and interview-guide framing can compress the summaries.
+  - Difficulty: `novice`.
+  - Teaches: `qualitative_coding`.
+  - Next: `03` Framework Method.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `point_answer`, evidence `claims`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Template framing can compress answers and hide detail later analysis needs.
   - Limits: Answers stay bounded; read the original evidence before big decisions.
@@ -121,6 +126,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Case comparisons that preserve cited context.
   - Do not claim: Do not claim the charting preserved every narrative detail.
   - Cautions: Matrix reduction can weaken narrative and sequence information when categories shift while charting or uncategorized material drops from view. Bias: Fixed framework categories can make uncategorized material less visible.
+  - Difficulty: `advanced`.
+  - Teaches: `qualitative_coding`.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `narrative`, evidence `labels`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Matrix reduction can weaken narrative and sequence information.
   - Limits: Deep interpretation beats the matrix when narrative sequence matters.
@@ -132,6 +139,9 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Counts of rule matches, unless broader validity is established.
   - Do not claim: Do not claim rule matches prove implicit meaning.
   - Cautions: Matches are sensitive to synonyms, negation, spelling, and context. Bias: Vocabulary choices can favor some groups or ways of speaking.
+  - Difficulty: `novice`.
+  - Teaches: `keyword_rules`.
+  - Next: `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `lexical`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Negation and context flip matches; counts never prove implicit meaning.
   - Limits: Rule matches find explicit mentions; implicit meaning needs reading or models.
@@ -143,39 +153,59 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Descriptions of distinctive wording in the corpus.
   - Do not claim: Do not call the ranked list themes.
   - Cautions: Sensitive to document boundaries, vocabulary filtering, and repeated boilerplate. Bias: Rare wording can rank highly without research importance.
+  - Difficulty: `novice`.
+  - Teaches: `term_weighting`.
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `lexical`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Repeated boilerplate and rare words can outrank meaningful terms.
   - Limits: Distinctive wording only; themes need reading or topic models.
   - Ask it: "What words come up most often across these documents?" / "Which terms stand out as unusual in this corpus?" / "Show the most distinctive wording in the collection."
   - Follow-ups: "Which top terms look meaningless here?" / "What rare words rank surprisingly high?" / "How does filtering change the ranked list?"
   - Evidence: https://scikit-learn.org/1.5/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html (Documentation)
+  - Table: `phrase` (text), `score` (number, tfidf). Order: `-score`, `phrase`. Round to 6 places.
+  - Ties: Equal scores order by phrase ascending.
+  - Shares divide by `screened_count`.
 - **06 — Embedding-based keyphrase extraction (KeyBERT)** (op: `keyphrases_extract`). Create document previews, search suggestions, and candidate descriptors.
   - Validate: Review candidate generation, model choice, diversity settings, and an output sample.
   - Claim only: Phrases similar in meaning to the document, by embedding similarity.
   - Do not claim: Do not read similarity scores as probabilities of analytical importance.
   - Cautions: Sensitive to the embedding model, candidate generation, and document length. Bias: The representation can favor language covered in model training.
+  - Difficulty: `intermediate`.
+  - Teaches: `vector_similarity`.
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Model favoritism can rank trained-on language; scores are not importance.
   - Limits: Phrase previews only; not validated themes or importance ranking.
   - Ask it: "Which phrases best describe what each document says?" / "Suggest key phrases for a summary preview of documents." / "Find candidate phrases similar in meaning to the document."
   - Follow-ups: "Do these phrases match what the document argues?" / "How does a seed term change the ranking?" / "Which documents share the same key phrases?"
   - Evidence: https://maartengr.github.io/KeyBERT/guides/embeddings.html (Documentation)
+  - Table: `phrase` (text), `score` (number, cosine). Order: `-score`, `phrase`. Round to 6 places.
+  - Ties: Equal scores order by phrase ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Stored chunk vectors and the live embedder can give slightly different scores.
 - **07 — Statistical keyphrase extraction (YAKE)** (op: `keyphrases_extract`). Get a quick lexical overview and compare it with embedding-based extraction.
   - Validate: Review language and filtering settings. Inspect short and long texts separately.
   - Claim only: Statistically salient phrases for the supplied texts.
   - Do not claim: Do not claim research importance for high-scoring phrases.
   - Cautions: Salience rests on text features and matching language settings; short texts and filtering choices can change the results. Bias: Surface salience can miss implicit or uncommon concepts.
+  - Difficulty: `novice`.
+  - Teaches: `term_weighting`.
+  - Next: `06` Embedding-based keyphrase extraction (KeyBERT).
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `lexical`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Short texts and filtering choices can change the ranked phrases.
   - Limits: Statistically salient phrases only; not research importance.
   - Ask it: "Give me a quick phrase list without any model." / "Extract salient phrases using text statistics alone." / "What are the top phrases by statistical salience?"
   - Follow-ups: "How does this list compare with embedding-based phrases?" / "Which phrases survive stricter filtering?" / "Do short texts rank differently here?"
   - Evidence: https://doi.org/10.1016/j.ins.2019.09.013 (Journal 2019)
+  - Table: `phrase` (text), `score` (number). Order: the model reply order. Round to 6 places.
+  - Ties: Model ranks are total; one row holds one position.
+  - Shares divide by `screened_count`.
+  - Caveats: Rows carry 0.0; the model reply order is the rank.
 - **08 — Classical topic modeling (NMF or LDA)**. Navigate a corpus and form questions for close reading.
   - Validate: Compare preprocessing and topic counts. Inspect representative and poorly fitting records.
   - Claim only: Exploratory topic descriptions for navigation.
   - Do not claim: Do not read a topic weight as proof of a qualitative theme.
   - Cautions: Topic results change with preprocessing, topic count, fitting choices, and wording drift. Bias: Frequent vocabulary and analyst-selected topic counts shape the results.
+  - Difficulty: `intermediate`.
+  - Teaches: `topic_modeling`, `term_weighting`.
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `lexical`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Frequent vocabulary and analyst-chosen topic counts shape every result.
   - Limits: Exploratory navigation only; never proof of a qualitative theme.
@@ -187,6 +217,9 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Exploratory corpus maps with cluster descriptions.
   - Do not claim: Do not present a topic representation as a validated research theme.
   - Cautions: Clusters depend on embeddings, dimensionality reduction, and clustering settings. Bias: Small or dispersed groups can be treated as outliers.
+  - Difficulty: `intermediate`.
+  - Teaches: `topic_modeling`, `clustering`, `vector_similarity`.
+  - Next: `10` Guided BERTopic, `11` Zero-shot BERTopic.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Small or dispersed groups can be discarded as outliers.
   - Limits: Exploratory maps only; not validated research themes.
@@ -198,6 +231,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Topics shaped by declared seed concepts.
   - Do not claim: Do not claim the seeds produced complete or unbiased discovery.
   - Cautions: Seed words must point at real concepts; seeds do not guarantee the wanted topics or complete discovery. Bias: Supplied topic vocabulary can create confirmation bias.
+  - Difficulty: `intermediate`.
+  - Teaches: `topic_modeling`, `clustering`, `weak_supervision`.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Seed vocabulary can create confirmation bias and incomplete discovery.
   - Limits: Seed-shaped exploration only; not complete or unbiased discovery.
@@ -209,6 +244,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Assignments to supplied topics, with the threshold recorded.
   - Do not claim: Do not equate this similarity matching with NLI classification.
   - Cautions: Description wording and thresholds affect assignment versus discovery. Bias: Familiar topics can absorb material that merits a different reading.
+  - Difficulty: `intermediate`.
+  - Teaches: `topic_modeling`, `clustering`, `vector_similarity`.
   - Routing axes: task `measurement`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Familiar topics can absorb material that merits a different reading.
   - Limits: Similarity routing only; not NLI classification.
@@ -220,50 +257,80 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Exploratory groups with examples and distances.
   - Do not claim: Do not claim semantic similarity equals the similarity the research question needs.
   - Cautions: Embedding similarity must reflect the similarity the question needs. A stable-looking group can reflect topic, style, speaker, or document format. Bias: Majority patterns and embedding training data shape the group structure.
+  - Difficulty: `intermediate`.
+  - Teaches: `clustering`, `vector_similarity`.
+  - Next: `04` Dictionary or rule-based classification.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Convexity bias flattens non-round clusters; imbalance hides minority groups.
   - Limits: Exploratory groups only; semantic similarity is not research similarity.
   - Ask it: "Group similar comments together so I can review them." / "Cluster the embeddings and show example records per group." / "How can I organize thousands of records into groups?"
   - Follow-ups: "Which records sit between two groups?" / "How do groups change with different settings?" / "What makes each group's examples similar?"
   - Evidence: https://aclanthology.org/2026.nlp4dh-1.36.pdf (Workshop 2026)
+  - Table: `cluster_id` (integer), `size` (integer), `exemplar_chunk_ids` (id_list). Order: `-size`, `cluster_id`.
+  - Ties: Equal sizes order by cluster id ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Structure (sizes, noise, exemplars) is deterministic on one machine; coordinates are never claimed.
 - **13 — Embedding-centroid classification** (op: `centroids_classify`). Apply a small set of concrete categories with inspectable prototypes.
   - Validate: Inspect the examples. Measure category precision, recall, and abstention. Tune thresholds on separate data.
   - Claim only: Category assignments with similarities and recorded abstentions.
   - Do not claim: Do not claim one centroid represents every form of a category.
   - Cautions: One mean can hide distinct subgroups when examples do not cover the category spread. Bias: Example selection defines the category prototype.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`, `vector_similarity`.
+  - Requires: `04` Dictionary or rule-based classification.
+  - Next: `14` Nearest-neighbor classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: One centroid can hide distinct subgroups inside a category.
   - Limits: A few concrete categories only; broad or many categories degrade fast.
   - Ask it: "Classify records into a few categories from example averages." / "I have labeled examples; assign new records by similarity." / "Which category is each record closest to overall?"
   - Follow-ups: "Which categories attract the most abstentions?" / "Do any categories hide two subgroups?" / "How do thresholds move precision and recall?"
   - Evidence: https://ar5iv.labs.arxiv.org/html/2211.16285 (Preprint 2022)
+  - Table: `chunk_id` (id), `label` (text), `abstained` (boolean), `margin` (number, cosine gap). Order: `chunk_id`. Round to 6 places.
+  - Ties: Label ties at the top go to the alphabetically first label.
+  - Shares divide by `screened_count`.
 - **14 — Nearest-neighbor classification** (op: `neighbors_classify`). Support example-based review and find missing training examples.
   - Validate: Review example coverage. Tune the neighbor count and rejection rules on held-out labels.
   - Claim only: Category assignments backed by listed neighbor examples.
   - Do not claim: Do not claim coverage the labeled examples do not have.
   - Cautions: Sensitive to neighbor coverage, distance choice, and local label errors. Bias: Overrepresented examples can dominate nearby votes.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`, `vector_similarity`.
+  - Requires: `04` Dictionary or rule-based classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Overrepresented examples dominate nearby votes; local label errors propagate.
   - Limits: Example-backed labels only; coverage stops where labels stop.
   - Ask it: "Label this record from its nearest labeled neighbors." / "Which known examples support each predicted category?" / "I want predictions that show their supporting examples."
   - Follow-ups: "Which predictions rest on weak neighbor support?" / "Where are labeled examples sparse?" / "Which records get the most disagreement among neighbors?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
+  - Table: `chunk_id` (id), `label` (text), `votes` (object_list), `neighbor_ids` (id_list). Order: `chunk_id`.
+  - Ties: Predictions order by chunk id ascending.
+  - Shares divide by `screened_count`.
 - **15 — TF-IDF with logistic regression or linear SVM** (op: `lexical_classify`). Set a reproducible classification baseline before a more expensive model.
   - Validate: Fit the baseline. Inspect errors. Measure performance on independent test records. Tune features without the final test set.
   - Claim only: Baseline performance on independent test records.
   - Do not claim: Do not claim transfer to shifted vocabulary without a test.
   - Cautions: Vocabulary shift and shortcut words can reduce transfer. Bias: Labels can attach to names, groups, or formatting instead of the concept.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`, `term_weighting`.
+  - Requires: `04` Dictionary or rule-based classification.
+  - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `lexical`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Vocabulary shift and shortcut words cut transfer; labels can attach to names.
   - Limits: Narrow categories on similar text; shifted vocabulary needs a new test.
   - Ask it: "Train a cheap text classifier for my narrow categories." / "Set a baseline classifier on word features first." / "Which words drive this linear text classifier?"
   - Follow-ups: "Which words dominate each coefficient?" / "Which labels confuse the classifier most?" / "Does the baseline hold on shifted vocabulary?"
   - Evidence: https://scikit-learn.org/stable/auto_examples/text/plot_document_classification_20newsgroups.html (Documentation)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, probability). Order: `chunk_id`. Round to 6 places.
+  - Ties: Rows order by chunk id ascending.
+  - Shares divide by `screened_count`.
 - **16 — Frozen embeddings with a linear classifier** (op: `classification_build`). Run bounded classification when the frozen representation preserves the categories.
   - Validate: Measure category-level performance on a labeled evaluation set. Audit errors.
   - Claim only: Category-level results tied to the recorded embedding-model version.
   - Do not claim: Do not claim the encoder preserves distinctions it was never shown.
   - Cautions: A fixed encoder cannot learn distinctions it does not represent. Bias: Training examples and pretrained representations both shape the decisions.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`, `vector_similarity`.
+  - Next: `17` SetFit few-shot classification, `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: A fixed encoder cannot learn distinctions it does not represent.
   - Limits: Bounded categories the representation already separates.
@@ -275,6 +342,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Few-shot results for the tested categories and example set.
   - Do not claim: Do not promise a published benchmark number for a new corpus.
   - Cautions: Few examples may not cover category diversity. Noisy examples harm adaptation. Bias: Small training sets can amplify analyst-selected examples.
+  - Difficulty: `advanced`.
+  - Teaches: `classification`, `vector_similarity`.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Noisy or analyst-chosen few examples can amplify bias.
   - Limits: The tested categories and example set only; never a promised benchmark number.
@@ -286,17 +355,27 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Pilot label proposals with support scores.
   - Do not claim: Do not treat zero-shot scores as established probabilities.
   - Cautions: Wording, lexical overlap, and syntax can produce wrong support judgments. Bias: Label descriptions and training-domain assumptions shape the results.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`.
+  - Next: `04` Dictionary or rule-based classification.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Lexical overlap and syntax can flip support judgments.
   - Limits: Pilot triage only; scores are not established probabilities.
   - Ask it: "Test candidate labels before any labeled data exists." / "Does this text support the statement my label makes?" / "Score records against written label descriptions."
   - Follow-ups: "Which label statements overlap too much?" / "Where does negation flip the verdict?" / "Which categories need labeled examples next?"
   - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
+  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, verdict score), `scores` (object_list). Order: `chunk_id`. Round to 6 places.
+  - Ties: Score ties pick the alphabetically first label.
+  - Shares divide by `screened_count`.
+  - Caveats: The score is a three-way verdict map, not a calibrated probability.
 - **19 — Programmatic weak supervision (Snorkel)** (op: `labeling_build`). Turn reusable domain rules into training data. Keep an independent human evaluation set.
   - Validate: Inspect the labeling functions. Measure conflicts and coverage. Evaluate on independent labels.
   - Claim only: Training labels with coverage and conflict reports.
   - Do not claim: Do not claim label quality without an independent evaluation set.
   - Cautions: Correlated rules can repeat the same error. Low coverage stays a problem. Bias: Rule authors can encode the same assumptions in several functions.
+  - Difficulty: `advanced`.
+  - Teaches: `weak_supervision`, `keyword_rules`.
+  - Next: `16` Frozen embeddings with a linear classifier.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Correlated rules repeat one error; low coverage stays a problem.
   - Limits: Training labels only; label quality needs an independent evaluation set.
@@ -308,17 +387,25 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Annotation-order recommendations with the strategy recorded.
   - Do not claim: Do not claim the selection strategy always beats random sampling.
   - Cautions: Task and label sets must stay stable and annotators stay consistent. Uncertainty sampling can chase difficult or noisy cases, not representative ones. Bias: Selected annotation data need not match corpus prevalence.
+  - Difficulty: `advanced`.
+  - Teaches: `active_learning`, `classification`.
+  - Requires: `16` Frozen embeddings with a linear classifier.
   - Routing axes: task `prediction`, comparison `none`, output `ranked_list`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Uncertainty sampling chases noisy cases, not representative ones.
   - Limits: Annotation ordering only; the strategy need not beat random sampling.
   - Ask it: "Which records should I label next to save effort?" / "Pick the most useful examples for my annotation round." / "I want the classifier to choose what I label."
   - Follow-ups: "How much did accuracy move per batch?" / "Does this strategy beat random sampling here?" / "Which records stay uncertain after retraining?"
   - Evidence: https://burrsettles.com/pub/settles.activelearning.pdf (Survey 2009)
+  - Table: `chunk_id` (id), `set_id` (id), `label` (text), `probability` (number, probability), `review` (boolean), `score` (number, strategy score). Order: `-score`, `chunk_id`. Round to 6 places.
+  - Ties: Equal scores order by chunk id ascending.
+  - Caveats: The margin score is a proxy: the store keeps the winning probability only.
 - **21 — Human-in-the-loop computational grounded theory**. Develop and challenge an explanation with the corpus.
   - Validate: Test the explanation against close reading, alternative readings, and further evidence.
   - Claim only: An interpreted account that survived stated tests.
   - Do not claim: Do not present it as autonomous theme discovery.
   - Cautions: Computational patterns do not remove the need for contextual interpretation. Bias: Pattern selection and theoretical interpretation can reinforce prior beliefs.
+  - Difficulty: `advanced`.
+  - Teaches: `qualitative_coding`.
   - Routing axes: task `discovery`, comparison `none`, output `narrative`, evidence `claims`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Pattern selection can reinforce prior beliefs instead of testing them.
   - Limits: Manual close reading wins for interpretive claims; computation only assists.
@@ -330,6 +417,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: A structured discovery aid with per-stage audit results.
   - Do not claim: Do not claim end-to-end accuracy from the components' evidence.
   - Cautions: Early extraction omissions cannot be repaired by later clustering or summaries. Bias: Extraction rules, grouping, and summary selection can each drop minority evidence.
+  - Difficulty: `advanced`.
+  - Teaches: `clustering`, `vector_similarity`.
   - Routing axes: task `discovery`, comparison `none`, output `narrative`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Early extraction omissions cannot be repaired by later clustering or summaries.
   - Limits: A discovery aid only; not end-to-end accuracy claims.
@@ -341,6 +430,9 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Evidence lists for stated questions, with scores by type.
   - Do not claim: Do not read retrieval scores as answer truth.
   - Cautions: Queries must match the evidence wording and the index must stay current. Performance can change across retrieval tasks and domains. Bias: Questions and ranking models decide which evidence becomes visible.
+  - Difficulty: `novice`.
+  - Teaches: `information_retrieval`, `vector_similarity`.
+  - Next: `28` NLI-based contradiction screening.
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Question wording and reranker choice decide which evidence becomes visible.
   - Limits: Evidence lists only; retrieval scores are not answer truth.
@@ -352,6 +444,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Stated-answer spans with source locations.
   - Do not claim: Do not claim answers to questions the passages do not answer.
   - Cautions: Some passage must state the answer; a plausible span can still be wrong or unsupported. No-answer behavior matters. Bias: Question wording and passage selection constrain the possible answers.
+  - Difficulty: `novice`.
+  - Teaches: `information_retrieval`.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: A plausible span can be wrong or unsupported.
   - Limits: Stated answers only; open questions need close reading.
@@ -363,6 +457,8 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Span inventories for the declared entity types.
   - Do not claim: Do not assume two matching names are the same entity.
   - Cautions: Type descriptions must match the corpus and boundaries must follow declared rules. Unfamiliar terms and domain shift can reduce performance. Bias: Type definitions and training data can favor familiar names or entity forms.
+  - Difficulty: `novice`.
+  - Teaches: `entity_extraction`.
   - Routing axes: task `representation`, comparison `none`, output `graph`, evidence `graph`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Entity boundaries, unfamiliar terms, and domain shift cut performance.
   - Limits: Span inventories only; matching names are not the same entity.
@@ -374,54 +470,87 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Claim only: Screening flags for evaluative language under the defined construct.
   - Do not claim: Do not infer a participant's internal state without further evidence.
   - Cautions: The construct must be defined and expression must map to its categories. Mixed, indirect, and code-mixed language need task-specific tests. Bias: Expression style can be mistaken for an emotional state.
+  - Difficulty: `novice`.
+  - Teaches: `sentiment_analysis`, `keyword_rules`.
   - Routing axes: task `measurement`, comparison `none`, output `statistic`, evidence `labels`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Indirect, mixed, and code-mixed language need task-specific tests.
   - Limits: Screening flags only; not a participant's internal state.
   - Ask it: "How positive or negative is the tone of these records?" / "Screen records for evaluative or emotional language." / "Which records express frustration or satisfaction?"
   - Follow-ups: "Which records look mixed or neutral?" / "Does tone match the words screened?" / "Which categories need their own test set?"
   - Evidence: https://aclanthology.org/2023.wassa-1.59/ (Workshop 2023)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, vote share), `review` (boolean). Order: `chunk_id`. Round to 6 places.
+  - Ties: Tied votes route to review instead of picking a winner.
+  - Shares divide by `screened_count`.
+  - Caveats: Preset lexicon vote, not a trained model. The evidence note rides every success.
 - **27 — Aspect-based sentiment analysis** (op: `sentiment_screen`). Compare evaluations of defined product or service attributes.
   - Validate: Evaluate aspect extraction and target-linked sentiment separately, then jointly.
   - Claim only: Aspect-linked sentiment for the declared aspects.
   - Do not claim: Do not claim opinions on aspects the definitions never covered.
   - Cautions: Correct sentiment requires the correct target and aspect link. Bias: Predefined aspects can exclude concerns outside the team's framework.
+  - Difficulty: `intermediate`.
+  - Teaches: `sentiment_analysis`, `classification`.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Wrong target links flip sentiment; declared aspects exclude unlisted concerns.
   - Limits: Declared aspects only; uncovered aspects stay unmeasured.
   - Ask it: "What do reviewers say about the battery life specifically?" / "Compare opinions about each product feature separately." / "I want sentiment linked to the aspect it targets."
   - Follow-ups: "Which aspects get conflicting sentiment?" / "What opinions fall outside declared aspects?" / "How do targets link across sentences?"
   - Evidence: https://aclanthology.org/S14-2004/ (Workshop 2014)
+  - Table: `chunk_id` (id), `label` (text), `probability` (number, vote share), `review` (boolean). Order: `chunk_id`. Round to 6 places.
+  - Ties: Tied votes route to review instead of picking a winner.
+  - Shares divide by `screened_count`.
+  - Caveats: The current screen has no aspect columns; rows are document-level votes.
 - **28 — NLI-based contradiction screening** (op: `contradictions_screen`). Build a contradiction-review queue for human reviewers.
   - Validate: Test negation, entity identity, time, conditions, and statements that merely differ. Use labeled statement pairs.
   - Claim only: Candidate contradictions for human adjudication.
   - Do not claim: Do not claim a model decision proves a claim false in the world.
   - Cautions: Different times or conditions can make apparent contradictions compatible. Bias: Candidate selection can favor disagreement and miss agreement or context.
+  - Difficulty: `intermediate`.
+  - Teaches: `contradiction_detection`, `vector_similarity`.
   - Routing axes: task `measurement`, comparison `temporal`, output `ranked_list`, evidence `claims`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Different times or conditions make apparent contradictions compatible.
   - Limits: A candidate queue for humans; model decisions never prove a claim false.
   - Ask it: "Find statements that contradict each other across records." / "Which claims conflict when compared pair by pair?" / "I want a review queue of possible contradictions."
   - Follow-ups: "Which pairs only differ by time or place?" / "Do flagged pairs survive reading the context?" / "Which speakers change position across records?"
   - Evidence: https://aclanthology.org/P19-1334/ (Conference 2019)
+  - Table: `chunk_id_i` (id), `chunk_id_j` (id), `verdict` (text). Order: `chunk_id_i`, `chunk_id_j`.
+  - Ties: Candidates dedupe; pairs order by the lower then the higher chunk id.
+  - Shares divide by `screened_count`.
 - **29 — Near-duplicate and paraphrase detection** (op: `duplicates_screen`). Remove duplicate ingestion and find repeated material. Preserve independent participant records.
   - Validate: Measure pairwise precision and recall at the action threshold. Label candidate pairs.
   - Claim only: Duplicate candidates at a recorded threshold, for human approval.
   - Do not claim: Do not merge records without human approval of the merge policy.
   - Cautions: Similar meaning does not establish interchangeable evidence; review and merge thresholds stay separate. Bias: Merging can erase independent speakers or minority wording.
+  - Difficulty: `novice`.
+  - Teaches: `vector_similarity`.
   - Routing axes: task `measurement`, comparison `none`, output `ranked_list`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Merging can erase independent speakers or minority wording.
   - Limits: Candidate pairs for human approval; never auto-merge.
   - Ask it: "Find duplicate or paraphrased records before analysis." / "Which records say nearly the same thing?" / "I want to merge near duplicates without losing speakers."
   - Follow-ups: "Which near duplicates are genuinely separate speakers?" / "How do thresholds split review from merge?" / "What paraphrases survived the exact-match pass?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
+  - Table: `similarity` (number, cosine), `chunk_id_i` (id), `chunk_id_j` (id). Order: `-similarity`, `chunk_id_i`, `chunk_id_j`. Round to 6 places.
+  - Ties: Equal similarities order by the lower id, then the higher id.
+  - Shares divide by `screened_count`.
 - **30 — Outlier or novelty detection** (op: `outliers_rank`). Find exceptions, data problems, and possibly overlooked experiences.
   - Validate: Define the reference group. Inspect flagged records. Compare detectors and representations. Compare detector scores against the reference distribution before ranking.
   - Claim only: A ranked review list with the detector and reference recorded.
   - Do not claim: Do not equate unusualness with importance.
   - Cautions: Results depend on the representation and the definition of normality. Bias: Minority language, rare experiences, or accessibility needs can look anomalous.
+  - Difficulty: `novice`.
+  - Teaches: `vector_similarity`.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `ranked_list`, evidence `vector`, rigor `inferential_null`, cost tier `interactive`.
   - Watch for: Minority language or rare experiences can look anomalous.
   - Limits: A ranked review list only; unusualness is not importance.
   - Ask it: "Which records are unusual compared with the rest?" / "Rank the strangest records for my review." / "I want to find exceptions and possible data problems."
   - Follow-ups: "Which flagged records are rare but normal?" / "How does the detector change with the reference group?" / "What does the nearest ordinary example show?"
   - Evidence: https://scikit-learn.org/stable/modules/outlier_detection.html (Documentation)
+  - Table: `chunk_id` (id), `knn_distance` (number, cosine distance). Order: `-knn_distance`, `chunk_id`. Round to 6 places.
+  - Ties: Equal distances order by chunk id ascending.
+  - Shares divide by `screened_count`.
+
+## Backend proof
+
+The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). The screens, classifiers, cluster report, keyphrase ranks, sentiment screen, active-learning rank, and NLI pair run on both engines. The deep surface gate pins the same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG store) and on DuckDB (the graph store).
+
+One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored value can differ from Postgres in far decimals.
 <!-- amr-register:generated:end -->

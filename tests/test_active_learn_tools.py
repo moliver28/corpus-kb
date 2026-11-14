@@ -97,6 +97,7 @@ async def test_no_predictions_answer_empty(monkeypatch: pytest.MonkeyPatch) -> N
     result = await active_learn_tools.active_learn_next(_PresentPool(), tenant_id=TENANT)
     assert result["status"] == "empty"
     assert str(result["remedy"])
+    assert "method 16" in str(result["remedy"])
 
 
 async def test_margin_ranks_the_least_confident_first(monkeypatch: pytest.MonkeyPatch) -> None:

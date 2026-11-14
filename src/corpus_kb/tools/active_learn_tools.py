@@ -51,7 +51,9 @@ _BATCH_REMEDY = "batch must be a positive whole number."
 _UNAVAILABLE_REASON = "classification tables absent (migration 029 not applied)"
 _UNAVAILABLE_REMEDY = "run corpus-kb setup"
 _EMPTY_REASON = "no stored predictions; run classification-build with a seed file first."
-_EMPTY_REMEDY = "Run classification-build with a seed file, then retry."
+_EMPTY_REMEDY = (
+    "Build predictions first: run method 16 (classification-build) with a seed file, then retry."
+)
 _PROXIMITY_NOTE = (
     "chunk_predictions stores the winning probability only. The margin score is "
     "1 - p; for a binary set it orders exactly like the true top-2 gap. Entropy "

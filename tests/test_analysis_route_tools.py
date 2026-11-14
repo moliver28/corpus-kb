@@ -43,7 +43,7 @@ QUESTION = (
 # envelope status is honestly "degraded" while the intent resolved.
 # Regenerate by running the golden query and serializing with
 # json.dumps(result, sort_keys=True).
-GOLDEN_JSON = """{"intent": {"axes": {"comparison_structure": null, "cost_tier": null, "evidence_basis": null, "output_form": null, "statistical_rigor": null, "task_type": null}, "confidence": 0.6666666666666666, "method_id": "29", "note": "degraded", "question": "find duplicate or paraphrased records before analysis. which records say nearly the same thing? i want to merge near duplicates without losing speakers. detect repeated submissions and rephrased copies.", "ranked_method_ids": ["29"], "readings": [], "status": "resolved"}, "ranked": [{"method_id": "29", "name": "Near-duplicate and paraphrase detection", "run_hint": {"op": "duplicates_screen", "params": {}}, "why": "Find duplicate or paraphrased records before analysis."}], "status": "degraded", "suggestions": ["Which near duplicates are genuinely separate speakers?", "How do thresholds split review from merge?", "What paraphrases survived the exact-match pass?"], "trace": {"margin": 0.1, "mode": "phrase", "scores": [{"method_id": "29", "score": 0.6666666666666666}], "threshold": 0.55}}"""  # noqa: E501
+GOLDEN_JSON = """{"intent": {"axes": {"comparison_structure": null, "cost_tier": null, "evidence_basis": null, "output_form": null, "statistical_rigor": null, "task_type": null}, "confidence": 0.6666666666666666, "method_id": "29", "note": "degraded", "question": "find duplicate or paraphrased records before analysis. which records say nearly the same thing? i want to merge near duplicates without losing speakers. detect repeated submissions and rephrased copies.", "ranked_method_ids": ["29"], "readings": [], "status": "resolved"}, "next_methods": [], "ranked": [{"method_id": "29", "name": "Near-duplicate and paraphrase detection", "run_hint": {"op": "duplicates_screen", "params": {}}, "why": "Find duplicate or paraphrased records before analysis."}], "status": "degraded", "suggestions": ["Which near duplicates are genuinely separate speakers?", "How do thresholds split review from merge?", "What paraphrases survived the exact-match pass?"], "trace": {"margin": 0.1, "mode": "phrase", "scores": [{"method_id": "29", "score": 0.6666666666666666}], "threshold": 0.55}}"""  # noqa: E501
 
 
 class _FlatEmbedder:
@@ -79,8 +79,13 @@ def _record(
     name: str,
     phrases: list[str] | None = None,
     suggests: list[str] | None = None,
+    *,
+    op: str | None = None,
+    difficulty: str | None = None,
+    next_: list[str] | None = None,
 ) -> dict[str, object]:
     """One minimal valid method row; ``None`` drops the routing field."""
+    status = "implemented_existing" if op is not None else "not_planned"
     row: dict[str, object] = {
         "id": id_,
         "name": name,
@@ -102,14 +107,18 @@ def _record(
         "validation_required": "Check a sample of the scores.",
         "permitted_claims": "Screening claims only.",
         "do_not_claim": "Do not claim calibrated error rates.",
-        "implementation_status": "not_planned",
-        "op": None,
+        "implementation_status": status,
+        "op": op,
         "sources": ["https://example.com/method"],
     }
     if phrases is not None:
         row["question_phrases"] = phrases
     if suggests is not None:
         row["suggests"] = suggests
+    if difficulty is not None:
+        row["difficulty"] = difficulty
+    if next_ is not None:
+        row["next"] = next_
     return row
 
 
@@ -204,7 +213,15 @@ async def test_phrase_mode_envelope_shape() -> None:
     on ``intent.status``.
     """
     result = await _run()
-    assert set(result) == {"status", "intent", "ranked", "trace", "suggestions"}
+    assert set(result) == {
+        "status",
+        "intent",
+        "ranked",
+        "next_methods",
+        "trace",
+        "suggestions",
+    }
+    assert result["next_methods"] == []
     assert result["status"] == "degraded"
     ranked = cast("list[dict[str, object]]", result["ranked"])
     assert len(ranked) == 1
@@ -570,7 +587,15 @@ async def test_ambiguous_envelope_lists_interpretations(
     monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
     result = await _run(question=f"{_TIE_A} {_TIE_B}", config={})
     assert result["status"] == "ambiguous"
-    assert set(result) == {"status", "intent", "ranked", "trace", "interpretations"}
+    assert set(result) == {
+        "status",
+        "intent",
+        "ranked",
+        "next_methods",
+        "trace",
+        "interpretations",
+    }
+    assert result["next_methods"] == []
     readings = cast("list[dict[str, object]]", result["interpretations"])
     assert len(readings) == 2
     assert {str(row["method_id"]) for row in readings} == {"01", "05"}
@@ -615,7 +640,8 @@ async def test_override_forces_resolved(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
     result = await _run(question=f"{_TIE_A} {_TIE_B}", method_id="01")
     assert result["status"] == "resolved"
-    assert set(result) == {"status", "intent", "ranked", "trace"}
+    assert set(result) == {"status", "intent", "ranked", "next_methods", "trace"}
+    assert result["next_methods"] == []
     intent = cast("dict[str, object]", result["intent"])
     assert intent["note"] == "expert_override"
     assert intent["method_id"] == "01"
