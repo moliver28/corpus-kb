@@ -2931,6 +2931,57 @@ async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> 
         assert intent["method_id"] == "29", name
 
 
+async def test_analysis_route_next_methods_parity(parity_env: dict[str, Any]) -> None:
+    """The next-step chain key rides the shared handler on all legs.
+
+    The catalogue tuple declares ``next_methods`` unconditional, so every
+    leg must carry the key with the SAME value. The fixture's route is
+    the degraded phrase path (the pgml config pins it), and the leg
+    method authors no ``next`` chain, so the honest value on all four
+    legs is ``[]`` — presence and equality are the contract here; the
+    chain content is pinned in ``tests/test_analysis_route_next.py``.
+    """
+    ctx = parity_env
+    leg = LEGS["analysis_route"]
+    shared = await leg.shared(ctx)
+
+    client: TestClient = ctx["client"]
+    response = client.post("/api/analysis/route", json={"question": _ROUTE_QUESTION})
+    assert response.status_code == 200, response.text
+    http_env: dict[str, Any] = response.json()
+
+    server: JSONRPCServer = ctx["server"]
+    rpc = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "analysis_route",
+                "params": {"question": _ROUTE_QUESTION},
+            }
+        )
+    )
+    assert "result" in rpc, rpc
+    socket_env: dict[str, Any] = rpc["result"]
+
+    mcp_env = await _call_mcp_tool(
+        ctx["mcp_server"], "analysis_route", {"question": _ROUTE_QUESTION}
+    )
+
+    register = load_method_register({})
+    chosen = next(row for row in register.methods if row.id == "29")
+    expected = list(chosen.next or [])[:3]
+    assert expected == [], "the leg method must author no chain (honest empty list)"
+
+    for name, envelope in (
+        ("shared", shared),
+        ("http", http_env),
+        ("socket", socket_env),
+        ("mcp", mcp_env),
+    ):
+        assert envelope["next_methods"] == expected, name
+
+
 async def _call_mcp_tool(
     mcp_server: Any, tool_name: str, arguments: dict[str, Any]
 ) -> dict[str, Any]:
