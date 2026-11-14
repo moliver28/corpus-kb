@@ -772,6 +772,38 @@ SURFACES: tuple[Surface, ...] = (
         description="Add one relation between two entities.",
         http_route="/api/relations",
     ),
+    # -- Phase-2 Wave 8: graph U/D. All four are WRITE ops: NEVER add them
+    #    to SERVER_AUTO_APPROVE. The handler writes through the GraphStore
+    #    inside the request path; deletes are hard, confirmed destructive.
+    #    ------------------------------------------------------------------
+    Surface(
+        name="update-entity",
+        cli_path="update-entity",
+        mcp_tool="update_entity",
+        description="Update one entity's name and type.",
+        http_route="/api/entities/{entity_id}/update",
+    ),
+    Surface(
+        name="delete-entity",
+        cli_path="delete-entity",
+        mcp_tool="delete_entity",
+        description="Delete one entity and its linked relations.",
+        http_route="/api/entities/{entity_id}/delete",
+    ),
+    Surface(
+        name="update-relation",
+        cli_path="update-relation",
+        mcp_tool="update_relation",
+        description="Update one relation's type and weight.",
+        http_route="/api/relations/{relation_id}/update",
+    ),
+    Surface(
+        name="delete-relation",
+        cli_path="delete-relation",
+        mcp_tool="delete_relation",
+        description="Delete one relation.",
+        http_route="/api/relations/{relation_id}/delete",
+    ),
     # -- chunk-coding ops (issue #350): the six routes the plugin reached
     #    only by hard-coded HTTP posts, plus the two reads it built by
     #    hand (status from four SQL queries, export from hand-written SQL).

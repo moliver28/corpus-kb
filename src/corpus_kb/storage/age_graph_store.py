@@ -1,5 +1,5 @@
 # allow: SIZE_OK — one responsibility (AGE-backed GraphStore); most lines are
-# declarative cypher/SQL text plus 10 thin ABC-mandated methods, and the task
+# declarative cypher/SQL text plus 14 thin ABC-mandated methods, and the task
 # contract for todo 2a forbids splitting constants into a second module.
 """Apache AGE graph store — Level 2 GraphStore backend using openCypher.
 
@@ -23,11 +23,12 @@ from typing import Any, cast
 
 import asyncpg
 
-from corpus_kb.errors import InternalError, ValidationError
+from corpus_kb.errors import ConflictError, InternalError, ValidationError
 
 from ..utils.models import Chunk, Document, Entity, Relation
 from .graph_sql import MAX_NEIGHBOR_HOPS
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
+from .graph_store_writes import ENTITY_CONFLICT_MSG, RELATION_CONFLICT_MSG
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,80 @@ SET r.relation_id = coalesce(r.relation_id, $relation_id),
     r.metadata = coalesce(r.metadata, $metadata)
 RETURN r.relation_id AS relation_id
 """
+
+# -- Wave-8 U/D: AGE has no unique constraints, so uniqueness is enforced by
+#    an application-level pre-check before every destructive SET/DELETE (the
+#    house precedent for exactly this — batch-op validation). Plain SET on
+#    vertex/edge properties and DETACH DELETE are documented AGE clauses.
+#    Filter values never enter the text; they ride the agtype param map.
+
+_UPDATE_ENTITY_DUPLICATE = """
+MATCH (o:Entity)
+WHERE o.tenant_id = $tenant_id AND o.name = $name AND o.entity_type = $entity_type
+  AND o.entity_id <> $entity_id
+RETURN o.entity_id AS entity_id
+LIMIT 1
+"""
+
+_UPDATE_ENTITY = """
+MATCH (e:Entity)
+WHERE e.entity_id = $entity_id AND e.tenant_id = $tenant_id
+SET e.name = $name, e.entity_type = $entity_type, e.metadata = $metadata
+RETURN e.entity_id AS entity_id, e.name AS name, e.entity_type AS entity_type,
+       e.metadata AS metadata, e.source_document_id AS source_document_id
+"""
+
+_ENTITY_EDGE_COUNT = """
+MATCH (e:Entity)-[r:REL]-()
+WHERE e.entity_id = $entity_id AND e.tenant_id = $tenant_id
+  AND r.tenant_id = $tenant_id
+RETURN count(r) AS n
+"""
+
+_DELETE_ENTITY = """
+MATCH (e:Entity)
+WHERE e.entity_id = $entity_id AND e.tenant_id = $tenant_id
+DETACH DELETE e
+RETURN e.entity_id AS entity_id
+"""
+
+_UPDATE_RELATION_DUPLICATE = """
+MATCH (s:Entity)-[r:REL]->(t:Entity)
+WHERE r.tenant_id = $tenant_id AND s.entity_id = $source_entity_id
+  AND t.entity_id = $target_entity_id AND r.relation_type = $relation_type
+  AND r.relation_id <> $relation_id
+RETURN r.relation_id AS relation_id
+LIMIT 1
+"""
+
+_UPDATE_RELATION = """
+MATCH (s:Entity)-[r:REL]->(t:Entity)
+WHERE r.relation_id = $relation_id AND r.tenant_id = $tenant_id
+SET r.relation_type = $relation_type, r.weight = $weight, r.metadata = $metadata
+RETURN r.relation_id AS relation_id, r.source_entity_id AS source_entity_id,
+       r.target_entity_id AS target_entity_id, r.relation_type AS relation_type,
+       r.weight AS weight, r.metadata AS metadata
+"""
+
+_DELETE_RELATION = """
+MATCH ()-[r:REL]->()
+WHERE r.relation_id = $relation_id AND r.tenant_id = $tenant_id
+DELETE r
+RETURN r.relation_id AS relation_id
+"""
+
+_GET_RELATION = """
+MATCH (s:Entity)-[r:REL]->(t:Entity)
+WHERE r.relation_id = $relation_id AND r.tenant_id = $tenant_id
+RETURN r.relation_id AS relation_id, r.source_entity_id AS source_entity_id,
+       r.target_entity_id AS target_entity_id, r.relation_type AS relation_type,
+       r.weight AS weight, r.metadata AS metadata
+"""
+
+_RELATION_COLUMNS = (
+    "relation_id agtype, source_entity_id agtype, target_entity_id agtype, "
+    "relation_type agtype, weight agtype, metadata agtype"
+)
 
 _GET_ENTITY = """
 MATCH (e:Entity)
@@ -369,6 +444,119 @@ class AgeGraphStore(GraphStore):
                     f"target={relation.target_entity_id})"
                 )
             return str(_ag(rows[0]["relation_id"]))
+        finally:
+            await self._release_conn(conn)
+
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        """Pre-check uniqueness, then SET the whitelisted vertex properties."""
+        conn = await self._get_conn()
+        try:
+            async with self.transaction():
+                dup = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_UPDATE_ENTITY_DUPLICATE, "entity_id agtype"),
+                    {
+                        "tenant_id": self._tenant_id,
+                        "name": entity.name,
+                        "entity_type": entity.entity_type,
+                        "entity_id": entity.entity_id,
+                    },
+                )
+                if dup:
+                    raise ConflictError(ENTITY_CONFLICT_MSG)
+                rows = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_UPDATE_ENTITY, _ENTITY_COLUMNS),
+                    {
+                        "tenant_id": self._tenant_id,
+                        "entity_id": entity.entity_id,
+                        "name": entity.name,
+                        "entity_type": entity.entity_type,
+                        "metadata": entity.metadata,
+                    },
+                )
+                return _entity_from_row(rows[0]) if rows else None
+        finally:
+            await self._release_conn(conn)
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        """Count incident edges, then DETACH DELETE (returns no per-edge count)."""
+        conn = await self._get_conn()
+        try:
+            async with self.transaction():
+                count_rows = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_ENTITY_EDGE_COUNT, "n agtype"),
+                    {"tenant_id": self._tenant_id, "entity_id": entity_id},
+                )
+                edge_count = int(str(_ag(count_rows[0]["n"]))) if count_rows else 0
+                gone = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_DELETE_ENTITY, "entity_id agtype"),
+                    {"tenant_id": self._tenant_id, "entity_id": entity_id},
+                )
+                if not gone:
+                    return None
+                return edge_count
+        finally:
+            await self._release_conn(conn)
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        """Pre-check the tenant+triple, then SET the whitelisted edge properties."""
+        conn = await self._get_conn()
+        try:
+            async with self.transaction():
+                dup = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_UPDATE_RELATION_DUPLICATE, "relation_id agtype"),
+                    {
+                        "tenant_id": self._tenant_id,
+                        "source_entity_id": relation.source_entity_id,
+                        "target_entity_id": relation.target_entity_id,
+                        "relation_type": relation.relation_type,
+                        "relation_id": relation.relation_id,
+                    },
+                )
+                if dup:
+                    raise ConflictError(RELATION_CONFLICT_MSG)
+                rows = await self._run_cypher(
+                    conn,
+                    _CypherSpec(_UPDATE_RELATION, _RELATION_COLUMNS),
+                    {
+                        "tenant_id": self._tenant_id,
+                        "relation_id": relation.relation_id,
+                        "relation_type": relation.relation_type,
+                        "weight": relation.weight,
+                        "metadata": relation.metadata,
+                    },
+                )
+                return _relation_from_row(rows[0]) if rows else None
+        finally:
+            await self._release_conn(conn)
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        """DELETE one edge by ID. True when an edge was removed."""
+        conn = await self._get_conn()
+        try:
+            rows = await self._run_cypher(
+                conn,
+                _CypherSpec(_DELETE_RELATION, "relation_id agtype"),
+                {"tenant_id": self._tenant_id, "relation_id": relation_id},
+            )
+            return bool(rows)
+        finally:
+            await self._release_conn(conn)
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """Fetch one edge by ID (endpoints come from the edge properties)."""
+        conn = await self._get_conn()
+        try:
+            rows = await self._run_cypher(
+                conn,
+                _CypherSpec(_GET_RELATION, _RELATION_COLUMNS),
+                {"tenant_id": self._tenant_id, "relation_id": relation_id},
+            )
+            return _relation_from_row(rows[0]) if rows else None
         finally:
             await self._release_conn(conn)
 

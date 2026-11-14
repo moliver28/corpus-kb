@@ -4,7 +4,9 @@ The GraphStore is the pattern for swappable graph backends:
 - Level 1: Postgres (default, asyncpg + RLS)
 - Level 2: Apache AGE (PostgreSQL extension, production openCypher)
 
-MCP tools never change; only the backend swaps.
+The Wave-8 Postgres update/delete method bodies live in
+``graph_store_writes.py`` (the 250-line split). MCP tools never change;
+only the backend swaps.
 """
 
 from __future__ import annotations
@@ -21,6 +23,13 @@ from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 from ..utils.models import Chunk, Document, Entity, Relation
 from .graph_sql import neighbors_sql, traversal_row, traverse_sql
+from .graph_store_writes import (
+    delete_entity_cascade,
+    delete_relation_by_id,
+    get_relation_by_id,
+    update_entity_by_id,
+    update_relation_by_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +68,40 @@ class GraphStore(ABC):
             The relation_id (UUID string).
         """
         pass
+
+    @abstractmethod
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        """Update one entity's editable columns: name, entity_type, metadata.
+
+        Full-row contract: the caller reads, merges, and saves. The UPDATE
+        statement never writes source_document_id (provenance). Returns the
+        fresh Entity, or None when the ID is unknown. A (tenant, name,
+        entity_type) collision with a DIFFERENT entity raises ConflictError.
+        """
+        ...
+
+    @abstractmethod
+    async def delete_entity(self, entity_id: str) -> int | None:
+        """Delete one entity and every relation linked to it.
+
+        Returns the number of relations removed, or None when the entity
+        was already absent. The delete is idempotent for callers.
+        """
+        ...
+
+    @abstractmethod
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        """Update one relation's editable columns: relation_type, weight,
+        metadata. Endpoints are immutable: a different endpoint pair is a
+        new triple; delete and re-create. The UPDATE statement never writes
+        chunk_id, confidence, extractor_id, model_version, or prompt_version
+        (provenance). Returns the fresh Relation, or None when unknown."""
+        ...
+
+    @abstractmethod
+    async def delete_relation(self, relation_id: str) -> bool:
+        """Delete one relation by ID. True when a row was removed."""
+        ...
 
     async def batch_add_entities(self, entities: list[Entity]) -> list[str]:
         """Add multiple entities to the graph.
@@ -166,6 +209,15 @@ class GraphStore(ABC):
 
         Backends that support provenance tables should override this method.
         The default raises NotImplementedError.
+        """
+        raise NotImplementedError
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """Fetch one relation by ID (a store seam like ``get_entity``).
+
+        The Wave-8 handler reads the stored row to merge fields and check
+        endpoint immutability. Backends override; the default raises
+        NotImplementedError.
         """
         raise NotImplementedError
 
@@ -294,6 +346,58 @@ class PostgresGraphStore(GraphStore):
                 relation.chunk_id,
             )
             return str(row["relation_id"]) if row else relation.relation_id
+        finally:
+            await self._release_conn(conn)
+
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        """Update one entity's whitelisted columns; None when unknown."""
+        conn = await self._get_conn()
+        try:
+            return await update_entity_by_id(
+                conn,
+                self._tenant_id,
+                entity.entity_id,
+                entity.name,
+                entity.entity_type,
+                entity.metadata,
+            )
+        finally:
+            await self._release_conn(conn)
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        """Delete one entity plus its linked relations in one transaction."""
+        async with self.transaction():
+            conn = cast("asyncpg.Connection", self._conn)
+            return await delete_entity_cascade(conn, self._tenant_id, entity_id)
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        """Update one relation's whitelisted columns; None when unknown."""
+        conn = await self._get_conn()
+        try:
+            return await update_relation_by_id(
+                conn,
+                self._tenant_id,
+                relation.relation_id,
+                relation.relation_type,
+                relation.weight,
+                relation.metadata,
+            )
+        finally:
+            await self._release_conn(conn)
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        """Delete one relation by ID. True when a row was removed."""
+        conn = await self._get_conn()
+        try:
+            return await delete_relation_by_id(conn, self._tenant_id, relation_id)
+        finally:
+            await self._release_conn(conn)
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """Fetch one relation by ID."""
+        conn = await self._get_conn()
+        try:
+            return await get_relation_by_id(conn, self._tenant_id, relation_id)
         finally:
             await self._release_conn(conn)
 

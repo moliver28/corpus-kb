@@ -212,9 +212,7 @@ class QueryHandler:
             cast("asyncpg.Pool | SqlGateway", self._pool), query
         )
 
-    async def handle_list_relations(
-        self, query: ListRelationsQuery
-    ) -> list[RelationListResult]:
+    async def handle_list_relations(self, query: ListRelationsQuery) -> list[RelationListResult]:
         """List graph relations, one window (Phase-2 Wave 6 Map)."""
         return await query_graph_reads.list_relations(
             cast("asyncpg.Pool | SqlGateway", self._pool), query

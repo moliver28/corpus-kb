@@ -166,6 +166,7 @@ from corpus_kb.cli.cli_entity_reads import register as register_entity_read_comm
 from corpus_kb.cli.cli_events import register as register_events_command  # noqa: E402
 from corpus_kb.cli.cli_graph import register as register_graph_commands  # noqa: E402
 from corpus_kb.cli.cli_graph_hops import register as register_graph_hops_commands  # noqa: E402
+from corpus_kb.cli.cli_graph_writes import register as register_graph_write_commands  # noqa: E402
 from corpus_kb.cli.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
 from corpus_kb.cli.cli_query import register as register_query_commands  # noqa: E402
 from corpus_kb.cli.cli_quickstart import register as register_quickstart  # noqa: E402
@@ -174,6 +175,7 @@ from corpus_kb.cli.cli_tags import register as register_tag_commands  # noqa: E4
 
 register_events_command(app)
 register_graph_commands(app)
+register_graph_write_commands(app)
 register_chunk_read_commands(app)
 register_entity_read_commands(app)
 register_graph_hops_commands(app)

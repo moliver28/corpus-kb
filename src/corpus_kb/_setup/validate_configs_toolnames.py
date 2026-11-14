@@ -39,6 +39,11 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "list_entities",
         "add_entity",
         "add_relation",
+        # Phase-2 Wave 8: the graph U/D writes (tools/graph_tools.py).
+        "update_entity",
+        "delete_entity",
+        "update_relation",
+        "delete_relation",
         "sql_query",
         "sql_tables",
         "get_document_tags",

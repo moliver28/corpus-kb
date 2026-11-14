@@ -546,6 +546,26 @@
     "required": []
   },
   {
+    "description": "Delete one entity and its linked relations.",
+    "id": "delete-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/delete",
+    "required": []
+  },
+  {
+    "description": "Update one entity's name and type.",
+    "id": "update-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/update",
+    "required": []
+  },
+  {
     "description": "Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only).",
     "id": "events-summary",
     "longRunning": false,
@@ -888,6 +908,26 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/relations",
+    "required": []
+  },
+  {
+    "description": "Delete one relation.",
+    "id": "delete-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/delete",
+    "required": []
+  },
+  {
+    "description": "Update one relation's type and weight.",
+    "id": "update-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/update",
     "required": []
   },
   {

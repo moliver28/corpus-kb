@@ -116,11 +116,15 @@ from corpus_kb.api.routes_graph import (
     add_relation,
     bfs_traversal,
     delete_document,
+    delete_entity,
+    delete_relation,
     get_entity_relations,
     graph_neighbors,
     graph_traverse,
     list_relations,
     search_graph,
+    update_entity,
+    update_relation,
 )
 from corpus_kb.api.routes_ingest import (
     ingest_directory,
@@ -298,6 +302,12 @@ def create_http_app() -> FastAPI:
         Route("/api/entities", list_entities, methods=["GET"]),
         Route("/api/entities", add_entity, methods=["POST"]),
         Route("/api/relations", add_relation, methods=["POST"]),
+        # Phase-2 Wave 8 graph U/D: gen-default POST path-slot routes (the
+        # Wave-2 untag precedent, CORS-safe). DELETE_SURFACE_NAMES untouched.
+        Route("/api/entities/{entity_id}/update", update_entity, methods=["POST"]),
+        Route("/api/entities/{entity_id}/delete", delete_entity, methods=["POST"]),
+        Route("/api/relations/{relation_id}/update", update_relation, methods=["POST"]),
+        Route("/api/relations/{relation_id}/delete", delete_relation, methods=["POST"]),
         Route("/api/documents/{doc_id}", delete_document, methods=["DELETE"]),
         Route("/api/graph/search", search_graph, methods=["POST"]),
         Route("/api/graph/bfs", bfs_traversal, methods=["POST"]),
