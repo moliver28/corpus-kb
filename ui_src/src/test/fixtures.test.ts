@@ -8,6 +8,7 @@ import blocked409 from "./fixtures/blocked-409.json";
 import codebooksOk200 from "./fixtures/codebooks-ok-200.json";
 import cycleHalted200 from "./fixtures/cycle-halted-200.json";
 import degraded200 from "./fixtures/degraded-200.json";
+import demoDegraded200 from "./fixtures/demo-degraded-200.json";
 import demoLoaded200 from "./fixtures/demo-loaded-200.json";
 import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
@@ -99,6 +100,7 @@ const FIXTURES = [
   blocked409,
   doctorOk200,
   demoLoaded200,
+  demoDegraded200,
   demoPartial200,
   assignmentsOk200,
   topicsOk200,
@@ -142,6 +144,7 @@ const EXPECTED_KINDS: Record<string, string> = {
   "blocked-409": "blocked",
   "doctor-ok-200": "ok",
   "demo-loaded-200": "ok",
+  "demo-degraded-200": "ok",
   "demo-partial-200": "ok",
   "assignments-ok-200": "ok",
   "topics-ok-200": "ok",
@@ -191,6 +194,7 @@ describe("committed envelope fixtures", () => {
         f.name === "degraded-200" ||
         f.name === "doctor-ok-200" ||
         f.name === "demo-loaded-200" ||
+        f.name === "demo-degraded-200" ||
         f.name === "demo-partial-200" ||
         f.name === "assignments-ok-200" ||
         f.name === "topics-ok-200" ||

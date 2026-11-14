@@ -18,6 +18,11 @@ Keys (all optional; unknown shapes keep the default):
   once per worker, not once per window (issue #270; default true)
 * ``worker_max_windows`` — windows one child worker serves before the
   parent recycles it, so no worker grows without bound (default 32)
+* ``worker_idle_ttl_s`` — seconds an idle worker child stays alive;
+  the parent drops a worker whose last served window sits further back
+  than this when the next window asks for it, so a long-lived server
+  sheds idle parser children instead of holding them forever
+  (default 600.0)
 * ``cache_max_mb`` — window-cache size cap in MiB; the oldest files
   evict first, and ``0`` disables the cap (default 2048)
 * ``structured_output`` — keep rich page structure (heading level,
@@ -40,6 +45,7 @@ DEFAULT_WINDOW_SUBPROCESS = True
 DEFAULT_WINDOW_TIMEOUT_S = 3600.0
 DEFAULT_WORKER_REUSE = True
 DEFAULT_WORKER_MAX_WINDOWS = 32
+DEFAULT_WORKER_IDLE_TTL_S = 600.0
 DEFAULT_CACHE_MAX_MB = 2048
 DEFAULT_STRUCTURED_OUTPUT = False
 DEFAULT_CITATIONS = False
@@ -52,10 +58,14 @@ class WorkerPolicy:
     ``reuse`` off restores spawn-per-window isolation exactly as issue
     #219 shipped it. ``max_windows`` recycles the worker after that
     many served windows, so one worker never grows without bound.
+    ``idle_ttl_s`` drops a worker idle longer than that at the next
+    acquire, so an idle server does not hold a loaded parser child
+    for its whole life.
     """
 
     reuse: bool = DEFAULT_WORKER_REUSE
     max_windows: int = DEFAULT_WORKER_MAX_WINDOWS
+    idle_ttl_s: float = DEFAULT_WORKER_IDLE_TTL_S
 
 
 @dataclass(frozen=True)
@@ -70,13 +80,18 @@ class TextbookSettings:
     window_timeout_s: float = DEFAULT_WINDOW_TIMEOUT_S
     worker_reuse: bool = DEFAULT_WORKER_REUSE
     worker_max_windows: int = DEFAULT_WORKER_MAX_WINDOWS
+    worker_idle_ttl_s: float = DEFAULT_WORKER_IDLE_TTL_S
     cache_max_mb: int = DEFAULT_CACHE_MAX_MB
     structured_output: bool = DEFAULT_STRUCTURED_OUTPUT
     citations: bool = DEFAULT_CITATIONS
 
     def worker_policy(self) -> WorkerPolicy:
         """The persistent-worker policy for this block."""
-        return WorkerPolicy(reuse=self.worker_reuse, max_windows=self.worker_max_windows)
+        return WorkerPolicy(
+            reuse=self.worker_reuse,
+            max_windows=self.worker_max_windows,
+            idle_ttl_s=self.worker_idle_ttl_s,
+        )
 
 
 def _int_setting(raw: object, default: int) -> int:
@@ -125,6 +140,7 @@ def settings_from(config: Mapping[str, object] | None) -> TextbookSettings:
         worker_max_windows=_int_setting(
             block.get("worker_max_windows"), DEFAULT_WORKER_MAX_WINDOWS
         ),
+        worker_idle_ttl_s=_float_setting(block.get("worker_idle_ttl_s"), DEFAULT_WORKER_IDLE_TTL_S),
         cache_max_mb=_nonneg_int_setting(block.get("cache_max_mb"), DEFAULT_CACHE_MAX_MB),
         structured_output=_bool_setting(block.get("structured_output"), DEFAULT_STRUCTURED_OUTPUT),
         citations=_bool_setting(block.get("citations"), DEFAULT_CITATIONS),

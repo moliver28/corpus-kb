@@ -90,7 +90,14 @@ def parse_window_in_subprocess(
     """
     if worker is not None and worker.reuse:
         return parse_window_with_worker(
-            pdf_path, parser, start, end, timeout_s, structured, worker.max_windows
+            pdf_path,
+            parser,
+            start,
+            end,
+            timeout_s,
+            structured,
+            worker.max_windows,
+            worker.idle_ttl_s,
         )
     proc, payload = _start_child(str(pdf_path), parser, start, end, structured)
     deadline = time.monotonic() + timeout_s

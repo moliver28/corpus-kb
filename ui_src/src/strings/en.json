@@ -87,6 +87,7 @@
   "setupDemoConfirmTitle": "Load the sample knowledge?",
   "setupDemoConfirmBody": "This can take a minute. Files already loaded are skipped.",
   "setupDemoNext": "Go to Ask",
+  "setupDemoDegraded": "Some loaded chunks have no vectors. Text search still works. Start the model server, then re-embed.",
   "setupUploadTitle": "Upload files",
   "setupUploadBody": "Pick files from this machine. They go through the standard ingest pipeline.",
   "setupUploadCap": "Each file can be up to {mb} MB.",

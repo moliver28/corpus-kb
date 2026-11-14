@@ -130,10 +130,12 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "textbook.cache_max_mb": int,
     # Persistent parser worker (issue #270): worker_reuse keeps one
     # loaded parser child alive across windows; worker_max_windows
-    # recycles it after that many windows (the positive-int rule lives
-    # in _textbook_block_errors).
+    # recycles it after that many windows; worker_idle_ttl_s drops an
+    # idle worker at the next acquire (the range rules live in
+    # _textbook_block_errors).
     "textbook.worker_reuse": bool,
     "textbook.worker_max_windows": int,
+    "textbook.worker_idle_ttl_s": float,
     # Rich-structure flag (textbook program W1-B): keeps level, page
     # boxes, and table markdown in the parsed windows.
     "textbook.structured_output": bool,

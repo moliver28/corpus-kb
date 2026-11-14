@@ -656,7 +656,12 @@ and that load dominates the Docling CPU path. With
 alive across windows and documents. The model then loads once per
 worker. The worker speaks the same page rows, so the parsed items do
 not change. `textbook.worker_max_windows` (default 32) recycles the
-worker after that many windows, so no worker grows without bound. A
+worker after that many windows, so no worker grows without bound.
+`textbook.worker_idle_ttl_s` (default 600) stops a worker that served
+no window for that many seconds. The check runs when the next window
+asks for the worker. An idle server then does not hold a loaded parser
+child forever. One parse runs at a time for each parser, so two callers
+never share one worker. A
 crash or a timeout still drops only the current window to pypdf; the
 next window spawns a fresh worker. Set `worker_reuse: false` to go
 back to one child per window.
@@ -1070,7 +1075,7 @@ It will:
 2. `pip install -e .[dev]`
 3. Create the database/user and run all migrations
 4. Verify AGE + pgml extensions are installed
-5. Pull the Ollama models the default config needs: `qwen3-embedding:4b` and `qwen3:4b`
+5. Pull `qwen3-embedding:4b` (the shipped embedder) and `qwen3:4b` (the chat model)
 6. Write/update the installer config file under `~/.corpus-kb`
 
 The compose stack lives at the repo root (`compose.yaml`) and uses

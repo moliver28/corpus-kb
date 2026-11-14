@@ -808,6 +808,7 @@ class TestRuntimeTextbookKeys:
         assert RUNTIME_CONFIG_KEYS["textbook.window_timeout_s"] is float
         assert RUNTIME_CONFIG_KEYS["textbook.worker_reuse"] is bool
         assert RUNTIME_CONFIG_KEYS["textbook.worker_max_windows"] is int
+        assert RUNTIME_CONFIG_KEYS["textbook.worker_idle_ttl_s"] is float
         assert RUNTIME_CONFIG_KEYS["textbook.cache_max_mb"] is int
         assert RUNTIME_CONFIG_KEYS["textbook.structured_output"] is bool
         assert RUNTIME_CONFIG_KEYS["textbook.citations"] is bool
@@ -820,6 +821,7 @@ class TestRuntimeTextbookKeys:
             assert cfg["textbook"]["window_timeout_s"] == 3600.0, name
             assert cfg["textbook"]["worker_reuse"] is True, name
             assert cfg["textbook"]["worker_max_windows"] == 32, name
+            assert cfg["textbook"]["worker_idle_ttl_s"] == 600.0, name
             assert cfg["textbook"]["cache_max_mb"] == 2048, name
             assert cfg["textbook"]["structured_output"] is False, name
             assert cfg["textbook"]["citations"] is False, name

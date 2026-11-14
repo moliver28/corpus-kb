@@ -987,9 +987,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "textbook.window_timeout_s": float,
         "textbook.cache_max_mb": int,
         # Persistent parser worker (issue #270): reuse flag + recycle cap
-        # (the positive-int rule lives in _textbook_block_errors).
+        # + idle reaper TTL (the range rules live in _textbook_block_errors).
         "textbook.worker_reuse": bool,
         "textbook.worker_max_windows": int,
+        "textbook.worker_idle_ttl_s": float,
         # Rich-structure flag (textbook program W1-B).
         "textbook.structured_output": bool,
         # Citation flag (textbook program W2-B).
