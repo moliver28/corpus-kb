@@ -25,7 +25,8 @@ Thumbs.db
 .codegraph/
 
 # Local agent tooling state (session scanners, notes, optimization caches)
-.mimosa/
+.mimosa/*
+!.mimosa/security-policy.json
 .omc/
 .token-optimizer/
 .zcodeignore
