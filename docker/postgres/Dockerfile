@@ -146,6 +146,8 @@ LABEL org.opencontainers.image.title="corpus-kb-postgres" \
 # USAGE on schema public to the app role. Idempotent; a compose re-up with an
 # existing data volume skips the dir entirely.
 COPY initdb/01-extensions-and-grants.sh /docker-entrypoint-initdb.d/
-RUN chmod 0755 /docker-entrypoint-initdb.d/01-extensions-and-grants.sh
+# Strip any CRLF (Windows working-copy checkouts) and make it executable.
+RUN sed -i 's/\r$//' /docker-entrypoint-initdb.d/01-extensions-and-grants.sh \
+ && chmod 0755 /docker-entrypoint-initdb.d/01-extensions-and-grants.sh
 
 # Default postgres entrypoint remains; see compose.yaml for env vars.

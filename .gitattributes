@@ -1,3 +1,6 @@
 # Hash-pinned third-party schema fixtures must check out byte-for-byte;
 # never let autocrlf EOL-translate them (the provenance test pins LF bytes).
 tests/fixtures/refi_qda/*.xsd -text
+
+# Init scripts are COPYed into the Linux image; a CRLF copy breaks bash.
+docker/postgres/initdb/*.sh text eol=lf
