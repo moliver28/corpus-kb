@@ -904,6 +904,16 @@ def test_settings_helper_matches_config_block() -> None:
     assert settings_from(None).citations is False
 
 
+def test_worker_idle_ttl_setting_reads_number_and_defaults() -> None:
+    """The idle TTL reads a positive number; other shapes keep 600.0."""
+    assert settings_from({"textbook": {"worker_idle_ttl_s": 30.0}}).worker_idle_ttl_s == 30.0
+    assert settings_from({"textbook": {"worker_idle_ttl_s": 45}}).worker_idle_ttl_s == 45.0
+    assert settings_from(None).worker_idle_ttl_s == 600.0
+    assert settings_from({"textbook": {"worker_idle_ttl_s": 0}}).worker_idle_ttl_s == 600.0
+    assert settings_from({"textbook": {"worker_idle_ttl_s": "soon"}}).worker_idle_ttl_s == 600.0
+    assert settings_from(None).worker_policy().idle_ttl_s == 600.0
+
+
 def test_citations_flag_reaches_built_chunks_and_flag_off_stays_exact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

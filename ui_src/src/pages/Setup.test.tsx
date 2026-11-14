@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
 import { makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { Route } from "../test/testUtils";
+import demoDegraded from "../test/fixtures/demo-degraded-200.json";
 import demoLoaded from "../test/fixtures/demo-loaded-200.json";
 import demoPartial from "../test/fixtures/demo-partial-200.json";
 import documentStatsOk from "../test/fixtures/document-stats-ok-200.json";
@@ -162,6 +163,20 @@ describe("Setup page", () => {
     fireEvent.click(await screen.findByRole("button", { name: strings.confirmConfirm }));
     expect(await screen.findByText(strings.receiptPartial)).toBeTruthy();
     expect(screen.queryByRole("button", { name: strings.setupDemoNext })).toBeNull();
+  });
+
+  it("shows the degraded note when a loaded file carries no vectors", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+      { method: "POST", path: "/api/demo/load", reply: respond(200, demoDegraded.response.body) },
+    ]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.setupDemoAction }));
+    fireEvent.click(await screen.findByRole("button", { name: strings.confirmConfirm }));
+    // The success receipt never reads clean: the degraded note sits
+    // above the receipt headline.
+    expect(await screen.findByText(strings.setupDemoDegraded)).toBeTruthy();
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
   });
 
   it("keeps the ingest surfaces off the stage (they live on Ingest)", async () => {

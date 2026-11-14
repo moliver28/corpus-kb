@@ -432,6 +432,15 @@ async def _shared_ingest_reingest(ctx: dict[str, Any]) -> dict[str, Any]:
     return await ingest_reingest_module.ingest_reingest(ctx["pool"], config=ctx["config"])
 
 
+async def _shared_demo_load(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.demo_kb import load_demo_kb
+
+    # The route passes NO config: the ambient config is the demo path's
+    # real contract (POST /api/demo/load carries no config block), so the
+    # shared leg makes the same call and all legs answer one receipt.
+    return await load_demo_kb(None, ctx["pool"])
+
+
 async def _shared_topics_build(ctx: dict[str, Any]) -> dict[str, Any]:
     return await topics_tools_module.topics_build(ctx["pool"], config=ctx["config"])
 
@@ -1995,6 +2004,15 @@ LEGS: dict[str, _Leg] = {
         _sock("document_stats", {}),
         mcp=_mcp({}),
     ),
+    # Lifecycle UI op (momus F8 close-out): the demo load row. The
+    # registry row declares cli+mcp+http, so the leg pair is shared +
+    # http + mcp — no socket surface exists, and that absence is the
+    # row's declaration, not a skip.
+    "demo_load": _Leg(
+        _shared_demo_load,
+        _post("/api/demo/load", {}),
+        mcp=_mcp({}),
+    ),
     # -- Issue #350: the chunk-coding ops + the event-store health read ----
     "coding_embed_codebook": _Leg(
         _shared_coding_embed_codebook,
@@ -2907,6 +2925,28 @@ def test_catalogue_and_legs_agree() -> None:
         )
 
 
+async def test_demo_load_conditional_keys_stay_declared(
+    parity_env: dict[str, Any],
+) -> None:
+    """The demo receipt carries only its declared conditional keys (F8).
+
+    The #415 ``degraded`` key shipped with no contract row, so nothing
+    failed when the receipt grew. The catalogue row pins the fixed
+    top-level shape; this pin holds the receipt's conditional keys to
+    DEMO_KEYS — an undeclared key on a future run fails here.
+    """
+    from corpus_kb.contracts.envelopes import DEMO_ENVELOPE, DEMO_KEYS
+
+    envelope = await _shared_demo_load(parity_env)
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    assert set(envelope) == set(DEMO_ENVELOPE)
+    # Always present on every run (demo_kb._envelope).
+    assert {"ingested", "skipped", "chunk_counts"} <= set(result)
+    # Conditional keys only ever come from the declared set.
+    assert set(result) <= {"ingested", "skipped", "chunk_counts"} | DEMO_KEYS
+
+
 def test_catalogue_matches_surface_registry() -> None:
     """Rows whose op exists in surface_registry must byte-match its columns.
 
@@ -3047,6 +3087,9 @@ def test_catalogue_matches_surface_registry() -> None:
         # Ruling 4a: the HTTP-only upload row byte-matches on its declared
         # surface (the empty cli/mcp registry fields are exempt).
         "ingest_upload",
+        # Momus F8 close-out: the demo-load row byte-matches its registry
+        # row (cli demo-kb, MCP demo_load, POST /api/demo/load).
+        "demo_load",
     } <= set(checked)
 
 

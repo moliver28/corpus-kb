@@ -111,7 +111,7 @@ land in this document first, before any implementation.
 | UI build | `poe ui-build` (includes the bundle check); `poe ui-bundle` calls it directly | ci.yml / ui | UI SPA Task 3 (PR-1); budget gate Task 6a (PR-5a) |
 | UI licenses | `poe ui-licenses`: production allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD) writing the committed `ui_licenses.lock.json` (production tree only; dev trees are platform-specific) | ci.yml / ui | UI SPA Task 4 (PR-2) |
 | UI manifest | `poe ui-manifest` (drift check); also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
-| UI e2e + a11y | `poe ui-e2e`: Playwright smoke + axe scan on a REAL throwaway server (scripts/ui_e2e.py boots corpus-kb, preloads the demo corpus); REQUIRED job — it degrades without Ollama exactly like the pytest suite | ci.yml / ui-e2e | UI SPA Task 9 (PR-6) |
+| UI e2e + a11y | `poe ui-e2e`: Playwright smoke + axe scan on a REAL throwaway server (scripts/ui_e2e.py boots corpus-kb, preloads the demo corpus); REQUIRED job — it degrades without Ollama exactly like the pytest suite. Skip rule (honest, F5 ruling 2026-11-13): the job needs `changes`, `ui`, and `test-ubuntu`, so an upstream failure SKIPS it, and GitHub counts a skipped job as passing branch protection. A skipped run is INVALID, not a pass — it proves nothing about the smoke. A green run never certifies the ask path either: this job's LLM endpoint is a closed port by design, so the ask always renders the degraded evidence list. A failed model pull does fail the job (the pull step has no continue-on-error). Ollama models are cached under the job's own key | ci.yml / ui-e2e | UI SPA Task 9 (PR-6); skip rule F5 (2026-11-13) |
 | UI import graph | `poe ui-import-graph`: per library family — the map libraries (`@xyflow/react`, `@dagrejs/dagre`) import only in the lazy Map module set, the chat packages (`@ant-design/x`, `@ant-design/x-markdown`, `@ant-design/x-sdk`) only in the lazy Chat module set; no built chunk carrying a family runtime marker (`react-flow__node`, X's `antdx` style-layer name) sits in the entry closure (Wave 6: the Map adds 0 kB; Wave 7: the Chat chunk is lazy, initial route unchanged at 342.87 kB) | ci.yml / ui | Phase-2 Waves 6-7 |
 
 ## The zero-drift gate
@@ -267,12 +267,13 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | UI manifest | `poe ui-manifest`: `src/corpus_kb/_setup/gen_ui_manifest.py` merges `surface_registry.SURFACES` with `research_http.tool_routes()`, diffs `src/corpus_kb/ui_manifest.json` plus `ui_src/src/api/ops.generated.ts` and `thresholds.generated.ts`, and exits 1 on drift. Also wired into `poe gen` | ci.yml / ui | UI SPA Task 4 |
 | UI import graph | `poe ui-import-graph` (`ui_src/scripts/check-import-graph.mjs`): per family, a source scan (map libraries import only under `pages/map/` + `pages/Map.tsx`; chat packages only under `pages/chat/` + `pages/Chat.tsx`) plus a built-output scan (the entry-closure walk must hold no chunk carrying a family marker: `react-flow__node`, and X's `antdx` style-layer name). Wave 7: the chat family rides the lazy Chat chunk; the initial route stays 342.87 kB. The chat zero-import guard is ON: a source scan with no X imports fails. License note: X's hard dep mermaid brings tree-only MPL-2.0 + Unlicense entries; reasons live in `scripts/ui_licenses.py` (`ALLOWED_TREE_ONLY`) | ci.yml / ui | Phase-2 Waves 6-7 |
 | Duplication (python) | `poe dup-check`: jscpd (pinned in `ui_src/package.json`) over `src/`, Python-only surface (`.jscpd.json` ignores ui_dist, `__pycache__`, `*.sql`, `*.yaml`, `*.json`), `--threshold 1.59` vs the 1.54 measured on chore/store-writer-dedup after the store-writer dedup (#233) (125 clones, 567 files). Ratchet the threshold down in the PR that removes a clone family | ci.yml / dup-check | PR-F, ratcheted in the follow-up chore |
-| Dependency CVEs | `poe audit-deps`: `uv audit --locked` audits the committed `uv.lock` (direct + transitive, all groups) against OSV and fails on a stale lock. Unfixable findings are ignored in `uv.toml [audit]` with a written justification per entry. PR-time job here plus a weekly sweep | ci.yml / audit-deps + dependency-audit.yml (weekly cron) | PR-F |
+| Dependency CVEs | `poe audit-deps`: `uv audit --locked` audits the committed `uv.lock` (direct + transitive, all groups) against OSV and fails on a stale lock. Unfixable findings are ignored in `uv.toml [audit]` with a written justification per entry. PR-time job here plus a weekly sweep. Policy (F4 ruling, 2026-11-13): a red audit-deps requires a fix PR or a `uv.toml` written-reason row; a bare red master is a program violation | ci.yml / audit-deps + dependency-audit.yml (weekly cron) | PR-F |
 | Size ratchet | `poe size-ratchet` (`scripts/size_ratchet.py`, stdlib): counts ruff `PLR0915` findings over `src/` + `scripts/` + `tests/` and files over the 250-line soft limit under `src/` + `scripts/`, comparing both with `scripts/quality-baselines.json`. Above baseline fails; at or below passes (report-only ratchet — lower the numbers in the PR that shrinks the code, never raise them; scripts/ joined the file scan with its five over-limit files split in chore/gates-scripts-hygiene, so the baselines did not move) | ci.yml / lint | PR-F |
 | Coverage floor | `poe cover-floor` (`scripts/coverage_floor.py`, stdlib): overall line rate from `coverage.xml` must stay at or above `coverage_floor` in `scripts/quality-baselines.json` (set 0.5 points under the measured value at adoption). Runs after the same ubuntu suite run that feeds `cover-diff` | ci.yml / test-ubuntu | PR-F |
 | Pytest warnings ratchet | `poe warning-ratchet` (`scripts/warning_ratchet.py`): the live suite's warning count, taken through pytest's own `pytest_warning_recorded` hook (pytest 9 dropped the junit warnings attribute), must stay at or below `pytest_warnings` in `scripts/quality-baselines.json` (ceiling 0, measured in the pinned environment: `.[dev,duckdb,inductive]` + Ollama UP, re-measured 2026-11-04). Above the ceiling fails the PR. The CI job runs in the pinned extras env (dev+duckdb+inductive), with the same Postgres service the ubuntu test leg uses and Ollama served best-effort, so the measured population matches the suite, not a skip-heavy subset | ci.yml / warning-ratchet | W11 (#294) |
 | Marketplace manifest | `poe plugin-manifest` (`scripts/plugin_manifest_gate.py`, stdlib): `.claude-plugin/marketplace.json` structure per the marketplace reference (name rules, reserved names, `./` source paths, descriptions, semver) plus version lockstep with `plugins/corpus-rag/.claude-plugin/plugin.json` once the plugin tree lands (issue 331 step 1); before the import the gate prints one note line and passes. This repo is the plugin marketplace (owner directive 2026-11-05, issue 331 M1–M4) | ci.yml / plugin-manifest | 331 |
 | Plugin suite | `poe plugin-tests` (stdlib pytest under `plugins/corpus-rag/tests/` — hook fire/no-fire matrix, marks rate limit, engine-path resolution, manifest lockstep; the plugin's own `pytest.ini` isolates it from the engine config). The plugin is built fresh in-tree (owner directive 2026-11-06, issue 331) | ci.yml / plugin-tests | 331 |
+| Dependency float canary | `deps-canary` in dependency-audit.yml (weekly cron, same workflow as the CVE sweep): a fresh UNLOCKED `pip install -e ".[dev,duckdb]"` plus a fast upstream-coupled suite slice (partitioning, chunking, textbook/pypdf, demo). INFORMATIONAL by ruling: it never runs on PRs, it is allowed to be red, and it gates nothing. A red canary names the float (the `canary-float` artifact pins the exact version set); the fix is a lock-refresh PR, never a workflow change | dependency-audit.yml / deps-canary (weekly cron) | F4 ruling (2026-11-13) |
 
 Warning-ratchet environment note (#321): a non-pinned Python can print one
 `google.api_core` `FutureWarning` during the suite run. It is an environment
@@ -286,6 +287,25 @@ it: a message-matched filter would hide real `api_core` warnings.
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate
 that exists only locally is not a gate.
+
+### Locked installs and the float canary (2026-11-13, owner ruling)
+
+CI installs are lock-pinned; a scheduled canary detects upstream drift;
+PR reds come from the lock, never the float.
+
+- The three test legs (ubuntu, windows, macos) and the warning-ratchet
+  leg install with `uv sync --locked` plus their extra sets. The
+  audited artifact (`uv.lock`) is the tested artifact. `--locked`
+  fails on a stale lock, so a dependency edit without a lock refresh
+  is a red PR, not a silent float.
+- `deps-canary` (dependency-audit.yml, weekly cron) is the drift
+  detector named above: a fresh UNLOCKED install plus a fast
+  upstream-coupled suite slice. It is INFORMATIONAL. It never runs on
+  PRs, it may be red, and it gates nothing. A red canary is the
+  signal to review the float and refresh the lock on purpose.
+- Policy, next to the audit-deps map row: a red audit-deps requires a
+  fix PR or a `uv.toml` written-reason row. A bare red master is a
+  program violation.
 
 ## Issue mapping
 

@@ -66,7 +66,7 @@ async def test_setup_dry_run_lists_all_steps() -> None:
     assert "pip install -e .[dev]" in output
     assert "migrations" in output.lower()
     assert "AGE + pgml" in output
-    assert "ollama pull nomic-embed-text" in output
+    assert "ollama pull qwen3-embedding:4b" in output
     assert "qwen3:4b" in output
     assert "write" in output.lower() and "config.yaml" in output
     assert "This was a dry run" in output

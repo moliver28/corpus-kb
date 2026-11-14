@@ -99,6 +99,7 @@ export interface AppStrings {
   setupDemoBody: string;
   setupDemoConfirmBody: string;
   setupDemoConfirmTitle: string;
+  setupDemoDegraded: string;
   setupDemoNext: string;
   setupDemoTitle: string;
   setupIngestDirBody: string;
