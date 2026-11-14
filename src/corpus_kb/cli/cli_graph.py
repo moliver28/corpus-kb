@@ -37,6 +37,7 @@ def register(app: typer.Typer) -> None:
     app.command("add-relation")(add_relation)
     app.command("list-documents")(list_documents)
     app.command("delete-document")(delete_document)
+    app.command("list-relations")(relations_list)
 
 
 def _emit(result: dict[str, object], json_output: bool) -> None:
@@ -72,6 +73,38 @@ def _emit_documents(result: dict[str, object], json_output: bool) -> None:
         )
     if not docs:
         print("no documents")
+
+
+def _emit_relations(result: dict[str, object], json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(result, indent=2, default=str))
+        return
+    rows = result.get("result")
+    rels = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    for row in rels:
+        print(
+            f"{row.get('relation_type', ''):20s} {row.get('source_name', '')} "
+            f"-> {row.get('target_name', '')}  {row.get('relation_id')}"
+        )
+    if not rels:
+        print("no relations")
+
+
+async def _relations_list_flow(limit: int, offset: int, json_output: bool) -> int:
+    from corpus_kb.errors import CorpusError
+    from corpus_kb.tools.relation_read_tools import relations_list
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await relations_list(pool, config=cfg, limit=limit, offset=offset)
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        return EXIT_FAILED
+    finally:
+        await pool.close()
+    _emit_relations(result, json_output)
+    return EXIT_OK if result.get("status") == "success" else EXIT_FAILED
 
 
 async def _add_entity_flow(name: str, entity_type: str, json_output: bool) -> int:
@@ -200,3 +233,16 @@ def delete_document(
     idempotent), 1 failed, 3 the database is unreachable.
     """
     return _run_sync(lambda: _delete_document_flow(document_id, json_output))
+
+
+def relations_list(
+    limit: int = typer.Option(100, "--limit", min=1, help="How many relations to show"),
+    offset: int = typer.Option(0, "--offset", min=0, help="Skip the first N relations"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """List graph relations (ordered by type, then endpoints, then ID).
+
+    Exit codes: 0 answered (an empty list is still 0), 1 failed, 3 the
+    database is unreachable.
+    """
+    return _run_sync(lambda: _relations_list_flow(limit, offset, json_output))

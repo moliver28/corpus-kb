@@ -1,6 +1,6 @@
 import { Button, Card } from "antd";
-import { useState } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/ingest";
+import { useQueryParam } from "../hooks/useQueryParam";
 import DemoLoadCard from "../components/DemoLoadCard";
 import DirectoryCard from "../components/DirectoryCard";
 import ResearchIngestCard from "../components/ResearchIngestCard";
@@ -10,7 +10,17 @@ import TranscriptCard from "./ingest/TranscriptCard";
 import UploadCard from "./ingest/UploadCard";
 import WebsiteCard from "./ingest/WebsiteCard";
 
-type Tab = "files" | "website" | "paste" | "server" | "transcripts" | "sample" | "queue";
+const TAB_KEYS = [
+  "files",
+  "website",
+  "paste",
+  "server",
+  "transcripts",
+  "queue",
+  "sample",
+] as const;
+
+type Tab = (typeof TAB_KEYS)[number];
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "files", label: strings.ingestTabFiles },
@@ -26,11 +36,13 @@ const TABS: { key: Tab; label: string }[] = [
  * The Ingest stage — one tab per source, each through the ONE pipeline:
  * files (upload), website (crawl toggle), paste text, server folder,
  * transcripts, the bundled sample knowledge, and the durable queue
- * (enqueue now, a worker drains it later). The switcher follows the Ask
- * precedent: pressed buttons, no tabs machinery.
+ * (enqueue now, a worker drains it later). The active tab rides the
+ * hash query (`#/ingest?tab=queue`), so reload and links restore it;
+ * an unknown word falls back to the first tab.
  */
 export default function Ingest() {
-  const [tab, setTab] = useState<Tab>("files");
+  const [param, setParam] = useQueryParam("tab", TAB_KEYS, "files");
+  const tab: Tab = param ?? "files";
   return (
     <div className="ui-stack">
       <Card title={strings.ingestTitle}>
@@ -42,7 +54,7 @@ export default function Ingest() {
             key={entry.key}
             aria-pressed={tab === entry.key}
             type={tab === entry.key ? "primary" : "default"}
-            onClick={() => setTab(entry.key)}
+            onClick={() => setParam(entry.key)}
           >
             {entry.label}
           </Button>

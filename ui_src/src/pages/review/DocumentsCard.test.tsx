@@ -1,0 +1,411 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { strings } from "../../strings";
+import { calls, clearCalls, makeWrapper, respond, stubFetch, stubFetchImpl } from "../../test/testUtils";
+import type { MinimalResponse } from "../../test/testUtils";
+import chunksOk from "../../test/fixtures/chunks-ok-200.json";
+import documentDeleteOk from "../../test/fixtures/document-delete-ok-200.json";
+import documentTagsOk from "../../test/fixtures/document-tags-ok-200.json";
+import documentsOk from "../../test/fixtures/documents-ok-200.json";
+import metadataOk from "../../test/fixtures/metadata-ok-200.json";
+import DocumentsCard from "./DocumentsCard";
+
+/**
+ * The documents card from canonical fixtures: the window table with its
+ * Intl dates, the per-document drawer reads, the gated delete, and the
+ * honest drift fallback. The row-read race (a slow answer never lands
+ * under the wrong document) is pinned here too.
+ */
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  clearCalls();
+});
+
+function documentRoutes(): { method: string; path: string; reply: MinimalResponse }[] {
+  const docId = documentsOk.response.body.result[0].doc_id;
+  return [
+    // The per-document reads name a longer path than the list read, and
+    // the remove route is longer than the tag path — longer paths sit
+    // before the shorter prefixes in this table.
+    {
+      method: "POST",
+      path: `/api/documents/${docId}/tags/remove`,
+      reply: respond(200, { status: "success", doc_id: docId, tag: "energy" }),
+    },
+    {
+      method: "POST",
+      path: `/api/documents/${docId}/tags`,
+      reply: respond(200, { status: "success", doc_id: docId, tag: "grid" }),
+    },
+    {
+      method: "GET",
+      path: `/api/documents/${docId}/tags`,
+      reply: respond(200, documentTagsOk.response.body),
+    },
+    {
+      method: "POST",
+      path: "/api/metadata",
+      reply: respond(200, { status: "success", key: "k", value: "v" }),
+    },
+    { method: "GET", path: "/api/metadata", reply: respond(200, metadataOk.response.body) },
+    {
+      method: "DELETE",
+      path: `/api/documents/${documentDeleteOk.response.body.document_id}`,
+      reply: respond(200, documentDeleteOk.response.body),
+    },
+    { method: "GET", path: "/api/documents", reply: respond(200, documentsOk.response.body) },
+  ];
+}
+
+describe("DocumentsCard", () => {
+  it("renders the document rows with dates and chunk counts", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    expect(await screen.findByText("corpus/renewable-energy-policy.md")).toBeTruthy();
+    expect(screen.getByText("https://example.com/grid-reliability-report")).toBeTruthy();
+    // The added date is the Intl word for the ISO stamp (fixed locale, UTC).
+    expect(screen.getByText("Jan 05, 2026")).toBeTruthy();
+    expect(screen.getByText("Jan 04, 2026")).toBeTruthy();
+  });
+
+  it("opens the drawer with the document's tags and metadata", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    expect(await screen.findByText("energy")).toBeTruthy();
+    expect(screen.getByText("verified")).toBeTruthy();
+    expect(await screen.findByText("A. Rowe")).toBeTruthy();
+    expect(screen.getByText("en")).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    expect(calls.some((c) => c.url.includes(`/api/documents/${docId}/tags`))).toBe(true);
+    expect(calls.some((c) => c.url.includes(`/api/metadata?doc_id=${docId}`))).toBe(true);
+  });
+
+  it("adds a tag through the manifest op and rereads the tags", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    const input = await screen.findByLabelText(strings.reviewTagAddLabel);
+    fireEvent.change(input, { target: { value: "grid" } });
+    // Only the write's calls count now: the drawer-open reads must not
+    // mask the post-write re-read.
+    clearCalls();
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagAddButton }));
+    expect(await screen.findByText(strings.reviewTagAdded)).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const sent = calls.find(
+      (c) => c.method === "POST" && c.url.includes(`/api/documents/${docId}/tags`),
+    );
+    expect(sent).toBeTruthy();
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({ tag: "grid" });
+    // The ok answer re-reads the document's tag rows (a fresh GET after
+    // the write, not a leftover from opening the drawer).
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.method === "GET" && c.url.includes(`/api/documents/${docId}/tags`) === true,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("removes a tag only through the named popconfirm", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    const removeButton = await screen.findByRole("button", {
+      name: strings.reviewTagRemoveButton.replace("{tag}", "energy"),
+    });
+    fireEvent.click(removeButton);
+    // The confirm names the tag before any call goes out.
+    expect(
+      await screen.findByText(strings.reviewTagRemoveTitle.replace("{tag}", "energy")),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagRemoveConfirm }));
+    expect(await screen.findByText(strings.reviewTagRemoved)).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const sent = calls.find((c) => c.method === "POST" && c.url.includes("/tags/remove"));
+    expect(sent?.url).toContain(`/api/documents/${docId}/tags/remove`);
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({ tag: "energy" });
+  });
+
+  it("saves document metadata through the manifest op", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    fireEvent.change(await screen.findByLabelText(strings.reviewMetadataKeyLabel), {
+      target: { value: "reviewer" },
+    });
+    fireEvent.change(screen.getByLabelText(strings.reviewMetadataValueLabel), {
+      target: { value: "J. Doe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewMetadataSaveButton }));
+    expect(await screen.findByText(strings.reviewMetadataSaved)).toBeTruthy();
+    const sent = calls.find((c) => c.method === "POST" && c.url.includes("/api/metadata"));
+    expect(sent).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({
+      key: "reviewer",
+      value: "J. Doe",
+      doc_id: docId,
+    });
+  });
+
+  it("shows a typed untag error inline instead of a fake success", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const routes = documentRoutes().map((r) =>
+      r.path === `/api/documents/${docId}/tags/remove`
+        ? {
+            ...r,
+            reply: respond(404, {
+              status: "error",
+              error: "This document does not carry the tag 'energy'.",
+              error_type: "not_found",
+            }),
+          }
+        : r,
+    );
+    stubFetch(routes);
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: strings.reviewTagRemoveButton.replace("{tag}", "energy"),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagRemoveConfirm }));
+    expect(
+      await screen.findByText("This document does not carry the tag 'energy'."),
+    ).toBeTruthy();
+    expect(screen.queryByText(strings.reviewTagRemoved)).toBeNull();
+  });
+
+  it("deletes a document only through the named confirm gate", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const deleteButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDelete,
+    });
+    fireEvent.click(deleteButtons[0]);
+    // The gate names the document and the cascade before any call.
+    expect(
+      await screen.findByText(/renewable-energy-policy\.md.*chunks, vectors, tags/),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: strings.confirmConfirm }));
+    expect(await screen.findByText(strings.reviewDocsDeleted)).toBeTruthy();
+    const sent = calls.find((c) => c.method === "DELETE");
+    expect(sent?.url).toContain(
+      `/api/documents/${documentDeleteOk.response.body.document_id}`,
+    );
+    // The list refetches so the deleted row leaves the table.
+    const listCalls = calls.filter((c) => c.url.includes("/api/documents?"));
+    expect(listCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps cancel on the delete gate safe", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const deleteButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDelete,
+    });
+    fireEvent.click(deleteButtons[0]);
+    fireEvent.click(await screen.findByRole("button", { name: strings.confirmCancel }));
+    expect(screen.queryByText(strings.reviewDocsDeleted)).toBeNull();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("never renders a slow tag answer for the document the user left", async () => {
+    // The two tags reads are held and released by hand: the second
+    // document's answer lands first, the first document's lands late.
+    const held: ((reply: MinimalResponse) => void)[] = [];
+    stubFetchImpl((url: string | URL, init?: { method?: string }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const u = String(url);
+      const hit = documentRoutes().find((r) => r.method === method && u.includes(r.path));
+      if (hit !== undefined && u.includes("/tags")) {
+        return new Promise<MinimalResponse>((resolve) => held.push(resolve));
+      }
+      calls.push({ method, url: u, body: "" });
+      if (hit !== undefined) return Promise.resolve(hit.reply);
+      return Promise.reject(new Error(`unexpected fetch: ${method} ${u}`));
+    });
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    await waitFor(() => expect(held.length).toBe(1));
+    fireEvent.click(detailsButtons[1]);
+    await waitFor(() => expect(held.length).toBe(2));
+    // The second document's answer lands first and renders.
+    held[1](
+      respond(200, {
+        status: "success",
+        result: [{ name: "fresh-b", color: null, description: null }],
+      }),
+    );
+    expect(await screen.findByText("fresh-b")).toBeTruthy();
+    // The first document's late answer may not touch the open drawer.
+    held[0](
+      respond(200, {
+        status: "success",
+        result: [{ name: "stale-a", color: null, description: null }],
+      }),
+    );
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(screen.queryByText("stale-a")).toBeNull();
+    expect(screen.getByText("fresh-b")).toBeTruthy();
+  });
+
+  it("falls back on a drifted documents payload", async () => {
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/documents",
+        reply: respond(200, { status: "success", result: [{ doc_id: 7, rows: "x" }] }),
+      },
+    ]);
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
+    // The raw envelope stays one click away (the JsonViewer).
+    expect(screen.getByText(strings.receiptRaw)).toBeTruthy();
+  });
+
+  it("pages through the server window", async () => {
+    const many = Array.from({ length: 51 }, (_, i) => ({
+      doc_id: `f0000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      source: `corpus/doc-${String(i).padStart(3, "0")}.md`,
+      source_type: "markdown",
+      chunk_count: i + 1,
+      created_at: "2026-01-05T10:12:00Z",
+    }));
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/documents",
+        reply: respond(200, { status: "success", result: many }),
+      },
+    ]);
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    expect(await screen.findByText("corpus/doc-000.md")).toBeTruthy();
+    // The first window asks for one row over the page size to learn
+    // whether a next page exists.
+    expect(
+      calls.some((c) => c.url.includes("/api/documents?limit=51&offset=0")),
+    ).toBe(true);
+    const next = document.querySelector(".ant-pagination-next");
+    expect(next).toBeTruthy();
+    fireEvent.click(next as Element);
+    // The window fetch for the next page rides the pager's state update.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("offset=50"))).toBe(true),
+    );
+  });
+
+  // -- Phase-2 Wave 5: the NLP deep link (the hash query param) -----------
+
+  function analyzeRoutes(): { method: string; path: string; reply: MinimalResponse }[] {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    // The chunks path names a longer prefix than the list read, so it
+    // sits before the shorter /api/documents entry in this table.
+    return [
+      {
+        method: "GET",
+        path: `/api/documents/${docId}/chunks`,
+        reply: respond(200, chunksOk.response.body),
+      },
+      ...documentRoutes(),
+    ];
+  }
+
+  it("opens the drawer on the NLP panel from the Analyze row action", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const analyzeButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsAnalyze,
+    });
+    fireEvent.click(analyzeButtons[0]);
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    // The panel scopes its runs with THIS document's chunk window.
+    const docId = documentsOk.response.body.result[0].doc_id;
+    expect(
+      calls.some((c) => c.url.includes(`/api/documents/${docId}/chunks?limit=51&offset=0`)),
+    ).toBe(true);
+    expect(
+      await screen.findByText(strings.reviewAnalyzeScopeAll.replace("{n}", "2")),
+    ).toBeTruthy();
+  });
+
+  it("restores the NLP drawer from the analyze param after a reload", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=${docId}`]),
+    });
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    expect(
+      calls.some((c) => c.url.includes(`/api/documents/${docId}/chunks?limit=51&offset=0`)),
+    ).toBe(true);
+  });
+
+  it("keeps the drawer open on Details after a restored deep link", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=${docId}`]),
+    });
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    // The reload path never ran the Analyze row action, so only the URL
+    // holds the row. The tab switch must keep that row, not close.
+    fireEvent.click(screen.getByRole("tab", { name: strings.reviewDetailsTab }));
+    // The same document's Details panel renders inside the open drawer.
+    expect(await screen.findByText("energy")).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: strings.reviewDetailsTab }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("keeps a param for a row outside the served window absent", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=00000000-0000-4000-8000-000000000000`]),
+    });
+    // The unknown id reads as absent: no drawer, and no chunk read.
+    expect(await screen.findByText("corpus/renewable-energy-policy.md")).toBeTruthy();
+    expect(screen.queryByText(strings.reviewAnalyzeTitle)).toBeNull();
+    expect(calls.some((c) => c.url.includes("/chunks"))).toBe(false);
+  });
+
+  it("closes the NLP drawer back to the plain table", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const analyzeButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsAnalyze,
+    });
+    fireEvent.click(analyzeButtons[0]);
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(strings.reviewAnalyzeTitle)).toBeNull();
+  });
+});

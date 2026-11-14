@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callOp } from "./client";
+import { callOp, sendMultipart } from "./client";
 import { strings } from "../strings";
 import { respond, stubFetchImpl } from "../test/testUtils";
 
@@ -122,6 +122,48 @@ describe("callOp", () => {
     const impl = vi.fn(() => Promise.resolve(respond(500, { status: "error", error: "x" })));
     stubFetchImpl(impl);
     await callOp("/api/x");
+    expect(impl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendMultipart", () => {
+  it("posts the FormData with no Content-Type header and maps the receipt", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    stubFetchImpl((url: string, init?: RequestInit) => {
+      calls.push({ url, init: init ?? {} });
+      return Promise.resolve(respond(200, { status: "ok" }));
+    });
+    const form = new FormData();
+    form.append("file", new File(["bytes"], "a.txt", { type: "text/plain" }));
+    const res = await sendMultipart("/api/ingest/upload", form);
+    expect(res.ok).toBe(true);
+    expect(res.kind).toBe("ok");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.body).toBeInstanceOf(FormData);
+    // The browser owns the multipart boundary header; the client sends none.
+    expect(calls[0].init.headers).toBeUndefined();
+  });
+
+  it("maps a failure envelope to kind error like callOp", async () => {
+    stubFetchImpl(() =>
+      Promise.resolve(respond(413, {
+        status: "error", error: "too large", error_type: "validation_error",
+      })),
+    );
+    const res = await sendMultipart("/api/ingest/upload", new FormData());
+    expect(res.ok).toBe(false);
+    expect(res.kind).toBe("error");
+    expect(res.httpStatus).toBe(413);
+    expect(res.message).toBe("too large");
+  });
+
+  it("maps a fetch rejection to the network kind and never retries", async () => {
+    const impl = vi.fn(() => Promise.reject(new Error("ECONNREFUSED")));
+    stubFetchImpl(impl);
+    const res = await sendMultipart("/api/ingest/upload", new FormData());
+    expect(res.kind).toBe("network");
+    expect(res.ok).toBe(false);
     expect(impl).toHaveBeenCalledTimes(1);
   });
 });

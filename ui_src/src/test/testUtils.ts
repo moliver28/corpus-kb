@@ -81,14 +81,16 @@ export function clearCalls(): void {
 /**
  * A render wrapper with a fresh QueryClient per call. withRouter adds
  * the MemoryRouter page tests need; hook and widget tests pass false.
+ * initialEntries seeds the router location (URL-state rows start the
+ * page at a deep link like `/ingest?tab=queue`).
  */
-export function makeWrapper(withRouter = true) {
+export function makeWrapper(withRouter = true, initialEntries: string[] = ["/"]) {
   const client = new QueryClient();
   return function Wrapper({ children }: { children: ReactNode }) {
     return createElement(
       QueryClientProvider,
       { client },
-      withRouter ? createElement(MemoryRouter, null, children) : children,
+      withRouter ? createElement(MemoryRouter, { initialEntries }, children) : children,
     );
   };
 }

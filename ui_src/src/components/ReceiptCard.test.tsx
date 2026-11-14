@@ -2,14 +2,17 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpResult } from "../api/types";
 import { strings } from "../strings";
+import releaseReviewOk from "../test/fixtures/release-review-ok-200.json";
+import notebookEvidenceOk from "../test/fixtures/notebook-evidence-ok-200.json";
 import ReceiptCard from "./ReceiptCard";
 
 afterEach(cleanup);
 
 /**
- * The receipt headline is a honesty surface: only a success (or a
- * known neutral word like partial/empty) may read as done. The
- * disabled/skipped envelopes render the server's reason and remedy.
+ * The receipt headline is a honesty surface: the closed neutral family
+ * (status-less, empty, degraded, partial, abstained, disabled, skipped)
+ * carries its own headline, and the open completion family rides the
+ * shared normalizer's ok — never a hand word-list.
  */
 
 function resultOf(status: string, extra: Record<string, unknown> = {}): OpResult {
@@ -25,10 +28,68 @@ function resultOf(status: string, extra: Record<string, unknown> = {}): OpResult
   };
 }
 
+/** One OpResult over a canonical fixture body (live-shape proof). */
+function resultFromBody(body: Record<string, unknown>): OpResult {
+  return {
+    ok: true,
+    kind: "ok",
+    httpStatus: 200,
+    status: typeof body.status === "string" ? body.status : "",
+    message: "",
+    remediation: "",
+    errorType: "",
+    data: body,
+  };
+}
+
 describe("ReceiptCard", () => {
   it("claims Done only for a success-status envelope", () => {
     render(<ReceiptCard result={resultOf("success")} />);
     expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+  });
+
+  it("accepts the server's ok word as the success family", () => {
+    render(<ReceiptCard result={resultOf("ok")} />);
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+  });
+
+  // The completion family is open (each release and notebook flow coins
+  // its own word), so the receipt calls the normalizer, not a list.
+  it("keeps the release review packet on the Done headline", () => {
+    render(<ReceiptCard result={resultFromBody(releaseReviewOk.response.body)} />);
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+    expect(screen.queryByText(strings.receiptNotSuccess)).toBeNull();
+  });
+
+  it("keeps the release request, compare, and execute words on Done", () => {
+    // Server words: release/service.py:123,201 and release_handlers.py:226.
+    for (const status of ["requested", "compared", "released"]) {
+      render(<ReceiptCard result={resultOf(status)} />);
+      expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+      expect(screen.queryByText(strings.receiptNotSuccess)).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("keeps the notebook evidence flow words on Done", () => {
+    render(<ReceiptCard result={resultFromBody(notebookEvidenceOk.response.body)} />);
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+    // research/notebook.py:172 answers this word on the ask path.
+    render(<ReceiptCard result={resultOf("answer")} />);
+    expect(screen.getAllByText(strings.receiptDone).length).toBe(2);
+    expect(screen.queryByText(strings.receiptNotSuccess)).toBeNull();
+  });
+
+  it("classifies an unknown word by the normalizer's ok, one point", () => {
+    // ok (what api/errors.ts answers for a word it does not know) -> Done.
+    render(<ReceiptCard result={resultOf("celebrated")} />);
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+  });
+
+  it("reads a not-ok result as not-success with the reason banner", () => {
+    render(<ReceiptCard result={{ ...resultOf("celebrated"), ok: false }} />);
+    expect(screen.getAllByText(strings.receiptNotSuccess).length).toBeGreaterThan(0);
+    expect(screen.queryByText(strings.receiptDone)).toBeNull();
   });
 
   it("never claims Done for disabled; it shows reason and remedy", () => {

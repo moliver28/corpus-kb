@@ -1,0 +1,49 @@
+{
+  "name": "labeling-gold-ok-200",
+  "source": "canonical",
+  "note": "POST /api/labeling/gold-check validation shape (tools/labeling_gold_tools.py labeling_gold_check + labeling/ppi_check.py GoldValidation.to_dict): raw agreement and the corrected estimate per class. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/labeling/gold-check" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "class_count": 2,
+      "validations": [
+        {
+          "class_name": "method_quality",
+          "status": "corrected",
+          "label": "corrected",
+          "raw_accuracy": 0.83,
+          "estimate": 0.79,
+          "lower": 0.61,
+          "upper": 0.9,
+          "n_population": 40,
+          "n_gold": 12,
+          "effective_audit_n": 9.5
+        },
+        {
+          "class_name": "outcome_report",
+          "status": "uncorrected",
+          "label": "uncorrected",
+          "raw_accuracy": 0.9,
+          "estimate": 0.9,
+          "lower": null,
+          "upper": null,
+          "n_population": 40,
+          "n_gold": 4,
+          "effective_audit_n": null
+        }
+      ],
+      "reason": "16 gold chunks matched the build; 1 ignored.",
+      "params": {
+        "gold_file": "gold-dev.json",
+        "gold_file_sha256": "a1b2c3d4e5f6",
+        "confidence_level": 0.95,
+        "classes": ["method_quality", "outcome_report"],
+        "gold_matched": 16,
+        "gold_ignored": 1,
+        "n_population": 40
+      }
+    }
+  }
+}

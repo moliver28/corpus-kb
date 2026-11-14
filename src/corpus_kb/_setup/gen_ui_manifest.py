@@ -1,36 +1,21 @@
 """Generate the UI op manifest and the typed client artifacts (UI SPA Task 4).
 
-Outputs (all COMMITTED — ``--check`` regenerates in memory and exits 1 on
-drift, ``gen_harness_pack`` precedent):
+Four COMMITTED outputs (``--check`` regenerates in memory and exits 1 on
+drift): ``ui_manifest.json`` (sorted op manifest), ``manifest.json``
+(the bundled copy without ``description`` keys), ``ops.generated.ts``
+(typed op table), and ``thresholds.generated.ts`` (verify thresholds).
+The renderers live in ``gen_ui_manifest_render.py`` (the 250-line rule).
 
-  * ``src/corpus_kb/ui_manifest.json``         — the op manifest (sorted JSON)
-  * ``ui_src/src/api/ops.generated.ts``        — typed op table: id, path,
-    method, longRunning (an ``@generated`` file humans must not edit)
-  * ``ui_src/src/api/thresholds.generated.ts`` — verify-badge thresholds
-  * ``ui_src/src/api/methods.generated.ts``    — the analysis register's
-    guidance table (difficulty, concepts, prerequisites, next) for the
-    SPA's progression rail (novice-UX program W3)
-
-The renderers live in ``gen_ui_manifest_render.py`` (the 250-line rule);
-the method rows load in ``gen_ui_manifest_methods.py``.
-
-Sources (exactly three, zero-drift rule 1):
-
-  * ``surface_registry.SURFACES``, loaded BY PATH — the registry is
-    strictly stdlib-only and is never imported as a package member;
-  * ``corpus_kb.api.research_http.tool_routes()`` for the required/optional
-    body keys (imported lazily; the registry load stays dependency-free);
-  * the analysis method register through its one loader, for the
-    guidance rows.
-
-One declared exception: the multipart upload route is not a JSON tool
-route, so its required form field (``file``) is named in
-:data:`MULTIPART_BODY_KEYS` below — the third input this one row needs.
+Sources (exactly two, zero-drift rule 1): ``surface_registry.SURFACES``
+loaded BY PATH (stdlib-only, never a package member), and
+``research_http.tool_routes()`` for the body keys (lazy import). One
+declared exception: the multipart upload row names its ``file`` form
+field in :data:`MULTIPART_BODY_KEYS` below. Methods: gen_method_register_docs.
 
 Usage:
     python src/corpus_kb/_setup/gen_ui_manifest.py [--check] [--project-root PATH]
 
-Exit code 0 = in sync (or written), 1 = drift detected.
+Exit code 0 = in sync (or written), 1 = drift. Methods: gen_method_register_docs.
 """
 
 from __future__ import annotations
@@ -54,6 +39,7 @@ from corpus_kb._setup.gen_ui_manifest_render import (
 
 REGISTRY_REL = Path("src") / "corpus_kb" / "surface_registry.py"
 MANIFEST_REL = Path("src") / "corpus_kb" / "ui_manifest.json"
+BUNDLED_MANIFEST_REL = Path("ui_src") / "src" / "api" / "manifest.json"
 
 # D.2 method rule: list routes answer GET, the document delete answers
 # DELETE, and every other registry route is a synchronous POST.
@@ -76,6 +62,17 @@ GET_SURFACE_NAMES = frozenset(
         "documents-list",
         "document-tags",
         "document-metadata",
+        # Phase-2 Wave 5: the drawer NLP panel's chunk window read.
+        "chunks-list",
+        # Phase-2 Wave 3: the corpus stats pair (GET routes predate the rows).
+        "stats",
+        "document-stats",
+        # Phase-2 Wave 4: the graph reads the workbench tables call (the
+        # relations read answers GET by entity id; the entity list window).
+        "get-entity-relations",
+        "list-entities",
+        # Phase-2 Wave 6: the Map's edge window read.
+        "list-relations",
         # Issue #350: the coding status read and the event-store health read.
         "coding-status",
         "events-summary",
@@ -173,12 +170,32 @@ def build_manifest(project_root: Path) -> list[dict[str, object]]:
     return entries
 
 
+def _bundled_entries(entries: list[dict[str, object]]) -> list[dict[str, object]]:
+    """The bundle copy: every entry minus its description.
+
+    The SPA never renders the description (nothing in ui_src reads it),
+    so the browser bundle does not pay for ~13 kB of JSON text. The repo
+    manifest keeps the descriptions — the harness parity gates read them
+    there. One writer emits both copies, so they cannot disagree on any
+    other key (Wave-5 bundle-headroom lever).
+    """
+    bundled: list[dict[str, object]] = []
+    for entry in entries:
+        row = {key: value for key, value in entry.items() if key != "description"}
+        bundled.append(row)
+    return bundled
+
+
 def artifacts(project_root: Path) -> dict[Path, str]:
     """Every generated artifact as a repo-relative path -> text (LF endings)."""
     entries = build_manifest(project_root)
     manifest_json = json.dumps(entries, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    bundled_json = (
+        json.dumps(_bundled_entries(entries), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    )
     return {
         MANIFEST_REL: manifest_json,
+        BUNDLED_MANIFEST_REL: bundled_json,
         OPS_TS_REL: render_ops_ts(entries),
         THRESHOLDS_TS_REL: render_thresholds_ts(),
         METHODS_TS_REL: render_methods_ts(build_method_entries(project_root)),

@@ -1,16 +1,21 @@
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { strings } from "../../strings";
-import { confidenceText, reviewStateWord } from "./shapes";
+import { percentText } from "../../api/format";
+import { strings } from "../../strings/review";
+import { reviewStateWord } from "./shapes";
 import type { AssignmentRow } from "./shapes";
 
-/** The coding queue rows: one accept and one override action per row. */
+/** The coding queue rows: one accept and one override action per row.
+ * Both row actions sleep while a decision is in flight (a double-click
+ * must never record one decision twice). */
 export default function AssignmentsTable({
   rows,
+  pending,
   onAccept,
   onOverride,
 }: {
   rows: AssignmentRow[];
+  pending: boolean;
   onAccept: (row: AssignmentRow) => void;
   onOverride: (row: AssignmentRow) => void;
 }) {
@@ -26,17 +31,17 @@ export default function AssignmentsTable({
     {
       title: strings.reviewColumnConfidence,
       key: "confidence",
-      render: (_value: unknown, row: AssignmentRow) => confidenceText(row.confidence),
+      render: (_value: unknown, row: AssignmentRow) => percentText(row.confidence),
     },
     {
       title: strings.reviewColumnActions,
       key: "actions",
       render: (_value: unknown, row: AssignmentRow) => (
         <div className="ui-actions">
-          <Button size="small" onClick={() => onAccept(row)}>
+          <Button size="small" disabled={pending} onClick={() => onAccept(row)}>
             {strings.reviewAccept}
           </Button>
-          <Button size="small" onClick={() => onOverride(row)}>
+          <Button size="small" disabled={pending} onClick={() => onOverride(row)}>
             {strings.reviewOverride}
           </Button>
         </div>

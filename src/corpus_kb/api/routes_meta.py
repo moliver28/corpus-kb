@@ -20,13 +20,42 @@ from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import opt_int, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
-from corpus_kb.domain.models import ListDocumentsQuery, ListEntitiesQuery
+from corpus_kb.domain.models import (
+    ListDocumentChunksQuery,
+    ListDocumentsQuery,
+    ListEntitiesQuery,
+)
+
+
+@route_errors
+async def list_document_chunks(request: Request) -> JSONResponse:
+    """GET /api/documents/{doc_id}/chunks — one document's chunk window.
+
+    Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs to
+    these chunk ids. Rows ride the ingest order (chunk_index, chunk_id).
+    Counts ride the shared window-count guard (tools._count_input), so
+    the HTTP arm answers the same typed rule the other surfaces answer.
+    """
+    from corpus_kb.handlers.query_wiring import get_query_handler
+    from corpus_kb.tools._count_input import limit_arg, offset_arg
+
+    query = ListDocumentChunksQuery(
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
+        doc_id=UUID(request.path_params.get("doc_id", "")),
+        limit=limit_arg(request.query_params.get("limit")),
+        offset=offset_arg(request.query_params.get("offset")),
+    )
+    handler = get_query_handler()
+    results = await handler.handle_list_document_chunks(query)
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors
 async def list_documents(request: Request) -> JSONResponse:
     """GET /api/documents — list documents with pagination."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListDocumentsQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
@@ -43,12 +72,13 @@ async def list_documents(request: Request) -> JSONResponse:
 @route_errors
 async def list_entities(request: Request) -> JSONResponse:
     """GET /api/entities — list entities, optionally filtered by type."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListEntitiesQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=request.query_params.get("entity_type"),
         limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
     )
     handler = get_query_handler()
     results = await handler.handle_list_entities(query)
@@ -71,13 +101,11 @@ async def list_versions(request: Request) -> JSONResponse:
 
 @route_errors
 async def get_stats(request: Request) -> JSONResponse:
-    """GET /api/stats - get database statistics."""
-    from corpus_kb.handlers.versioning_handler import get_versioning_handler
+    """GET /api/stats — the corpus stats op (Phase-2 Wave 3 catalogue row)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.versioning_tools import stats
 
-    handler = get_versioning_handler()
-    result = await handler.handle_get_stats(
-        UUID(DEFAULT_TENANT_ID),
-    )
+    result = await stats(await research_pool())
     return JSONResponse(result)
 
 
@@ -95,13 +123,11 @@ async def sql_tables(request: Request) -> JSONResponse:
 
 @route_errors
 async def document_stats(request: Request) -> JSONResponse:
-    """GET /api/document-stats - aggregate document statistics."""
-    from corpus_kb.handlers.versioning_handler import get_versioning_handler
+    """GET /api/document-stats — the document-stats op (Wave 3 catalogue row)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.versioning_tools import document_stats
 
-    handler = get_versioning_handler()
-    result = await handler.handle_query_document_stats(
-        UUID(DEFAULT_TENANT_ID),
-    )
+    result = await document_stats(await research_pool())
     return JSONResponse(result)
 
 

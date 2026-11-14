@@ -85,7 +85,7 @@ Absolute package imports everywhere under `src/corpus_kb/` (e.g. `from corpus_kb
 - Internal models are `@dataclass`, not `pydantic.BaseModel` (`utils/models.py`); exception: `Ontology` (`ontology.py`, Pydantic validation).
 - Every file: `from __future__ import annotations`. **No `type: ignore`. No `Any` where a real type works.** Python 3.11.5+ only.
 - 250-line soft limit on source files — split past it.
-- TypeScript (`ui_src/`) mirrors these rules: 250-line soft limit, no `any`, no `@ts-ignore`. Plain English strings live in `ui_src/src/strings/en.json`; `pytest -m ste` checks them.
+- TypeScript (`ui_src/`) mirrors these rules: 250-line soft limit, no `any`, no `@ts-ignore`. Plain English strings live in per-stage `ui_src/src/strings/<stage>.json` tables (entry chunk carries only `app.json`; `strings/index.ts` is the tests-only union); `pytest -m ste` checks them.
 
 ## Test Conventions
 
@@ -139,7 +139,7 @@ Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-z
 8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught. Wave 4 adds `poe validation-gate` (ingest validators + mode semantics + determinism; ci.yml / validation-gate).
 9. **Deterministic output.** Query/search results stably ordered with tiebreakers; harnesses must be able to snapshot them.
 10. **Every new gate needs three things:** a `poe` target, a CI job calling it, and a map row (+ a line here). A local-only gate is not a gate. Landed under this rule: `plugin-manifest` (issue 331 M3; `poe plugin-manifest`, ci.yml / plugin-manifest; manifest structure + version lockstep). It also covers `plugin-tests` (issue 331 rebuild; `poe plugin-tests`, ci.yml / plugin-tests; stdlib suite under `plugins/corpus-rag/tests/`).
-11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, `ui-manifest` (wired into `poe gen`), `ui-e2e` (Playwright smoke + axe on a live throwaway server). Each needs a `poe` target, a CI job, and a map row per rule 10.
+11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, and `ui-manifest` (wired into `poe gen`). `ui-e2e` is the Playwright smoke + axe scan on a live throwaway server. `ui-import-graph` is the Wave-6 lazy-Map law. The map libraries import only under `pages/map/` and `pages/Map.tsx`, never in the entry closure. Each gate needs a `poe` target, a CI job, and a map row per rule 10.
 
 ## Known Issues (check open GitHub issues before fixing)
 

@@ -521,7 +521,7 @@ def _patch_doctor_probes(
     # journey probe imports lazily from its own module, so it patches there.
     monkeypatch.setattr(doctor_tools, "research_checks", fake_research)
     monkeypatch.setattr(doctor_tools, "storage_checks", fake_storage)
-    monkeypatch.setattr(doctor_tools, "env_var_check", lambda: _Env())
+    monkeypatch.setattr(doctor_tools, "env_var_check", _Env)
     import corpus_kb._setup.doctor_journey as doctor_journey
 
     monkeypatch.setattr(doctor_journey, "journey_checks", fake_journey)

@@ -1,4 +1,4 @@
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 
 export interface EvidenceItem {
   text: string;
@@ -12,7 +12,7 @@ export default function EvidenceList({ items }: { items: EvidenceItem[] }) {
   }
   return (
     <>
-      <h4>{strings.askEvidenceHeading}</h4>
+      <h2 className="ui-heading">{strings.askEvidenceHeading}</h2>
       <ol className="ui-citations">
         {items.map((item, index) => (
           <li key={`${index}-${item.source}`}>

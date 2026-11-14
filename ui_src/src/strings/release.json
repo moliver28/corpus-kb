@@ -1,0 +1,20 @@
+{
+  "releaseAllPass": "Every required gate passes without waivers.",
+  "releaseAssessBody": "Compose every gate over the current evidence. Nothing is written.",
+  "releaseAssessTitle": "Assess gates",
+  "releaseBody": "Assess the gates, open the draft, review the packet, and execute with an approver.",
+  "releaseCompareTitle": "Compare releases",
+  "releaseExecuteApproverLabel": "Approver",
+  "releaseExecuteTitle": "Execute the release",
+  "releaseGatesHeading": "Gate results",
+  "releaseNewLabel": "New release id",
+  "releaseOldLabel": "Old release id",
+  "releaseReleaseLabel": "Release id",
+  "releaseRequestCreatorLabel": "Creator",
+  "releaseRequestTitle": "Open a draft release",
+  "releaseRequiredFailing": "Required gates that fail:",
+  "releaseReviewTitle": "Review packet",
+  "releaseStatusTitle": "Release status",
+  "releaseTitle": "Release a codebook",
+  "releaseWaiversLabel": "Waivers (JSON pairs, optional)"
+}

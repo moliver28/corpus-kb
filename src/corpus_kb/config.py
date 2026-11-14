@@ -131,6 +131,18 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
             else:
                 section_dict[key] = value
 
+    # Deeper leaves need a path walk; the flat table covers two levels
+    # only. chat.claude.oauth_token fills ONLY from this variable, never
+    # from a file (docs/CHAT.md).
+    nested_env_overrides: dict[tuple[str, str, str], str] = {
+        ("chat", "claude", "oauth_token"): "CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN",
+    }
+    for (top, mid, leaf), env_var in nested_env_overrides.items():
+        value = os.environ.get(env_var)
+        if value is not None:
+            leaf_dict = cast(dict[str, object], cast(dict[str, object], config[top])[mid])
+            leaf_dict[leaf] = value
+
 
 # The config tree is schemaless YAML; Any is the honest leaf type. It lets
 # callers index nested sections without casting every hop.
@@ -253,17 +265,37 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     # Storage-portability backend truth: Postgres-only engine selections are
     # refused while database.backend is duckdb (the mix gate runs AFTER the
     # alias layers, so it sees the effective extraction backend).
-    mix_errors = backend_mix_errors(config)
-    if mix_errors:
-        raise ValueError(mix_errors[0])
+    _raise_first_error(backend_mix_errors(config))
+
+    # The remaining cross-field gates (chat rung, matryoshka, contextualize,
+    # topics, analysis, ui.spa, notebooks) each own their rules and messages
+    # in their settings module; the first refusal wins.
+    _run_load_gates(config)
+
+    return config
+
+
+def _run_load_gates(config: dict[str, object]) -> None:
+    """Run every cross-field load gate and raise the first refusal.
+
+    Each gate owns its rules and remediation text in its settings module
+    (chat rung, matryoshka MRL, contextualize v2, topics, analysis,
+    ui.spa, notebooks). One gate per call site keeps this loader flat.
+    """
+    # Phase-2 Wave 7 chat: rung and ownership truth. A claude-agent-sdk
+    # selection on a shared server would change the billing path without
+    # the owner's knowledge, so it is refused AT LOAD, never silently
+    # switched.
+    chat_errors = chat_backend_errors(config)
+    if chat_errors:
+        raise ValueError(chat_errors[0])
 
     mrl_error = matryoshka_mrl_error(config)
     if mrl_error is not None:
         raise ValueError(mrl_error)
 
     # W3 contextualize v2: backend/profile/apply_to/max_context_tokens are
-    # rejected AT LOAD with the remediation text (rag/contextual_settings.py
-    # is the single source of both the rules and the messages).
+    # rejected AT LOAD with the remediation text.
     from corpus_kb.rag.contextual_settings import contextualize_settings_error
 
     contextual_error = contextualize_settings_error(config)
@@ -271,7 +303,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         raise ValueError(contextual_error)
 
     # Wave 4 topics: method/min_topic_size are rejected AT LOAD with the
-    # remediation text (topics/settings.py owns the rules and messages).
+    # remediation text.
     from corpus_kb.topics.settings import topics_settings_error
 
     topics_error = topics_settings_error(config)
@@ -279,30 +311,31 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         raise ValueError(topics_error)
 
     # Corpus analysis program: labeling.min_signals, classification.tier
-    # and topics.over_time.bins/undated are rejected AT LOAD with the
-    # remediation text (analysis/settings.py owns the rules and messages).
+    # and topics.over_time.bins/undated are rejected AT LOAD.
     from corpus_kb.analysis.settings import analysis_settings_error
 
     analysis_error = analysis_settings_error(config)
     if analysis_error is not None:
         raise ValueError(analysis_error)
 
-    # Browser UI gates AT LOAD: ui.spa.* values must be sane
-    # (ui_spa_settings_error owns the rules and the remediation text).
+    # Browser UI gates AT LOAD: ui.spa.* values must be sane.
     ui_error = ui_spa_settings_error(config)
     if ui_error is not None:
         raise ValueError(ui_error)
 
     # UX Wave 6 notebooks console: notebooks.enabled must be a real bool and
-    # notebooks.directory a non-empty string AT LOAD (notebooks/settings.py
-    # owns the rules and the remediation text).
+    # notebooks.directory a non-empty string AT LOAD.
     from corpus_kb.notebooks.settings import notebooks_settings_error
 
     notebooks_error = notebooks_settings_error(config)
     if notebooks_error is not None:
         raise ValueError(notebooks_error)
 
-    return config
+
+def _raise_first_error(errors: list[str]) -> None:
+    """Raise the first gate refusal; empty means the gate passed."""
+    if errors:
+        raise ValueError(errors[0])
 
 
 def apply_extraction_backend_alias(config: dict[str, object]) -> None:
@@ -364,6 +397,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_TEST_DB",
         "CORPUS_KB_TEXTBOOK_GOLDEN_DIR",
         "CORPUS_KB_UI_OPEN",
+        "CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN",
     }
 )
 
@@ -491,6 +525,50 @@ def backend_mix_errors(config: dict[str, object]) -> list[str]:
         errors.append(PGML_RERANKER_ON_DUCKDB_ERROR)
     if _effective_extraction_backend(config) == "pgml":
         errors.append(PGML_EXTRACTION_ON_DUCKDB_ERROR)
+    return errors
+
+
+# Phase-2 Wave 7 chat rungs. claude-agent-sdk bills the owner's Claude
+# subscription, so it is legal only for one owner on one machine.
+CHAT_BACKENDS: tuple[str, ...] = ("claude-agent-sdk", "anthropic-api", "ollama")
+CHAT_LOOPBACK_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1"})
+_CHAT_BACKEND_CHOICES = "claude-agent-sdk, anthropic-api, or ollama"
+_CHAT_ONE_OWNER = "The claude-agent-sdk chat rung serves one owner on one machine. "
+
+
+def chat_backend_errors(config: dict[str, object]) -> list[str]:
+    """Refuse chat settings that break the one-owner subscription rung.
+
+    Three rules, in a fixed order: an unknown ``chat.backend``; the
+    ``claude-agent-sdk`` rung on a server host that is not loopback, or
+    with ``chat.single_owner`` not true; ``chat.enabled`` with an empty
+    backend. No silent fallback: a quiet rung switch would change who
+    pays. Environment checks stay at session start, so a stray variable
+    never breaks commands that do not chat. Pure: no IO, no globals.
+    """
+    chat = _section_dict(config, "chat")
+    backend = chat.get("backend")
+    if not backend:
+        if chat.get("enabled"):
+            return [
+                "chat.enabled is true but chat.backend is empty. "
+                f"Set chat.backend to {_CHAT_BACKEND_CHOICES}."
+            ]
+        return []
+    errors: list[str] = []
+    if backend not in CHAT_BACKENDS:
+        errors.append(f"chat.backend {backend!r} is unknown. Use {_CHAT_BACKEND_CHOICES}.")
+    if backend == "claude-agent-sdk":
+        host = str(_section_dict(config, "server").get("host") or "localhost")
+        if host not in CHAT_LOOPBACK_HOSTS:
+            errors.append(
+                f"{_CHAT_ONE_OWNER}server.host {host!r} is not a loopback address. "
+                "Set server.host to localhost, or set chat.backend to ollama."
+            )
+        if chat.get("single_owner", True) is not True:
+            errors.append(
+                f"{_CHAT_ONE_OWNER}Set chat.single_owner to true, or set chat.backend to ollama."
+            )
     return errors
 
 
@@ -926,6 +1004,56 @@ def get_default_config() -> dict[str, object]:
                 "poll_ms": SPA_POLL_MS_DEFAULT,
                 "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
                 "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
+            },
+        },
+        # Chat (Phase-2 Wave 7; chat/settings.py is the typed reader).
+        # Ships OFF: no session starts until the owner sets enabled. The
+        # default rung bills the owner's Claude subscription, so it runs
+        # for one owner on one machine only (chat_backend_errors). The
+        # claude block pins a work account apart from any personal Claude
+        # Code login. oauth_token fills ONLY from
+        # CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN, never from a file.
+        "chat": {
+            "enabled": False,
+            "backend": "claude-agent-sdk",
+            "single_owner": True,
+            "max_sessions": 1,
+            "session_ttl_s": 1800,
+            "claude": {
+                "config_dir": "~/.claude-corpus",
+                # The Claude Code CLI path. Empty = the SDK finds claude
+                # on PATH or its bundled binary; set it when neither
+                # exists (the ARM64-Windows case).
+                "cli_path": "",
+                "model": "",
+                "max_turns": 20,
+                "allowed_tools": ["mcp__corpus__search"],
+                # The deny list covers the auto-allowed read-only built-ins
+                # (Read/Glob/Grep/LS/NotebookRead) plus every write, shell,
+                # and web tool; the PreToolUse hook denies the rest.
+                "disallowed_tools": [
+                    "Bash",
+                    "Write",
+                    "Edit",
+                    "MultiEdit",
+                    "NotebookEdit",
+                    "NotebookRead",
+                    "Read",
+                    "Glob",
+                    "Grep",
+                    "LS",
+                    "WebFetch",
+                    "WebSearch",
+                    "Task",
+                    "TodoWrite",
+                    "SlashCommand",
+                    "KillShell",
+                    "BashOutput",
+                ],
+                "oauth_token": "",
+            },
+            "ollama": {
+                "history_turns": 6,
             },
         },
     }

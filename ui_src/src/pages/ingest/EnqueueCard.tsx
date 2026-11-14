@@ -1,11 +1,12 @@
-import { Button, Card, Input, Typography } from "antd";
+import { Button, Card, Typography } from "antd";
 import { useState } from "react";
 import { enqueueBook } from "../../api/queue";
 import type { QueueEnqueuePayload } from "../../api/queue";
 import type { OpResult } from "../../api/types";
 import ErrorPanel from "../../components/ErrorPanel";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 /**
  * The enqueue form (one server-side file, idempotent per content hash):
@@ -18,10 +19,12 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
   const [title, setTitle] = useState("");
   const [profile, setProfile] = useState("");
   const [configText, setConfigText] = useState("");
-  const [hint, setHint] = useState("");
+  const [pathError, setPathError] = useState("");
+  const [configError, setConfigError] = useState("");
   const [enqueueing, setEnqueueing] = useState(false);
   const [enqueued, setEnqueued] = useState<QueueEnqueuePayload | null>(null);
   const [enqueueError, setEnqueueError] = useState<OpResult | null>(null);
+  const { rootRef: errorFocusRef, flag } = useFirstErrorFocus();
 
   /** Client-side strategy-config check: empty, or one JSON object. */
   function parseConfig(): Record<string, unknown> | undefined | null {
@@ -42,15 +45,20 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
 
   async function submit(): Promise<void> {
     if (path.trim() === "") {
-      setHint(strings.queuePathRequired);
-      return;
+      setPathError(strings.queuePathRequired);
+    } else {
+      setPathError("");
     }
     const strategyConfig = parseConfig();
     if (strategyConfig === null) {
-      setHint(strings.queueConfigInvalid);
+      setConfigError(strings.queueConfigInvalid);
+    } else {
+      setConfigError("");
+    }
+    if (path.trim() === "" || strategyConfig === null) {
+      flag();
       return;
     }
-    setHint("");
     setEnqueueError(null);
     setEnqueueing(true);
     const cleanTitle = title.trim();
@@ -73,54 +81,61 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
   return (
     <Card title={strings.queueFormTitle}>
       <Typography.Paragraph type="secondary">{strings.queueFormBody}</Typography.Paragraph>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow--form"
-          aria-label={strings.queuePathLabel}
-          data-testid="queue-path"
-          placeholder={strings.queuePathLabel}
-          value={path}
-          onChange={(event) => setPath(event.target.value)}
-        />
-        <Input
-          className="ui-narrow--small"
-          aria-label={strings.queueTitleLabel}
-          data-testid="queue-title"
-          placeholder={strings.queueTitleLabel}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
+      <div ref={errorFocusRef}>
+        <div className="ui-actions">
+          <LabeledField
+            label={strings.queuePathLabel}
+            value={path}
+            onChange={setPath}
+            error={pathError}
+            required
+            machine
+            name="path"
+            widthClass="ui-narrow--form"
+            id="queue-path"
+          />
+          <LabeledField
+            label={strings.queueTitleLabel}
+            value={title}
+            onChange={setTitle}
+            name="title"
+            widthClass="ui-narrow--small"
+            id="queue-title"
+          />
+        </div>
+        <div className="ui-actions">
+          <LabeledField
+            label={strings.queueProfileLabel}
+            value={profile}
+            onChange={setProfile}
+            machine
+            name="profile"
+            widthClass="ui-narrow--small"
+            id="queue-profile"
+          />
+          <LabeledField
+            label={strings.queueConfigLabel}
+            value={configText}
+            onChange={setConfigText}
+            error={configError}
+            machine
+            multiline
+            name="strategy_config"
+            widthClass="ui-narrow--form"
+            id="queue-config"
+          />
+        </div>
+        <div className="ui-actions">
+          <Button
+            type="primary"
+            loading={enqueueing}
+            data-testid="queue-enqueue"
+            onClick={() => void submit()}
+          >
+            {strings.queueEnqueueAction}
+          </Button>
+        </div>
       </div>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow--small"
-          aria-label={strings.queueProfileLabel}
-          data-testid="queue-profile"
-          placeholder={strings.queueProfileLabel}
-          value={profile}
-          onChange={(event) => setProfile(event.target.value)}
-        />
-        <Input.TextArea
-          className="ui-narrow--form"
-          rows={3}
-          aria-label={strings.queueConfigLabel}
-          data-testid="queue-config"
-          placeholder={strings.queueConfigLabel}
-          value={configText}
-          onChange={(event) => setConfigText(event.target.value)}
-        />
-      </div>
-      <div className="ui-actions">
-        <Button
-          type="primary"
-          loading={enqueueing}
-          data-testid="queue-enqueue"
-          onClick={() => void submit()}
-        >
-          {strings.queueEnqueueAction}
-        </Button>
-      </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {enqueued !== null && (
         <div className="ui-stack">
           <StatusBanner kind="ok">{strings.queueEnqueued}</StatusBanner>

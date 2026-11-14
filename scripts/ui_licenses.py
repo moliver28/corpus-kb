@@ -2,7 +2,10 @@
 """UI production-license gate (UI SPA program Task 4).
 
 Runs ``pnpm licenses list`` over ``ui_src/`` and enforces the production
-allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0).
+allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0, and
+OFL-1.1 for the self-hosted @fontsource font packages; MPL-2.0 and
+Unlicense are tree-only entries from the @ant-design/x mermaid
+subtree — reasons inline at ALLOWED_TREE_ONLY).
 The lockfile records the production tree only: dev trees contain
 platform-specific native packages (rolldown/esbuild bindings), so a
 dev snapshot would differ per OS and never stay in sync.
@@ -33,7 +36,27 @@ from pathlib import Path
 LOCK_REL = Path("ui_licenses.lock.json")
 UI_SRC_REL = Path("ui_src")
 
-ALLOWED_EXACT = frozenset({"MIT", "Apache-2.0", "ISC", "0BSD", "CC0-1.0", "MIT-0"})
+ALLOWED_EXACT = frozenset({"MIT", "Apache-2.0", "ISC", "0BSD", "CC0-1.0", "MIT-0", "OFL-1.1"})
+# Wave 7 additions, each with its reason (the uv.toml [audit] precedent:
+# a gate finding no lockfile edit can fix gets a written reason):
+#   MPL-2.0 — dompurify, dual-licensed (MPL-2.0 OR Apache-2.0); the gate
+#     requires EVERY branch of an expression to be allowlisted, so the
+#     file-level MPL-2.0 branch needs its own entry. Enters the tree as
+#     a transitive dep of mermaid, itself a HARD dependency of
+#     @ant-design/x 2.10.0.
+#   Unlicense — robust-predicates, same mermaid subtree.
+# Neither package ships bytes in any built chunk: mermaid tree-shakes
+# out of every @ant-design/x surface the chat UI imports (verified in
+# the Wave-7 step-6 build), so the entries gate a tree-only risk.
+ALLOWED_TREE_ONLY = frozenset({"MPL-2.0", "Unlicense"})
+ALLOWED_EXACT |= ALLOWED_TREE_ONLY
+# pnpm reports "Unknown" when a package's only license evidence is a
+# lowercase `license` file (case-sensitive runners miss the name) and
+# its package.json carries no `license` field. Each override names the
+# verified license and where it was read.
+LICENSE_OVERRIDES = {
+    "khroma": "MIT",  # khroma@2.1.0 `license` file, read 2026-11-14
+}
 _ALLOWED_PREFIXES = ("BSD",)
 _BRANCH_RX = re.compile(r"\s+(?:OR|AND)\s+")
 
@@ -71,6 +94,9 @@ def _pnpm_licenses(project_root: Path, prod_only: bool) -> dict[str, str]:
         for package in packages:
             name = str(package.get("name", ""))
             flat[name] = str(package.get("license", license_name))
+    for name, license_name in LICENSE_OVERRIDES.items():
+        if flat.get(name) == "Unknown":
+            flat[name] = license_name
     return dict(sorted(flat.items()))
 
 
@@ -78,7 +104,11 @@ def build_lock(project_root: Path) -> tuple[dict[str, str], str]:
     """(production, rendered-lock) — prod gated and recorded, sorted."""
     production = _pnpm_licenses(project_root, prod_only=True)
     lock = {
-        "gate": "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0)",
+        "gate": (
+            "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0,"
+            " OFL-1.1, and the tree-only MPL-2.0 + Unlicense; reasons in"
+            " scripts/ui_licenses.py)"
+        ),
         "production": production,
     }
     rendered = json.dumps(lock, indent=2, sort_keys=True) + "\n"

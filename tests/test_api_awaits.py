@@ -43,12 +43,12 @@ class _FakeCommandHandler:
         self.called.append("ingest_directory")
         return {"status": "success", "handler": "ingest_directory"}
 
-    def handle_add_entity(self, cmd: Any) -> dict[str, object]:
+    async def handle_add_entity(self, cmd: Any) -> dict[str, object]:
         self.called.append("add_entity")
         self.entities.append(cmd)
         return {"status": "success", "handler": "add_entity"}
 
-    def handle_add_relation(self, cmd: Any) -> dict[str, object]:
+    async def handle_add_relation(self, cmd: Any) -> dict[str, object]:
         self.called.append("add_relation")
         self.relations.append(cmd)
         return {"status": "success", "handler": "add_relation"}
@@ -174,10 +174,10 @@ class _RecordingQueryHandler:
 
 
 def _install_query_handler(monkeypatch: Any) -> _RecordingQueryHandler:
-    import corpus_kb.handlers.query_handler as query_handler_module
+    import corpus_kb.handlers.query_wiring as query_wiring_module
 
     handler = _RecordingQueryHandler()
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda: handler)
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda: handler)
     return handler
 
 

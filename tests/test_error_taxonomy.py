@@ -25,6 +25,7 @@ from starlette.testclient import TestClient
 import corpus_kb.api.research_http as research_http
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 from corpus_kb.api._body import error_response
@@ -227,8 +228,8 @@ def test_error_response_from_unmapped_string_defaults_to_500() -> None:
 class _Raiser:
     """Handler stub whose every method raises the same exception.
 
-    ``sync=True`` matches the sync handler methods (handle_add_entity and
-    friends): the exception must fire at call time, not at await time.
+    ``sync=True`` raises at call time instead of await time, for any
+    handler seam a route still calls without awaiting.
     """
 
     def __init__(self, exc: BaseException, *, sync: bool = False) -> None:
@@ -297,7 +298,7 @@ def test_not_found_error_maps_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_database_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch) -> None:
     exc = DatabaseUnavailableError("The database is not reachable.")
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda *a: _Raiser(exc))
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda *a: _Raiser(exc))
     response = _client().post("/api/query/sql", json={"sql": "SELECT 1"})
     assert response.status_code == 503
     body = _assert_standard_envelope(response)
@@ -330,7 +331,7 @@ def test_unexpected_exception_maps_to_500_internal_error(
 def test_verify_errors_use_the_standard_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     # Regression: verify alone returned 500 + {"status", "message"}.
     exc = ValidationError("The answer text is empty.")
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda *a: _Raiser(exc))
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda *a: _Raiser(exc))
     response = _client().post("/api/verify", json={"answer": "", "chunk_ids": []})
     assert response.status_code == 400
     body = _assert_standard_envelope(response)

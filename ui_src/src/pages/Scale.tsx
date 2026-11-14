@@ -1,28 +1,41 @@
 import { Card, Select, Skeleton, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { shortTimeText } from "../api/format";
 import { runtimeConfig } from "../api/runtimeConfig";
+import { pageConfig } from "../api/table";
 import DegradedCard from "../components/DegradedCard";
 import DirectoryCard from "../components/DirectoryCard";
 import JsonViewer from "../components/JsonViewer";
 import ResearchIngestCard from "../components/ResearchIngestCard";
 import StatusBanner from "../components/StatusBanner";
 import { usePoll } from "../hooks/usePoll";
-import { strings } from "../strings";
+import type { Poll } from "../hooks/usePoll";
+import { useQueryParam } from "../hooks/useQueryParam";
+import { strings } from "../strings/scale";
+import CalibrateApplyCard from "./scale/CalibrateApplyCard";
+import ResearchDemoCard from "./scale/ResearchDemoCard";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";
 import type { LedgerRun } from "./scale/runFilter";
 
-/** The project filter plus the narrowed run list (migration 036 link). */
+/** One small page of ledger rows; the pager hides until it is needed. */
+const LEDGER_PAGE_SIZE = 10;
+
+/**
+ * The project filter plus the narrowed run list (migration 036 link).
+ * The pick rides the hash query (`#/scale?project=<id>`), so reload and
+ * links restore it; a project absent from the current ledger reads as
+ * "all" — the honest fallback, never a crash.
+ */
 function RunFilterView({ runs }: { runs: LedgerRun[] }) {
-  const [project, setProject] = useState<string | null>(null);
   const options = projectOptions(runs);
+  const [project, setProject] = useQueryParam("project", options);
   const visible = filterRuns(runs, project);
   const columns: ColumnsType<LedgerRun> = [
     {
       title: strings.scaleRunsColumnStarted,
       dataIndex: "started_at",
-      render: (value: unknown) => short(value),
+      render: (value: unknown) => shortTimeText(value),
     },
     {
       title: strings.scaleRunsColumnSource,
@@ -37,7 +50,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
     },
   ];
   if (runs.length === 0) {
-    return null;
+    return <StatusBanner kind="info">{strings.scaleRunsNone}</StatusBanner>;
   }
   return (
     <div className="ui-stack">
@@ -57,7 +70,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
         <Table<LedgerRun>
           size="small"
           rowKey="run_id"
-          pagination={false}
+          pagination={pageConfig(LEDGER_PAGE_SIZE)}
           dataSource={visible}
           columns={columns}
         />
@@ -66,17 +79,12 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
   );
 }
 
-function short(value: unknown): string {
-  return typeof value === "string" && value.length >= 19 ? value.slice(0, 19) : "-";
-}
-
 function dash(value: unknown): string {
   return typeof value === "string" && value !== "" ? value : "-";
 }
 
 /** The self-polling run ledger (spec F6): poll_ms, hidden pause, backoff. */
-function LedgerCard() {
-  const poll = usePoll("ingest-status");
+function LedgerCard({ poll }: { poll: Poll<unknown> }) {
   const runs = poll.result === null ? [] : runsOf(poll.result.data);
   let body: ReactNode;
   if (poll.result === null) {
@@ -114,18 +122,23 @@ function LedgerCard() {
 
 /**
  * The Scale stage — the run ledger, the bulk folder walk, the research
- * ingest with its force warning, and the re-embed watch.
+ * ingest with its force warning, the demo run, the calibration apply,
+ * and the re-embed watch. One poll loop owns the ledger read; every
+ * ledger consumer (the table and the degraded watch) rides its answer.
  */
 export default function Scale() {
+  const poll = usePoll("ingest-status");
   return (
     <div className="ui-stack">
       <Card title={strings.scaleTitle}>
         <p>{strings.scaleBody}</p>
       </Card>
-      <LedgerCard />
+      <LedgerCard poll={poll} />
       <DirectoryCard title={strings.scaleBulkTitle} />
       <ResearchIngestCard />
-      <DegradedCard />
+      <ResearchDemoCard />
+      <CalibrateApplyCard />
+      <DegradedCard ledger={{ result: poll.result, refresh: poll.refresh }} />
     </div>
   );
 }

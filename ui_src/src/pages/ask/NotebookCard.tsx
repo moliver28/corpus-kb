@@ -1,37 +1,48 @@
-import { Button, Card, Input } from "antd";
+import { Button, Card } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import EvidenceList from "./EvidenceList";
+import ProjectField from "./ProjectField";
 import { isNotebookEnvelope, notebookEvidence, notebookSentences } from "./shapes";
 
 /**
  * The notebook tab: grounded Q&A scoped to one research project, with a
- * retrieval-only switch (no LLM call). No verify badge here: the
- * notebook answer path runs no judge, so none is claimed.
+ * retrieval-only switch (no LLM call). The project comes from the
+ * projects-list picker; a failed list read falls back to the typed id.
+ * No verify badge here: the notebook answer path runs no judge, so none
+ * is claimed.
  */
 export default function NotebookCard() {
   const [projectId, setProjectId] = useState("");
   const [question, setQuestion] = useState("");
   const [retrievalOnly, setRetrievalOnly] = useState(false);
-  const [hint, setHint] = useState("");
+  const [projectError, setProjectError] = useState("");
+  const [questionError, setQuestionError] = useState("");
+  const { rootRef, flag } = useFirstErrorFocus();
   const notebook = useOp("notebook-ask");
 
   async function run(): Promise<void> {
     if (projectId.trim() === "") {
-      setHint(strings.askNotebookProjectRequired);
-      return;
+      setProjectError(strings.askNotebookProjectRequired);
+    } else {
+      setProjectError("");
     }
     if (question.trim() === "") {
-      setHint(strings.askQueryRequired);
+      setQuestionError(strings.askQueryRequired);
+    } else {
+      setQuestionError("");
+    }
+    if (projectId.trim() === "" || question.trim() === "") {
+      flag();
       return;
     }
-    setHint("");
     notebook.reset();
     await notebook.run({
       project_id: projectId.trim(),
@@ -53,7 +64,7 @@ export default function NotebookCard() {
         const sentences = notebookSentences(env);
         body = (
           <div className="ui-stack">
-            <h4>{strings.citationsHeading}</h4>
+            <h2 className="ui-heading">{strings.citationsHeading}</h2>
             <ol className="ui-citations">
               {sentences.map((sentence, index) => (
                 <li key={`${index}-${sentence.source}`}>
@@ -79,9 +90,9 @@ export default function NotebookCard() {
       } else if (env.status === "empty") {
         body = <StatusBanner kind="warn">{message || strings.askEmptyState}</StatusBanner>;
       } else {
-        // The server's "error" status (a filter value it rejects) and any
-        // unknown status word are notes about the request, never a
-        // scary error banner — the server message carries the reason.
+        // A server "error" status never lands here: the shared normalizer
+        // routes it to the error panel (api/errors.ts). This branch is
+        // for an unknown status word — a calm note with the message.
         body = <StatusBanner kind="info">{message || strings.receiptEmpty}</StatusBanner>;
       }
     } else if (result.ok) {
@@ -98,19 +109,17 @@ export default function NotebookCard() {
 
   return (
     <Card title={strings.askTabNotebook}>
-      <div className="ui-stack">
+      <div className="ui-stack" ref={rootRef}>
         <div className="ui-actions">
-          <Input
-            className="ui-narrow--short"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            placeholder={strings.askNotebookProjectLabel}
-          />
-          <Input
-            className="ui-narrow"
+          <ProjectField value={projectId} onChange={setProjectId} error={projectError} />
+          <LabeledField
+            label={strings.askNotebookQuestionLabel}
             value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder={strings.askQueryLabel}
+            onChange={setQuestion}
+            error={questionError}
+            required
+            name="notebook_question"
+            widthClass="ui-narrow"
             onPressEnter={() => void run()}
           />
         </div>
@@ -128,7 +137,6 @@ export default function NotebookCard() {
             {strings.askNotebookAction}
           </Button>
         </div>
-        {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
         {body}
       </div>
     </Card>

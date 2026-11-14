@@ -29,6 +29,12 @@ interface CallOpStreamOptions {
   timeoutMs?: number | "none";
   /** Called with each grounded text piece as it arrives. */
   onDelta: (piece: string) => void;
+  /**
+   * Called with each house frame of the chat family (chat.activity,
+   * chat.warning, chat.error). Absent on the ask surface, whose behavior
+   * stays byte-identical (its tests pin the parser).
+   */
+  onHouseFrame?: (frame: Record<string, unknown>) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +59,7 @@ function deltaText(frame: StreamFrame): string {
 async function readFrames(
   stream: ReadableStream<Uint8Array>,
   onDelta: (piece: string) => void,
+  onHouseFrame?: (frame: Record<string, unknown>) => void,
 ): Promise<unknown> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -78,8 +85,15 @@ async function readFrames(
         continue;
       }
       if (!isRecord(frame)) continue;
-      if (frame.object === "ask.envelope") {
+      if (frame.object === "ask.envelope" || frame.object === "chat.envelope") {
         envelope = frame.envelope;
+      } else if (
+        onHouseFrame !== undefined &&
+        typeof frame.object === "string" &&
+        frame.object.startsWith("chat.") &&
+        frame.object !== "chat.completion.chunk"
+      ) {
+        onHouseFrame(frame);
       } else {
         const piece = deltaText(frame);
         if (piece !== "") onDelta(piece);
@@ -98,7 +112,14 @@ export async function callOpStream(
   path: string,
   opts: CallOpStreamOptions,
 ): Promise<OpResult<unknown>> {
-  const { method = "POST", body, signal, timeoutMs = requestTimeoutMs(), onDelta } = opts;
+  const {
+    method = "POST",
+    body,
+    signal,
+    timeoutMs = requestTimeoutMs(),
+    onDelta,
+    onHouseFrame,
+  } = opts;
   const ctrl = new AbortController();
   const timer = timeoutMs === "none" ? null : setTimeout(() => ctrl.abort(), timeoutMs);
   if (signal?.aborted) {
@@ -135,7 +156,7 @@ export async function callOpStream(
     if (!res.body) {
       return unreadableResult(res.status);
     }
-    const envelope = await readFrames(res.body, onDelta);
+    const envelope = await readFrames(res.body, onDelta, onHouseFrame);
     if (envelope === null || envelope === undefined) {
       return unreadableResult(res.status);
     }

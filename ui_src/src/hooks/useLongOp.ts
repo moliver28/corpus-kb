@@ -19,11 +19,11 @@ interface LongOpState {
   statusResult: OpResult<unknown> | null;
 }
 
-interface LongOp {
+export interface LongOp {
   start: () => Promise<OpResult<unknown>>;
   /** Cancel stops WAITING, not the server. */
   cancel: () => void;
-  /** Poll the ingest ledger once (the "Check status" button). */
+  /** Poll the status ledger once (the "Check status" button). */
   checkStatus: () => Promise<OpResult<unknown>>;
   running: boolean;
   elapsedSec: number;
@@ -31,6 +31,8 @@ interface LongOp {
   cancelled: boolean;
   result: OpResult<unknown> | null;
   statusResult: OpResult<unknown> | null;
+  /** True when the op family has a status op ("Check status" may show). */
+  hasStatus: boolean;
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
@@ -41,6 +43,7 @@ function warnBeforeUnload(event: BeforeUnloadEvent): void {
 export function useLongOp(
   key: string,
   fn: (signal: AbortSignal) => Promise<OpResult<unknown>>,
+  statusOpId?: string | null,
 ): LongOp {
   const [state, setState] = useState<LongOpState>({
     running: false,
@@ -132,8 +135,12 @@ export function useLongOp(
     ctrlRef.current?.abort();
   }, []);
 
+  // A status op only exists when the caller passes one AND the manifest
+  // knows it; without it the "Check status" button must never render.
+  const hasStatus = statusOpId !== undefined && statusOpId !== null && getOp(statusOpId) !== undefined;
+
   const checkStatus = useCallback((): Promise<OpResult<unknown>> => {
-    const status = getOp("ingest-status");
+    const status = statusOpId !== undefined && statusOpId !== null ? getOp(statusOpId) : undefined;
     if (!status) {
       return Promise.resolve(unknownOpResult());
     }
@@ -143,7 +150,7 @@ export function useLongOp(
       setState((prev) => ({ ...prev, statusResult: res }));
       return res;
     });
-  }, []);
+  }, [statusOpId]);
 
-  return { start, cancel, checkStatus, ...state };
+  return { start, cancel, checkStatus, hasStatus, ...state };
 }

@@ -15,7 +15,7 @@ pin region, post-fuse rerank, parent expansion). This module keeps the
 delegates, and the singleton.
 
 Usage:
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
     handler = get_query_handler()
     results = await handler.handle_search(SearchQuery(query="test", k=10))
 """
@@ -28,10 +28,14 @@ import asyncpg
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.models import (
+    DocumentChunkResult,
     DocumentResult,
     EntityResult,
+    ListDocumentChunksQuery,
     ListDocumentsQuery,
     ListEntitiesQuery,
+    ListRelationsQuery,
+    RelationListResult,
     SearchContextQuery,
     SearchQuery,
     SearchResult,
@@ -40,15 +44,16 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
-from corpus_kb.errors import DependencyMissingError
-from corpus_kb.handlers import query_crud, query_crud_reads, query_pipeline, query_stages
+from corpus_kb.handlers import (
+    query_crud,
+    query_crud_reads,
+    query_graph_reads,
+    query_pipeline,
+    query_stages,
+    query_wiring,
+)
 from corpus_kb.handlers.query_integrity import SearchEnvelope
-from corpus_kb.handlers.query_multiquery import build_rewriter
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
-from corpus_kb.rag.rerank_settings import load_rerank_settings
-from corpus_kb.research.multi_query_settings import load_multi_query_settings
-from corpus_kb.research.retrieval_settings import load_retrieval_settings
-from corpus_kb.research.search_settings import HnswSettings, load_hnsw_settings
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.search_backend import SearchBackend
 
@@ -88,24 +93,15 @@ class QueryHandler:
             if reranker is not None
             else (query_pipeline.resolve_reranker(self._config, pool))
         )
-        # Config v2: the retrieval knobs live under ``retrieval.*`` and the
-        # rerank knobs under ``reranking.*`` (legacy namespaces are aliases
-        # the loader already normalized). U45/U21: ``rrf_k`` feeds the
-        # fusion call; the threshold drives the exact-scan arm; the
-        # candidate depths drive the live vector/FTS arm LIMITs; ``mode``
-        # is enum-validated here — a bad value fails loudly at construction.
-        self._rerank_settings = load_rerank_settings(self._config)
-        self._retrieval_settings = load_retrieval_settings(self._config)
+        (
+            self._rerank_settings,
+            self._retrieval_settings,
+            self._hnsw_settings,
+            self._multi_query_settings,
+            self._rewriter,
+        ) = query_wiring.load_query_settings(self._config)
         self._exclude_degraded = self._retrieval_settings.exclude_degraded
         self._self_query_enabled = bool(self._retrieval_settings.self_query.get("enabled", False))
-        # U20: transaction-local HNSW scan settings (retrieval.hnsw.*).
-        # U48/P6: the ingest-side hierarchy keys are owned by the pipeline;
-        # the query-time expand_to_parent arm lives on retrieval settings.
-        self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
-        # Issue #136: multi-query rewriting (retrieval.multi_query,
-        # default OFF); the rewriter builds only when the flag is on.
-        self._multi_query_settings = load_multi_query_settings(self._config)
-        self._rewriter = build_rewriter(self._multi_query_settings)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -194,6 +190,20 @@ class QueryHandler:
             cast("asyncpg.Pool | SqlGateway", self._pool), query
         )
 
+    async def handle_list_document_chunks(
+        self, query: ListDocumentChunksQuery
+    ) -> list[DocumentChunkResult]:
+        """List one document's chunks, one window (Phase-2 Wave 5)."""
+        return await query_crud_reads.list_document_chunks(
+            cast("asyncpg.Pool | SqlGateway", self._pool), query
+        )
+
+    async def handle_list_relations(self, query: ListRelationsQuery) -> list[RelationListResult]:
+        """List graph relations, one window (Phase-2 Wave 6 Map)."""
+        return await query_graph_reads.list_relations(
+            cast("asyncpg.Pool | SqlGateway", self._pool), query
+        )
+
     async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
         return await query_crud.search_similar(
@@ -213,31 +223,3 @@ class QueryHandler:
         return await query_crud_reads.verify_answer(
             cast("asyncpg.Pool | SqlGateway", self._pool), judge=self._judge, query=query
         )
-
-
-# ============================================================================
-# Singleton
-# ============================================================================
-
-_query_handler: QueryHandler | None = None
-
-
-def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> QueryHandler:
-    """Get or create the singleton QueryHandler."""
-    global _query_handler
-    if _query_handler is None:
-        if pool is None:
-            # Typed refusal (zero-drift rule 4): the query routes fail with
-            # the taxonomy class, never a bare RuntimeError -> 500.
-            raise DependencyMissingError(
-                "The query handler is not initialized.",
-                remediation="Start the server (corpus-kb serve), or pass a store to the caller.",
-            )
-        _query_handler = QueryHandler(pool)
-    return _query_handler
-
-
-def set_query_handler(handler: QueryHandler) -> None:
-    """Set the singleton (for server wiring)."""
-    global _query_handler
-    _query_handler = handler

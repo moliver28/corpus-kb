@@ -1,5 +1,5 @@
 import { Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/codebook";
 import ActionCard from "../components/ActionCard";
 import NotWiredCard from "../components/NotWiredCard";
 import PathCard from "../components/PathCard";

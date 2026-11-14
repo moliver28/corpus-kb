@@ -10,6 +10,18 @@ class ResizeObserverStub implements ResizeObserver {
 
 globalThis.ResizeObserver = ResizeObserverStub;
 
+// X's Bubble.List (Phase-2 Wave 7) observes the scroll box the same way.
+class IntersectionObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+globalThis.IntersectionObserver =
+  IntersectionObserverStub as unknown as typeof IntersectionObserver;
+
 if (typeof globalThis.matchMedia !== "function") {
   globalThis.matchMedia = (query: string): MediaQueryList =>
     ({

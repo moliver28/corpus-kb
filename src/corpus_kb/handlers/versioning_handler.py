@@ -114,7 +114,8 @@ class VersioningHandler:
             }
             by_type = await conn.fetch(
                 """SELECT source_type, COUNT(*) as count FROM documents
-                   WHERE tenant_id = $1 GROUP BY source_type""",
+                   WHERE tenant_id = $1 GROUP BY source_type
+                   ORDER BY source_type""",
                 str(tenant_id),
             )
             stats["by_source_type"] = [dict(r) for r in by_type]

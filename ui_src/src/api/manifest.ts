@@ -1,10 +1,11 @@
-// Typed access to the op manifest (the full entries; the generated TS
+// Typed access to the op manifest (the bundle copy; the generated TS
 // table stays the narrow path/method/longRunning view for the hooks).
-// manifest.json is a build-time copy of src/corpus_kb/ui_manifest.json
-// (scripts/copy-manifest.mjs runs before lint/test/build). The pre-hooks
-// do not guarantee the sync: tests/test_ui_manifest.py byte-compares the
-// committed copy with the generated source. This compile-time assertion
-// pins the entry SHAPE only — same-shape content drift is caught there.
+// manifest.json is the generator's bundled copy of
+// src/corpus_kb/ui_manifest.json WITHOUT the description keys — the SPA
+// never renders them, so the bundle does not pay for that text (the
+// Wave-5 headroom lever). tests/test_ui_manifest.py byte-compares the
+// committed copy with the generated source, so a stale copy fails the
+// Python gate. This compile-time assertion pins the entry SHAPE only.
 import raw from "./manifest.json";
 
 /** The verbs the client speaks — the generated op table's method union. */
@@ -14,7 +15,6 @@ interface ManifestEntry {
   id: string;
   path: string;
   method: Method;
-  description: string;
   required: string[];
   optional: string[];
   paramsKnown: boolean;

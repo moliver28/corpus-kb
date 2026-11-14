@@ -1,13 +1,14 @@
 import { Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/review";
 import DegradedCard from "../components/DegradedCard";
+import StatsStrip from "../components/StatsStrip";
 import DocumentsCard from "./review/DocumentsCard";
 import ReviewQueueCard from "./review/ReviewQueueCard";
 import TopicsCard from "./review/TopicsCard";
 
 /**
- * The Review stage — corpus health, the coding review queue, and the
- * discovered topics. The document table waits for its manifest read op.
+ * The Review stage — corpus health (the stats strip), the coding review
+ * queue, the document table, and the discovered topics.
  */
 export default function Review() {
   return (
@@ -15,6 +16,7 @@ export default function Review() {
       <Card title={strings.reviewTitle}>
         <p>{strings.reviewBody}</p>
       </Card>
+      <StatsStrip />
       <DocumentsCard />
       <DegradedCard />
       <ReviewQueueCard />

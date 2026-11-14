@@ -552,11 +552,53 @@ SURFACES: tuple[Surface, ...] = (
         description="List one document's tags (read-only).",
         http_route="/api/documents/{doc_id}/tags",
     ),
+    # -- Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs
+    #    to one document's chunks through this read. Read-only: safe to
+    #    serve from every surface; NEVER a write-op row. --------------------
+    Surface(
+        name="chunks-list",
+        cli_path="chunks-list",
+        mcp_tool="chunks_list",
+        description="List one document's chunks in ingest order (read-only).",
+        http_route="/api/documents/{doc_id}/chunks",
+    ),
     Surface(
         name="document-metadata",
         cli_path="get-metadata",
         mcp_tool="get_metadata",
         description="Read metadata rows by key or document (read-only).",
+        http_route="/api/metadata",
+    ),
+    # -- Phase-2 Wave 2 write ops: the drawer edits tags and metadata
+    #    through these manifest ops. The names match the catalogue op
+    #    names (test_catalogue_matches_surface_registry byte-matches the
+    #    columns). Write ops: NEVER add them to SERVER_AUTO_APPROVE. -----
+    Surface(
+        name="add-tag",
+        cli_path="add-tag",
+        mcp_tool="add_tag",
+        description="Create one tag in the tag vocabulary.",
+        http_route="/api/tags",
+    ),
+    Surface(
+        name="tag-document",
+        cli_path="tag-document",
+        mcp_tool="tag_document",
+        description="Apply one tag to a document; a missing tag is created first.",
+        http_route="/api/documents/{doc_id}/tags",
+    ),
+    Surface(
+        name="untag-document",
+        cli_path="untag-document",
+        mcp_tool="untag_document",
+        description="Remove one tag from a document; a missing link is a typed error.",
+        http_route="/api/documents/{doc_id}/tags/remove",
+    ),
+    Surface(
+        name="set-metadata",
+        cli_path="set-metadata",
+        mcp_tool="set_metadata",
+        description="Set one metadata key for a document; the write is an upsert.",
         http_route="/api/metadata",
     ),
     Surface(
@@ -588,6 +630,184 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="calibrate_apply",
         description="Copy a profile lock's proposed overrides into config.yaml.",
         http_route="/api/calibrate/apply",
+    ),
+    # -- Phase-2 Wave 3: the corpus stats pair (catalogue rows first; the
+    #    GET routes predate the rows). The derived-analysis family rows
+    #    follow: reads over the projection-written statements, conflicts,
+    #    and beliefs. conflicts-resolve is a human WRITE: NEVER add it to
+    #    SERVER_AUTO_APPROVE. ------------------------------------------------
+    Surface(
+        name="stats",
+        cli_path="stats",
+        mcp_tool="stats",
+        description="Count the corpus rows: documents, chunks, vectors, graph, tags.",
+        http_route="/api/stats",
+    ),
+    Surface(
+        name="document-stats",
+        cli_path="document-stats",
+        mcp_tool="document_stats",
+        description="Aggregate the document statistics: totals plus per-source-type rows.",
+        http_route="/api/document-stats",
+    ),
+    Surface(
+        name="statements-list",
+        cli_path="statements-list",
+        mcp_tool="statements_list",
+        description="List statement atoms newest-first (read-only).",
+        http_route="/api/statements/list",
+    ),
+    Surface(
+        name="statements-timeline",
+        cli_path="statements-timeline",
+        mcp_tool="statements_timeline",
+        description="Chronological statement history for one text query (read-only).",
+        http_route="/api/statements/timeline",
+    ),
+    Surface(
+        name="conflicts-scan",
+        cli_path="conflicts-scan",
+        mcp_tool="conflicts_scan",
+        description="Run the contradiction cascade over live statements and record flags.",
+        http_route="/api/conflicts/scan",
+    ),
+    Surface(
+        name="conflicts-list",
+        cli_path="conflicts-list",
+        mcp_tool="conflicts_list",
+        description="List recorded conflict flags newest-first (read-only).",
+        http_route="/api/conflicts/list",
+    ),
+    Surface(
+        name="conflicts-resolve",
+        cli_path="conflicts-resolve",
+        mcp_tool="conflicts_resolve",
+        description="Finalize one conflict flag; a confirmed revision supersedes the older claim.",
+        http_route="/api/conflicts/resolve",
+    ),
+    Surface(
+        name="beliefs-current",
+        cli_path="beliefs-current",
+        mcp_tool="beliefs_current",
+        description="Current belief posteriors, recomputed from the statements (read-only).",
+        http_route="/api/beliefs/current",
+    ),
+    Surface(
+        name="beliefs-timeline",
+        cli_path="beliefs-timeline",
+        mcp_tool="beliefs_timeline",
+        description="Era history for one belief with the exact posterior on top (read-only).",
+        http_route="/api/beliefs/timeline",
+    ),
+    Surface(
+        name="beliefs-predict",
+        cli_path="beliefs-predict",
+        mcp_tool="beliefs_predict",
+        description="Posterior predictive for one belief with its credible interval (read-only).",
+        http_route="/api/beliefs/predict",
+    ),
+    Surface(
+        name="beliefs-compare",
+        cli_path="beliefs-compare",
+        mcp_tool="beliefs_compare",
+        description="Side-by-side belief posteriors for one subject across objects (read-only).",
+        http_route="/api/beliefs/compare",
+    ),
+    # -- Phase-2 Wave 4: the graph C+R surfaces. The four §5.1 graph reads
+    #    and the two graph writes carry catalogue rows (the reads since the
+    #    §5.1 births, the writes since the full-parity wave); these rows
+    #    make them manifest ops the SPA can call. add-entity and
+    #    add-relation are WRITE ops: NEVER add them to SERVER_AUTO_APPROVE.
+    #    ------------------------------------------------------------------
+    Surface(
+        name="list-entities",
+        cli_path="list-entities",
+        mcp_tool="list_entities",
+        description="List graph entities, one name-ordered window (read-only).",
+        http_route="/api/entities",
+    ),
+    Surface(
+        name="search-graph",
+        cli_path="search-graph",
+        mcp_tool="search_graph",
+        description="Search graph entities by name (read-only).",
+        http_route="/api/graph/search",
+    ),
+    Surface(
+        name="get-entity-relations",
+        cli_path="get-entity-relations",
+        mcp_tool="get_entity_relations",
+        description="List one entity's relations (read-only).",
+        http_route="/api/graph/relations/{entity_id}",
+    ),
+    # -- Phase-2 Wave 6: the Map's edge window read. Read-only: safe to
+    #    serve from every surface; NEVER a write-op row. --------------------
+    Surface(
+        name="list-relations",
+        cli_path="list-relations",
+        mcp_tool="list_relations",
+        description="List graph relations, one type-ordered window (read-only).",
+        http_route="/api/graph/relations",
+    ),
+    Surface(
+        name="graph-neighbors",
+        cli_path="graph-neighbors",
+        mcp_tool="graph_neighbors",
+        description="List entities within 1 to 3 hops of one entity (read-only).",
+        http_route="/api/graph/neighbors",
+    ),
+    Surface(
+        name="graph-traverse",
+        cli_path="graph-traverse",
+        mcp_tool="graph_traverse",
+        description="Walk the graph from one entity up to the depth cap (read-only).",
+        http_route="/api/graph/traverse",
+    ),
+    Surface(
+        name="add-entity",
+        cli_path="add-entity",
+        mcp_tool="add_entity",
+        description="Add one entity to the knowledge graph.",
+        http_route="/api/entities",
+    ),
+    Surface(
+        name="add-relation",
+        cli_path="add-relation",
+        mcp_tool="add_relation",
+        description="Add one relation between two entities.",
+        http_route="/api/relations",
+    ),
+    # -- Phase-2 Wave 8: graph U/D. All four are WRITE ops: NEVER add them
+    #    to SERVER_AUTO_APPROVE. The handler writes through the GraphStore
+    #    inside the request path; deletes are hard, confirmed destructive.
+    #    ------------------------------------------------------------------
+    Surface(
+        name="update-entity",
+        cli_path="update-entity",
+        mcp_tool="update_entity",
+        description="Update one entity's name and type.",
+        http_route="/api/entities/{entity_id}/update",
+    ),
+    Surface(
+        name="delete-entity",
+        cli_path="delete-entity",
+        mcp_tool="delete_entity",
+        description="Delete one entity and its linked relations.",
+        http_route="/api/entities/{entity_id}/delete",
+    ),
+    Surface(
+        name="update-relation",
+        cli_path="update-relation",
+        mcp_tool="update_relation",
+        description="Update one relation's type and weight.",
+        http_route="/api/relations/{relation_id}/update",
+    ),
+    Surface(
+        name="delete-relation",
+        cli_path="delete-relation",
+        mcp_tool="delete_relation",
+        description="Delete one relation.",
+        http_route="/api/relations/{relation_id}/delete",
     ),
     # -- chunk-coding ops (issue #350): the six routes the plugin reached
     #    only by hard-coded HTTP posts, plus the two reads it built by
@@ -1671,6 +1891,16 @@ AUTO_APPROVE_WRITE_TOOLS: frozenset[str] = frozenset(
         "delete_document",
         "add_entity",
         "add_relation",
+        # Phase-2 Wave 2: the tag and metadata writes.
+        "add_tag",
+        "tag_document",
+        "untag_document",
+        "set_metadata",
+        # Phase-2 Wave 8: the graph U/D writes.
+        "update_entity",
+        "delete_entity",
+        "update_relation",
+        "delete_relation",
         "extraction_tune",
         "conflicts_scan",
         "conflicts_resolve",
@@ -1709,6 +1939,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "beliefs_predict",
     "beliefs_timeline",
     "centroids_classify",
+    "chunks_list",
     "classification_list",
     "clusters_inspect",
     "codebook_proposals",
@@ -1722,6 +1953,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "conflicts_list",
     "contradictions_screen",
     "doctor",
+    "document_stats",
     "duplicates_screen",
     "events_summary",
     "get_document_tags",
@@ -1737,6 +1969,8 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "labeling_triage",
     "lexical_classify",
     "list_documents",
+    "list_entities",
+    "list_relations",
     "neighbors_classify",
     "nli_classify",
     "notebook_ask",
@@ -1759,6 +1993,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "sentiment_screen",
     "statements_list",
     "statements_timeline",
+    "stats",
     "topics_list",
     "verify_answer",
 )

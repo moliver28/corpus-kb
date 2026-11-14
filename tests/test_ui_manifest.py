@@ -4,7 +4,8 @@ The manifest is the ONE op table the SPA talks through (zero-drift rule 1).
 Three pins:
 
 (a) Fresh generation reproduces every committed artifact byte for byte —
-    the JSON manifest AND both generated TypeScript modules (``poe gen``
+    the repo JSON manifest, the browser-bundled copy (descriptions
+    stripped), and both generated TypeScript modules (``poe gen``
     runs the same comparison in ``--check`` mode);
 (b) Every manifest path exists in ``create_http_app()`` with the manifest's
     method — a route rename or method change anywhere fails here;
@@ -26,6 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 EXPECTED_ARTIFACTS = (
     "src/corpus_kb/ui_manifest.json",
+    "ui_src/src/api/manifest.json",
     "ui_src/src/api/ops.generated.ts",
     "ui_src/src/api/thresholds.generated.ts",
     "ui_src/src/api/methods.generated.ts",
@@ -55,19 +57,26 @@ def test_check_mode_reports_a_missing_artifact_cleanly(monkeypatch, capsys) -> N
     assert "not-there.generated.ts" in err
 
 
-def test_ui_src_manifest_copy_matches_the_generated_source() -> None:
-    """The SPA's importable copy byte-matches the generated manifest.
+def test_ui_src_manifest_copy_is_the_stripped_bundle_copy() -> None:
+    """The SPA's importable copy carries every manifest entry MINUS the
+    descriptions (the bundle-headroom lever); the repo copy keeps them.
 
-    The pnpm pre-hooks copy the file, but they are not a guarantee: a
-    stale copy must fail here. On drift run ``poe gen`` (or
-    ``pnpm -C ui_src run copy-manifest``).
+    The generator writes both copies (one writer, no drift), and the
+    fresh-generation test byte-compares them. This pin holds the LEVER
+    itself: a description in the bundled copy, or a stripped repo copy,
+    fails here. On drift run ``poe gen``.
     """
-    source = (REPO / "src/corpus_kb/ui_manifest.json").read_bytes()
-    copy = (REPO / "ui_src/src/api/manifest.json").read_bytes()
-    assert copy == source, (
-        "ui_src/src/api/manifest.json is stale — run: poe gen "
-        "(or: pnpm -C ui_src run copy-manifest)"
-    )
+    import json
+
+    source = json.loads((REPO / "src/corpus_kb/ui_manifest.json").read_text(encoding="utf-8"))
+    bundled = json.loads((REPO / "ui_src/src/api/manifest.json").read_text(encoding="utf-8"))
+    assert source, "the repo manifest must not be empty"
+    assert bundled, "the bundled manifest must not be empty"
+    assert len(source) == len(bundled)
+    for full, slim in zip(source, bundled, strict=True):
+        assert full.get("description"), full.get("id")
+        assert "description" not in slim, slim.get("id")
+        assert {k: v for k, v in full.items() if k != "description"} == slim, full.get("id")
 
 
 def test_manifest_json_is_sorted_and_complete() -> None:
@@ -83,13 +92,34 @@ def test_manifest_json_is_sorted_and_complete() -> None:
 
 
 def test_every_manifest_path_exists_with_the_real_method() -> None:
-    """Route table cross-check: path present, method set equal (minus HEAD)."""
+    """Route table cross-check: path present, manifest method served, and
+    no undeclared method served on a manifest path.
+
+    Phase-2 Wave 2: one path can serve two methods now (/api/metadata is
+    the GET read plus the POST upsert; the document tags path is the GET
+    list plus the POST apply). Each manifest entry asserts its own method
+    is served there, and the reverse pin holds the served method set at
+    every manifest path to exactly the declared set — a missing method
+    AND an extra method on a manifest path both fail here. Paths with no
+    manifest entry (OpenAPI docs, the compat routes) stay unpinned, as
+    before this test existed.
+    """
     from corpus_kb.api.http import create_http_app
 
-    route_table = {route.path: route.methods - {"HEAD"} for route in create_http_app().routes}
+    route_table: dict[str, set[str]] = {}
+    for route in create_http_app().routes:
+        route_table.setdefault(route.path, set()).update(route.methods - {"HEAD"})
+    declared: dict[str, set[str]] = {}
     for entry in build_manifest(REPO):
-        method = str(entry["method"])
-        assert route_table[str(entry["path"])] == {method}, str(entry["id"])
+        path, method = str(entry["path"]), str(entry["method"])
+        served = route_table.get(path, set())
+        assert method in served, f"{entry['id']}: {method} not served at {path}"
+        declared.setdefault(path, set()).add(method)
+    for path, served in sorted(route_table.items()):
+        if path in declared:
+            assert served == declared[path], (
+                f"{path} serves {sorted(served)}; the manifest declares {sorted(declared[path])}"
+            )
 
 
 def test_manifest_entry_shape() -> None:

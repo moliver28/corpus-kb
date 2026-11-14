@@ -1,0 +1,42 @@
+{
+  "name": "beliefs-timeline-ok-200",
+  "source": "canonical",
+  "note": "POST /api/beliefs/timeline shape (beliefs/store.py timeline; eras from segment_eras, posterior stored at rebuild). Re-record against a running server.",
+  "request": {
+    "method": "POST",
+    "path": "/api/beliefs/timeline",
+    "body": { "subject": "weekly syncs", "relation": "helps", "object": "project clarity" }
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "belief_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "eras": [
+        {
+          "start": "2026-01-02T09:00:00+00:00",
+          "end": "2026-01-05T09:00:00+00:00",
+          "positives": 1,
+          "negatives": 1,
+          "mean": 0.5
+        },
+        {
+          "start": "2026-01-05T09:00:00+00:00",
+          "end": "2026-01-07T09:00:00+00:00",
+          "positives": 2,
+          "negatives": 0,
+          "mean": 0.75
+        }
+      ],
+      "posterior": {
+        "alpha": 3.0,
+        "beta": 1.0,
+        "mean": 0.75,
+        "interval_low": 0.31,
+        "interval_high": 0.95,
+        "evidence_count": 4,
+        "era_count": 2
+      }
+    }
+  }
+}

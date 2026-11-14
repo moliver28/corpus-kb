@@ -3,7 +3,7 @@
 // or unknown payload on the honest fallback path (DoctorCard pattern)
 // instead of crashing the screen.
 import type { TopicRow } from "../../components/TopicsTable";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 
 /** One coding assignment row (tools/lifecycle_read_tools.py). */
 export interface AssignmentRow {
@@ -54,12 +54,8 @@ export function reviewStateWord(status: string): string {
   return STATE_WORDS[status] ?? strings.reviewStateUnknown;
 }
 
-/** One confidence cell -> "82%" (a number cell only; anything else reads ""). */
-export function confidenceText(value: unknown): string {
-  return typeof value === "number" && Number.isFinite(value)
-    ? `${Math.round(value * 100)}%`
-    : "";
-}
+// The confidence and timestamp cells format through api/format.ts (the
+// one shared copy); review keeps only its own row shapes below.
 
 /** One topics row (topics/writer.py read_topics). */
 interface TopicPayload {
@@ -94,4 +90,140 @@ export function topicRows(topics: TopicPayload[]): TopicRow[] {
       ? topic.keywords.filter((word): word is string => typeof word === "string")
       : [],
   }));
+}
+
+// -- Document card shapes (tools/ingest_tools.py list_documents +
+//    handlers/tag_handler.py tag and metadata reads). Same drift rule:
+//    a payload that misses a field takes the honest fallback path.
+
+/** One corpus document row (the DocumentResult dump of documents-list). */
+export interface DocumentRow {
+  doc_id: string;
+  source: string;
+  source_type: string;
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface DocumentsEnvelope {
+  status: string;
+  result: DocumentRow[];
+}
+
+export function isDocumentsEnvelope(value: unknown): value is DocumentsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.doc_id === "string" &&
+        typeof r.source === "string" &&
+        typeof r.source_type === "string" &&
+        typeof r.chunk_count === "number" &&
+        Number.isFinite(r.chunk_count) &&
+        typeof r.created_at === "string"
+      );
+    })
+  );
+}
+
+/** One tag row of a document's tag list (name is the only certain field). */
+export interface TagRow {
+  name: string;
+  color: unknown;
+}
+
+interface TagsEnvelope {
+  status: string;
+  result: TagRow[];
+}
+
+export function isTagsEnvelope(value: unknown): value is TagsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      return typeof (row as Record<string, unknown>).name === "string";
+    })
+  );
+}
+
+/** One metadata row of a document (key is the only certain field). */
+export interface MetadataRow {
+  key: string;
+  value: unknown;
+  doc_id: unknown;
+}
+
+interface MetadataEnvelope {
+  status: string;
+  result: MetadataRow[];
+}
+
+export function isMetadataEnvelope(value: unknown): value is MetadataEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      return typeof (row as Record<string, unknown>).key === "string";
+    })
+  );
+}
+
+// -- Chunk window shapes (Phase-2 Wave 5, the chunks-list read the
+//    drawer's NLP panel scopes its runs with). Same drift rule as above.
+
+/** One chunk row of a document (the DocumentChunkResult dump). */
+export interface ChunkRow {
+  chunk_id: string;
+  doc_id: string;
+  chunk_index: number;
+  text: string;
+}
+
+interface ChunksEnvelope {
+  status: string;
+  result: ChunkRow[];
+}
+
+export function isChunksEnvelope(value: unknown): value is ChunksEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.chunk_id === "string" &&
+        typeof r.doc_id === "string" &&
+        typeof r.chunk_index === "number" &&
+        Number.isFinite(r.chunk_index) &&
+        typeof r.text === "string"
+      );
+    })
+  );
+}
+
+/** One word for a metadata value: strings pass; anything else is JSON. */
+export function metadataText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** The server tag color for an antd Tag, or undefined unless it is a hex word. */
+export function tagColor(color: unknown): string | undefined {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
 }

@@ -109,6 +109,23 @@ class FakeGraphStore(GraphStore):
     async def add_relation(self, relation: Relation) -> str:
         return relation.relation_id
 
+    # Wave-8 U/D: the ABC grew, so the fake implements the new abstracts
+    # (never called by these delegation tests; they only make it concrete).
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        return entity
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        return 0
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        return relation
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        return True
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        return None
+
     async def get_entity(self, entity_id: str) -> Entity | None:
         return None
 
@@ -234,6 +251,21 @@ class TestCreateGraphStore:
 
             async def add_relation(self, relation: Relation) -> str:
                 return ""
+
+            async def update_entity(self, entity: Entity) -> Entity | None:
+                return entity
+
+            async def delete_entity(self, entity_id: str) -> int | None:
+                return 0
+
+            async def update_relation(self, relation: Relation) -> Relation | None:
+                return relation
+
+            async def delete_relation(self, relation_id: str) -> bool:
+                return True
+
+            async def get_relation(self, relation_id: str) -> Relation | None:
+                return None
 
             async def get_entity(self, entity_id: str) -> Entity | None:
                 return None

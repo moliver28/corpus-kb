@@ -1,18 +1,18 @@
 import { Button, Card, Skeleton, Typography } from "antd";
-import type { ReactNode } from "react";
-import { useState } from "react";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import ConfirmGate from "./ConfirmGate";
-import UnavailablePanel from "./UnavailablePanel";
+import LongOpControls from "./LongOpControls";
 import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
+import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
+import { useCopy } from "../hooks/useCopy";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 /** One dormant-feature notice: the exact config key + a YAML snippet. */
 interface DormantHint {
   configKey: string;
@@ -21,13 +21,7 @@ interface DormantHint {
 
 /** A dormant (config-off) answer: the exact key + a copyable YAML snippet. */
 function DormantNote({ hint }: { hint: DormantHint }) {
-  const [copied, setCopied] = useState(false);
-  function copy(): void {
-    navigator.clipboard
-      ?.writeText(hint.yaml)
-      .then(() => setCopied(true))
-      .catch(() => undefined);
-  }
+  const { copiedKey, unavailable, copy } = useCopy();
   return (
     <div className="ui-stack">
       <StatusBanner kind="info">{strings.analyzeDormant}</StatusBanner>
@@ -37,26 +31,21 @@ function DormantNote({ hint }: { hint: DormantHint }) {
       </p>
       <pre className="ui-json-yaml">{hint.yaml}</pre>
       <div className="ui-actions">
-        <Button onClick={copy}>{copied ? strings.analyzeYamlCopied : strings.analyzeCopyYaml}</Button>
+        <Button onClick={() => copy(hint.yaml)}>
+          {unavailable
+            ? strings.copyUnavailable
+            : copiedKey === "self"
+              ? strings.copiedNote
+              : strings.analyzeCopyYaml}
+        </Button>
       </div>
     </div>
   );
 }
 
-/** The receipt side of a settled run, shared by both paths. */
-function SettledView({
-  result,
-  dormant,
-  onRetry,
-}: {
-  result: OpResult;
-  dormant?: DormantHint;
-  onRetry: () => void;
-}) {
-  if (result.kind === "unavailable") {
-    return <UnavailablePanel result={result} onRetry={onRetry} />;
-  }
-  if (result.ok && typeof result.data === "object" && result.data !== null) {
+/** The receipt side of a settled run: the ok envelope only. */
+function SettledOk({ result, dormant }: { result: OpResult; dormant?: DormantHint }) {
+  if (typeof result.data === "object" && result.data !== null) {
     const data = result.data as Record<string, unknown>;
     if (data.status === "disabled" && dormant !== undefined) {
       return <DormantNote hint={dormant} />;
@@ -86,10 +75,7 @@ function SettledView({
       );
     }
   }
-  if (result.ok && result.kind !== "network") {
-    return <ReceiptCard result={result} />;
-  }
-  return <ErrorPanel result={result} onRetry={onRetry} />;
+  return <ReceiptCard result={result} />;
 }
 
 interface ActionCardProps {
@@ -114,7 +100,7 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor(opId));
   const isLong = getOp(opId)?.longRunning === true;
 
   async function run(): Promise<void> {
@@ -134,27 +120,6 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
 
   const settled: OpResult | null = isLong ? long.result : short.result;
   const running = isLong ? long.running : short.running;
-  let resultView: ReactNode = null;
-  if (settled !== null) {
-    if (settled.kind === "unknown" && settled.ok) {
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={settled.data} />
-        </div>
-      );
-    } else if (running) {
-      resultView = null;
-    } else {
-      resultView = (
-        <SettledView
-          result={settled}
-          dormant={dormant}
-          onRetry={retry}
-        />
-      );
-    }
-  }
 
   return (
     <Card title={title}>
@@ -176,29 +141,18 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
           </Button>
         )}
       </div>
-      {long.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
+      <LongOpControls op={long} onRetry={retry} />
+      {settled !== null && !running && (
+        <OpBody
+          result={settled}
+          ok={settled.ok && settled.kind !== "unknown"}
+          retry={retry}
+          opId={opId}
+          failure={(failed) => <ErrorPanel result={failed} onRetry={retry} opId={opId} />}
+        >
+          <SettledOk result={settled} dormant={dormant} />
+        </OpBody>
       )}
-      {long.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {long.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <StatusBanner kind="info">
-          {long.statusResult.message !== ""
-            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-            : strings.runnerStatusEmpty}
-        </StatusBanner>
-      )}
-      {resultView}
     </Card>
   );
 }

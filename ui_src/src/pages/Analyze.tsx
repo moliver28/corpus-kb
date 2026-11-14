@@ -1,22 +1,26 @@
 import { Button, Card, Spin, Typography } from "antd";
-import { Suspense, lazy, useState } from "react";
-import { strings } from "../strings";
+import { Suspense, lazy, useRef, useState } from "react";
+import { strings } from "../strings/analyze";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "../components/ActionCard";
+import BeliefsCard from "./analyze/BeliefsCard";
+import ClassificationCard from "./analyze/ClassificationCard";
+import ConflictsCard from "./analyze/ConflictsCard";
+import LabelingCard from "./analyze/LabelingCard";
 import NotWiredCard from "../components/NotWiredCard";
+import StatementsCard from "./analyze/StatementsCard";
 
 // The progression rail rides its own lazy chunk (React.lazy): its
 // generated register table and labels load only on this stage, so the
 // entry and landing bundles keep the gzip budget headroom.
 const ProgressionRail = lazy(() => import("../components/progression/ProgressionRail"));
 
-/** The honest not-wired rows for the analysis families (op id, line). */
+/** The honest not-wired rows for the analysis families (op id, line).
+ * Phase-2 Wave 3 wired the statements, conflicts, and beliefs families;
+ * only the two ops with no surfaces stay honest here. */
 const NOT_WIRED = [
-  { opId: "statements-list", text: strings.analyzeStatementsNotWired },
-  { opId: "conflicts-scan", text: strings.analyzeConflictsNotWired },
-  { opId: "beliefs-current", text: strings.analyzeBeliefsNotWired },
   { opId: "analysis-embed-meta", text: strings.analyzeEmbedMetaNotWired },
   { opId: "extraction-tune", text: strings.analyzeExtractionTuneNotWired },
 ];
@@ -60,6 +64,27 @@ const GUIDED = [
 ] as const;
 
 /**
+ * The advisor register's human name per manifest op (the register ranks
+ * methods, and several methods share one op, so the picker names ops).
+ * A manifest op missing here falls back to its raw id — never a blank.
+ */
+const METHOD_NAMES: Record<string, string> = {
+  "active-learn-next": strings.analyzeOpActiveLearn,
+  "analysis-backfill-dates": strings.analyzeOpBackfillDates,
+  "centroids-classify": strings.analyzeOpCentroids,
+  "clusters-inspect": strings.analyzeOpClusters,
+  "contradictions-screen": strings.analyzeOpContradictions,
+  "duplicates-screen": strings.analyzeOpDuplicates,
+  "keyphrases-extract": strings.analyzeOpKeyphrases,
+  "lexical-classify": strings.analyzeOpLexical,
+  "neighbors-classify": strings.analyzeOpNeighbors,
+  "nli-classify": strings.analyzeOpNli,
+  "outliers-rank": strings.analyzeOpOutliers,
+  "sentiment-screen": strings.analyzeOpSentiment,
+  "topics-build": strings.analyzeOpTopics,
+};
+
+/**
  * The manifest's generic analysis methods: every /api/analysis/* op
  * except the advisor itself (spec F8's eleven methods). Derived, so a
  * manifest change updates the picker without a code edit.
@@ -76,6 +101,9 @@ const METHODS: string[] = Object.entries(OPS)
 export default function Analyze() {
   const [method, setMethod] = useState<string>("keyphrases-extract");
   const [seed, setSeed] = useState<unknown>({});
+  // The runner heading takes focus on an advisor handoff, so the click
+  // visibly lands on the card it drives (never a silent state swap).
+  const runnerHeading = useRef<HTMLSpanElement | null>(null);
   return (
     <div className="ui-stack">
       <Card title={strings.analyzeTitle}>
@@ -85,12 +113,19 @@ export default function Analyze() {
         onRunMethod={(opId) => {
           setMethod(opId);
           setSeed({});
+          runnerHeading.current?.focus();
         }}
       />
       <Suspense fallback={<Spin />}>
         <ProgressionRail />
       </Suspense>
-      <Card title={strings.analyzeRunnerTitle}>
+      <Card
+        title={
+          <span ref={runnerHeading} tabIndex={-1}>
+            {strings.analyzeRunnerTitle}
+          </span>
+        }
+      >
         <Typography.Paragraph type="secondary">
           {strings.analyzeRunnerBody}
         </Typography.Paragraph>
@@ -99,11 +134,12 @@ export default function Analyze() {
             <Button
               key={id}
               size="small"
+              title={id}
               aria-pressed={method === id}
               type={method === id ? "primary" : "default"}
               onClick={() => setMethod(id)}
             >
-              {id}
+              {METHOD_NAMES[id] ?? id}
             </Button>
           ))}
         </div>
@@ -114,6 +150,11 @@ export default function Analyze() {
       {GUIDED.map((card) => (
         <ActionCard key={card.opId} {...card} />
       ))}
+      <StatementsCard />
+      <ConflictsCard />
+      <BeliefsCard />
+      <LabelingCard />
+      <ClassificationCard />
       <NotWiredCard title={strings.analyzeNotWiredTitle} items={NOT_WIRED} />
     </div>
   );

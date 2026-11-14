@@ -1,0 +1,23 @@
+{
+  "name": "beliefs-predict-ok-200",
+  "source": "canonical",
+  "note": "POST /api/beliefs/predict shape (tools/beliefs_tools.py beliefs_predict). Re-record against a running server.",
+  "request": {
+    "method": "POST",
+    "path": "/api/beliefs/predict",
+    "body": { "subject": "weekly syncs", "relation": "helps", "object": "project clarity" }
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "subject": "weekly syncs",
+      "relation": "helps",
+      "object": "project clarity",
+      "probability": 0.75,
+      "interval_low": 0.31,
+      "interval_high": 0.95,
+      "evidence_count": 4
+    }
+  }
+}

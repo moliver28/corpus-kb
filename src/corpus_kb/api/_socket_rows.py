@@ -8,8 +8,12 @@ module holds no behavior.
 
 from __future__ import annotations
 
+from corpus_kb.api._socket_rows_analysis import STATEMENTS_SPECS
+from corpus_kb.api._socket_rows_chunks import CHUNK_SPECS
 from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
+from corpus_kb.api._socket_rows_entities import ENTITY_SPECS
 from corpus_kb.api._socket_rows_reingest import REINGEST_SPECS
+from corpus_kb.api._socket_rows_tags import TAG_SPECS
 from corpus_kb.api._socket_specs import _Opt, _Spec
 
 # Lazy-import targets for the spec rows (one short name per tool module).
@@ -20,11 +24,6 @@ _LABEL = "corpus_kb.tools.labeling_tools"
 _GOLD = "corpus_kb.tools.labeling_gold_tools"
 _CLASS = "corpus_kb.tools.classification_tools"
 _ANALYSIS = "corpus_kb.tools.analysis_tools"
-_STMT = "corpus_kb.tools.statements_tools"
-_CONF = "corpus_kb.tools.conflicts_tools"
-_QUEUE = "corpus_kb.tools.queue_tools"
-_PROJECT = "corpus_kb.tools.project_tools"
-_BELIEFS = "corpus_kb.tools.beliefs_tools"
 _KEY = "corpus_kb.tools.keyphrase_tools"
 _LEX = "corpus_kb.tools.lexical_tools"
 _NEIGH = "corpus_kb.tools.neighbor_tools"
@@ -37,11 +36,12 @@ _ACTIVE = "corpus_kb.tools.active_learn_tools"
 _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
+_RELATION = "corpus_kb.tools.relation_read_tools"
 _SEARCH = "corpus_kb.tools.search_tools"
-_TAG = "corpus_kb.tools.tag_tools"
 
 # Mechanical arms: pool fetch + strict coercion, said once in _spec_arm.
 _SPECS: dict[str, _Spec] = {
+    **STATEMENTS_SPECS,
     "ingest_directory": _Spec(
         _INGEST,
         "ingest_directory",
@@ -121,66 +121,6 @@ _SPECS: dict[str, _Spec] = {
         opts=(_Opt("strategy", "sdef", "margin"), _Opt("batch", "int", 10)),
     ),
     "analysis_embed_meta": _Spec(_MEMBED, "analysis_embed_meta", opts=(_Opt("kinds", "str"),)),
-    "statements_list": _Spec(
-        _STMT,
-        "statements_list",
-        opts=(_Opt("template_id", "str"), _Opt("document_id", "str"), _Opt("limit", "int", 50)),
-    ),
-    "statements_timeline": _Spec(
-        _STMT, "statements_timeline", opts=(_Opt("text_query", "str"), _Opt("limit", "int", 200))
-    ),
-    "conflicts_scan": _Spec(_CONF, "conflicts_scan"),
-    "conflicts_list": _Spec(
-        _CONF, "conflicts_list", opts=(_Opt("verdict", "str"), _Opt("limit", "int", 50))
-    ),
-    "conflicts_resolve": _Spec(
-        _CONF,
-        "conflicts_resolve",
-        opts=(
-            _Opt("conflict_id", "sdef", ""),
-            _Opt("resolved_verdict", "sdef", ""),
-            _Opt("resolved_by", "sdef", ""),
-        ),
-    ),
-    "beliefs_current": _Spec(
-        _BELIEFS,
-        "beliefs_current",
-        opts=(_Opt("subject", "str"), _Opt("limit", "int", 50), _Opt("rebuild", "bool", True)),
-    ),
-    "beliefs_timeline": _Spec(
-        _BELIEFS,
-        "beliefs_timeline",
-        opts=(_Opt("subject", "str"), _Opt("relation", "str"), _Opt("object", "str")),
-    ),
-    "beliefs_predict": _Spec(
-        _BELIEFS,
-        "beliefs_predict",
-        opts=(_Opt("subject", "str"), _Opt("relation", "str"), _Opt("object", "str")),
-    ),
-    "beliefs_compare": _Spec(_BELIEFS, "beliefs_compare", opts=(_Opt("subject", "str"),)),
-    "queue_enqueue": _Spec(
-        _QUEUE,
-        "queue_enqueue",
-        opts=(
-            _Opt("path", "sdef", ""),
-            _Opt("title", "str"),
-            _Opt("profile", "str"),
-            _Opt("strategy_config", "raw"),
-            _Opt("project_id", "str"),
-        ),
-    ),
-    "queue_status": _Spec(
-        _QUEUE, "queue_status", opts=(_Opt("queue_id", "str"), _Opt("limit", "int", 50))
-    ),
-    "queue_cancel": _Spec(_QUEUE, "queue_cancel", opts=(_Opt("queue_id", "sdef", ""),)),
-    # -- Track C: the per-project raw-table ops --
-    "project_provision": _Spec(
-        _PROJECT,
-        "project_provision",
-        opts=(_Opt("slug", "sdef", ""), _Opt("project_id", "str")),
-    ),
-    "project_list": _Spec(_PROJECT, "project_list"),
-    "project_drop": _Spec(_PROJECT, "project_drop", opts=(_Opt("slug", "sdef", ""),)),
     "ask": _Spec(
         _ASK,
         "ask",
@@ -207,12 +147,9 @@ _SPECS: dict[str, _Spec] = {
         positional=(_Opt("query", "sdef", ""),),
         opts=(_Opt("k", "int", 5), _Opt("context_chunks", "int", 2)),
     ),
-    "get_document_tags": _Spec(
-        _TAG,
-        "get_document_tags",
-        positional=(_Opt("doc_id", "req"),),
-    ),
-    "get_metadata": _Spec(_TAG, "get_metadata", opts=(_Opt("key", "str"), _Opt("doc_id", "raw"))),
+    # The tag/metadata arms (reads: issue #182; writes: Phase-2 Wave 2)
+    # are pure data rows too — they live in _socket_rows_tags (the
+    # 250-line rule) and merge into _SPECS right below.
     "get_entity_relations": _Spec(
         _GRAPH,
         "get_entity_relations",
@@ -242,8 +179,24 @@ _SPECS: dict[str, _Spec] = {
             _Opt("limit", "int", 100),
         ),
     ),
+    # -- Phase-2 Wave 6: the Map's edge window read. Counts ride raw on
+    #    purpose: the shared window-count guard (tools._count_input) owns
+    #    the >=1 rule on MCP, socket, and CLI. HTTP alone accepts limit=0
+    #    and answers an empty window. Entity reads differ: MCP, socket,
+    #    and HTTP accept limit=0 there; only the CLI has min 1. ----------
+    "list_relations": _Spec(
+        _RELATION,
+        "relations_list",
+        positional=(),
+        opts=(_Opt("limit", "raw"), _Opt("offset", "raw")),
+    ),
 }
 
+# The tag/metadata rows merge here (the socket method table stays one
+# dict; the split modules keep this file under the 250-line rule).
+_SPECS.update(TAG_SPECS)
+_SPECS.update(ENTITY_SPECS)
+_SPECS.update(CHUNK_SPECS)
 _SPECS.update(CODING_SPECS)
 _SPECS.update(EVENTS_SPECS)
 _SPECS.update(REINGEST_SPECS)  # U3 (#202): split module keeps this file small

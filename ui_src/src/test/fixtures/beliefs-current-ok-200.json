@@ -1,0 +1,38 @@
+{
+  "name": "beliefs-current-ok-200",
+  "source": "canonical",
+  "note": "POST /api/beliefs/current shape (beliefs/store.py CURRENT_SQL). Re-record against a running server after a belief rebuild.",
+  "request": { "method": "POST", "path": "/api/beliefs/current", "body": { "limit": 50 } },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "beliefs": [
+        {
+          "belief_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          "subject": "weekly syncs",
+          "relation": "helps",
+          "object": "project clarity",
+          "alpha": 3.0,
+          "beta": 1.0,
+          "evidence_count": 4,
+          "era_count": 1,
+          "updated_at": "2026-01-07 09:00:00+00:00"
+        },
+        {
+          "belief_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          "subject": "tooling rollout",
+          "relation": "delays",
+          "object": "the migration",
+          "alpha": 1.0,
+          "beta": 2.0,
+          "evidence_count": 3,
+          "era_count": 2,
+          "updated_at": "2026-01-07 09:00:00+00:00"
+        }
+      ],
+      "count": 2,
+      "rebuild": "recomputed from 9 statements"
+    }
+  }
+}

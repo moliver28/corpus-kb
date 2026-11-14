@@ -96,6 +96,16 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.chunk_read_tools': dict({
+      'chunks_list': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.classification_tools': dict({
       'classification_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -229,6 +239,16 @@
         'config': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.entity_read_tools': dict({
+      'list_entities': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_type': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.events_tools': dict({
       'events_summary': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -302,6 +322,36 @@
         'relation_type': 'POSITIONAL_OR_KEYWORD',
         'source_entity_id': 'POSITIONAL_OR_KEYWORD',
         'target_entity_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'weight': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'delete_entity': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'delete_relation': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'update_entity': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_id': 'POSITIONAL_OR_KEYWORD',
+        'entity_type': 'POSITIONAL_OR_KEYWORD',
+        'metadata': 'POSITIONAL_OR_KEYWORD',
+        'name': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'update_relation': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'metadata': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation_id': 'POSITIONAL_OR_KEYWORD',
+        'relation_type': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'weight': 'POSITIONAL_OR_KEYWORD',
       }),
@@ -652,6 +702,15 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.relation_read_tools': dict({
+      'relations_list': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.release_tools': dict({
       'release_assess': dict({
         'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
@@ -811,6 +870,13 @@
       }),
     }),
     'corpus_kb.tools.tag_tools': dict({
+      'add_tag': dict({
+        'color': 'POSITIONAL_OR_KEYWORD',
+        'description': 'POSITIONAL_OR_KEYWORD',
+        'name': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'get_document_tags': dict({
         'doc_id': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
@@ -820,6 +886,25 @@
         'doc_id': 'POSITIONAL_OR_KEYWORD',
         'key': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'set_metadata': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'key': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'value': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'tag_document': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tag': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'untag_document': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tag': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
@@ -856,6 +941,18 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'k': 'POSITIONAL_OR_KEYWORD',
         'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.versioning_tools': dict({
+      'document_stats': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'stats': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),

@@ -1,7 +1,7 @@
 import { Card, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/release";
 import IdFormCard from "../components/IdFormCard";
 import type { FormField } from "../components/IdFormCard";
 import type { OpResult } from "../api/types";
@@ -26,7 +26,7 @@ function renderAssess(result: OpResult): ReactNode {
   const allPass = data.all_required_pass_without_waivers === true;
   return (
     <div className="ui-stack">
-      <Typography.Title level={5}>{strings.releaseGatesHeading}</Typography.Title>
+      <h2 className="ui-heading">{strings.releaseGatesHeading}</h2>
       {rows.map((row, index) => {
         const gate = typeof row === "object" && row !== null ? (row as Record<string, unknown>) : {};
         const pass = gate.status === "pass";
@@ -96,7 +96,10 @@ function gateSummaryOf(result: OpResult): ReactNode {
  * execute dialog carries the last assess gate summary.
  */
 export default function Release() {
-  const [gateSummary, setGateSummary] = useState<ReactNode>(null);
+  // The raw assess answer is the state; the dialog summary derives from
+  // it during render (the React derived-state rule) — no rendered
+  // ReactNode ever sits in state.
+  const [lastAssess, setLastAssess] = useState<OpResult | null>(null);
   return (
     <div className="ui-stack">
       <Card title={strings.releaseTitle}>
@@ -108,7 +111,7 @@ export default function Release() {
         fields={[VERSION]}
         opId="release-assess"
         renderResult={renderAssess}
-        onResult={(res) => setGateSummary(gateSummaryOf(res))}
+        onResult={setLastAssess}
       />
       <IdFormCard
         title={strings.releaseRequestTitle}
@@ -141,7 +144,7 @@ export default function Release() {
         ]}
         opId="release-execute"
         gate
-        gateSummary={gateSummary}
+        gateSummary={lastAssess === null ? null : gateSummaryOf(lastAssess)}
       />
       <IdFormCard
         title={strings.releaseCompareTitle}

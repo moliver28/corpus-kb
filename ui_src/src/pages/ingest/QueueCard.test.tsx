@@ -56,8 +56,8 @@ function statusCalls(): Call[] {
   return queueCalls("/api/queue/status");
 }
 
-function fill(field: string, value: string): void {
-  fireEvent.change(screen.getByTestId(field), { target: { value } });
+function fill(label: string, value: string): void {
+  fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } });
 }
 
 function cardOf(title: string): HTMLElement {
@@ -101,10 +101,10 @@ describe("QueueCard", () => {
     stubEnqueueThenDedup();
     render(<QueueCard />, { wrapper: makeWrapper() });
     await flush();
-    fill("queue-path", "/data/books/networks.pdf");
-    fill("queue-title", "A History of Networks");
-    fill("queue-profile", "textbook");
-    fill("queue-config", '{"window_pages": 25}');
+    fill(strings.queuePathLabel, "/data/books/networks.pdf");
+    fill(strings.queueTitleLabel, "A History of Networks");
+    fill(strings.queueProfileLabel, "textbook");
+    fill(strings.queueConfigLabel, '{"window_pages": 25}');
     fireEvent.click(screen.getByTestId("queue-enqueue"));
     await flush();
     expect(screen.getByText(strings.queueEnqueued)).toBeTruthy();
@@ -125,8 +125,8 @@ describe("QueueCard", () => {
     stubFetch([statusRoute]);
     render(<QueueCard />, { wrapper: makeWrapper() });
     await flush();
-    fill("queue-path", "/data/books/networks.pdf");
-    fill("queue-config", "[1]");
+    fill(strings.queuePathLabel, "/data/books/networks.pdf");
+    fill(strings.queueConfigLabel, "[1]");
     fireEvent.click(screen.getByTestId("queue-enqueue"));
     await flush();
     expect(screen.getByText(strings.queueConfigInvalid)).toBeTruthy();
@@ -192,7 +192,7 @@ describe("QueueCard", () => {
     });
     expect(statusCalls().length).toBe(2);
     // The enqueue kicks one immediate refresh — no wait for the tick.
-    fill("queue-path", "/data/books/networks.pdf");
+    fill(strings.queuePathLabel, "/data/books/networks.pdf");
     fireEvent.click(screen.getByTestId("queue-enqueue"));
     await flush();
     expect(queueCalls("/api/queue/enqueue").length).toBe(1);

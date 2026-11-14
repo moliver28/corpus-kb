@@ -1,5 +1,6 @@
 # allow: SIZE_OK — one responsibility (DuckDB-backed GraphStore); most lines
-# are declarative SQL text plus the ABC-mandated thin methods.
+# are declarative SQL text plus the ABC-mandated thin methods, including the
+# Wave-8 staged update/delete writes.
 """DuckDB graph store — the storage-portability program's Level 3 backend.
 
 Same ``GraphStore`` ABC, same traversal SQL as ``PostgresGraphStore`` (both
@@ -14,6 +15,28 @@ serializes transaction scopes and one threading lock guards individual
 sync calls under ``asyncio.to_thread``. Errors translate at this boundary
 into the shared taxonomy — the ``_age_unavailable`` precedent, with the
 program's string bank for the file-lock case.
+
+Wave-8 U/D mechanics (verified empirically on the pinned duckdb 1.5.6
+wheel, probe dated 2026-11-13; re-probe if the pin moves):
+
+- UPDATE of an UNINDEXED column (``metadata``) on an FK-referenced entity
+  row succeeds in place. UPDATE of an INDEXED (``name`` via
+  ``idx_entities_name``) or UNIQUE-key (``entity_type``) column on a
+  referenced entity row raises ``ConstraintException`` — the migrations
+  040/041 defect class. DELETE of a referenced parent raises the same.
+- Relations rows are referenced by nothing: relation UPDATE/DELETE are
+  plain single statements.
+- The staged shuffle WORKS: delete the referencing relations in one
+  committed scope, then update the entity and re-insert the captured
+  relations (same relation_ids) in a second committed scope. DuckDB
+  checks FKs against the LAST COMMITTED state, so the two stages must
+  each commit.
+- ACCEPTED RESIDUAL (crash window): between the two stage commits the
+  captured relations exist only in memory; a crash in that window loses
+  them. The window is two statements on a local single-writer file, and
+  it is not resumable (unlike ``duckdb_cascade``, whose anchor row
+  survives). The conflict pre-check runs BEFORE any destructive stage,
+  so only a true crash can hit the window.
 """
 
 from __future__ import annotations
@@ -26,7 +49,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from ..errors import DatabaseUnavailableError, MigrationMissingError
+from ..errors import ConflictError, DatabaseUnavailableError, MigrationMissingError
 from ..utils.models import Chunk, Document, Entity, Relation
 from .duckpgq import ensure_duckpgq, merge_min_depth_rows, traversal_statements
 from .graph_sql import (
@@ -38,6 +61,24 @@ from .graph_sql import (
     validate_hops,
 )
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
+from .graph_store_writes import ENTITY_CONFLICT_MSG, RELATION_CONFLICT_MSG
+
+# Full captured row for the staged shuffle: every column a relations row
+# owns (008 adds the provenance tail; created_at re-defaults on re-insert).
+_RELATION_COLS = (
+    "relation_id",
+    "tenant_id",
+    "source_entity_id",
+    "target_entity_id",
+    "relation_type",
+    "weight",
+    "chunk_id",
+    "metadata",
+    "confidence",
+    "extractor_id",
+    "model_version",
+    "prompt_version",
+)
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -250,6 +291,188 @@ class DuckDbGraphStore(GraphStore):
             ],
         )
         return str(row["relation_id"]) if row else relation.relation_id
+
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        """Pre-checked staged shuffle: rename without tripping 040/041 FKs.
+
+        Stage 1 commits the deletion of the referencing relations; stage 2
+        commits the entity UPDATE plus the re-insert of the captured
+        relations (same relation_ids). A crash between the stage commits
+        loses the captured relations (accepted residual, module docstring).
+        """
+        import duckdb
+
+        current = await self.get_entity(entity.entity_id)
+        if current is None:
+            return None
+        clash = await self._fetch(
+            """
+            SELECT entity_id::text AS entity_id FROM entities
+            WHERE tenant_id = $1 AND name = $2 AND entity_type = $3
+              AND entity_id <> $4
+            LIMIT 1
+            """,
+            [self._tenant_id, entity.name, entity.entity_type, entity.entity_id],
+        )
+        if clash:
+            raise ConflictError(ENTITY_CONFLICT_MSG)
+        captured = await self._fetch(
+            f"""
+            SELECT {", ".join(_RELATION_COLS)} FROM relations
+            WHERE tenant_id = $1 AND (source_entity_id = $2 OR target_entity_id = $2)
+            ORDER BY relation_id ASC
+            """,
+            [self._tenant_id, entity.entity_id],
+        )
+        reinsert_sql = (
+            "INSERT OR IGNORE INTO relations "
+            f"({', '.join(_RELATION_COLS)}) VALUES "
+            f"({', '.join(f'${i + 1}' for i in range(len(_RELATION_COLS)))})"
+        )
+        # Stage 1 (committed): clear the FK references. DuckDB checks FKs
+        # against the LAST COMMITTED state, so the entity UPDATE in stage 2
+        # only succeeds once this scope has committed.
+        async with self.transaction():
+            await self._execute(
+                """
+                DELETE FROM relations
+                WHERE tenant_id = $1 AND (source_entity_id = $2 OR target_entity_id = $2)
+                """,
+                [self._tenant_id, entity.entity_id],
+            )
+        try:
+            async with self.transaction():
+                await self._execute(
+                    """
+                    UPDATE entities SET name = $2, entity_type = $3, metadata = $4
+                    WHERE entity_id = $1 AND tenant_id = $5
+                    """,
+                    [
+                        entity.entity_id,
+                        entity.name,
+                        entity.entity_type,
+                        json.dumps(entity.metadata),
+                        self._tenant_id,
+                    ],
+                )
+                for row in captured:
+                    await self._execute(reinsert_sql, [row[col] for col in _RELATION_COLS])
+        except duckdb.ConstraintException as exc:
+            # Safety net only (reachable on a defect): stage 2 rolled back;
+            # restore the captured relations in a recovery scope, then raise
+            # the typed conflict.
+            async with self.transaction():
+                for row in captured:
+                    await self._execute(reinsert_sql, [row[col] for col in _RELATION_COLS])
+            raise ConflictError(ENTITY_CONFLICT_MSG) from exc
+        return await self.get_entity(entity.entity_id)
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        """Two committed stages: relations first, then the entity row.
+
+        DuckDB checks FKs against the LAST COMMITTED state, so the in-scope
+        delete is invisible to the entity delete — one scope would fail.
+        """
+        exists = await self._fetch(
+            "SELECT 1 AS present FROM entities WHERE entity_id = $1 AND tenant_id = $2",
+            [entity_id, self._tenant_id],
+        )
+        if not exists:
+            return None
+        async with self.transaction():
+            removed = await self._fetch(
+                """
+                DELETE FROM relations
+                WHERE tenant_id = $1 AND (source_entity_id = $2 OR target_entity_id = $2)
+                RETURNING relation_id
+                """,
+                [self._tenant_id, entity_id],
+            )
+        async with self.transaction():
+            await self._execute(
+                "DELETE FROM entities WHERE entity_id = $1 AND tenant_id = $2",
+                [entity_id, self._tenant_id],
+            )
+        return len(removed)
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        """Plain whitelisted UPDATE (relations rows are referenced by nothing)."""
+        import duckdb
+
+        try:
+            row = await self._execute(
+                """
+                UPDATE relations SET relation_type = $2, weight = $3, metadata = $4
+                WHERE relation_id = $1 AND tenant_id = $5
+                RETURNING relation_id::text AS relation_id,
+                          source_entity_id::text AS source_entity_id,
+                          target_entity_id::text AS target_entity_id,
+                          relation_type, weight, metadata::text AS metadata
+                """,
+                [
+                    relation.relation_id,
+                    relation.relation_type,
+                    relation.weight,
+                    json.dumps(relation.metadata),
+                    self._tenant_id,
+                ],
+            )
+        except duckdb.ConstraintException as exc:
+            raise ConflictError(RELATION_CONFLICT_MSG) from exc
+        if not row:
+            return None
+        metadata = json.loads(str(row["metadata"])) if row["metadata"] else {}
+        return Relation(
+            relation_id=str(row["relation_id"]),
+            source_entity_id=str(row["source_entity_id"]),
+            target_entity_id=str(row["target_entity_id"]),
+            relation_type=str(row["relation_type"]),
+            weight=float(row["weight"]),
+            metadata=metadata,
+        )
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        """Delete one relation by ID. True when a row was removed."""
+        import duckdb
+
+        try:
+            row = await self._execute(
+                """
+                DELETE FROM relations
+                WHERE relation_id = $1 AND tenant_id = $2
+                RETURNING relation_id
+                """,
+                [relation_id, self._tenant_id],
+            )
+        except duckdb.ConstraintException as exc:
+            raise ConflictError(RELATION_CONFLICT_MSG) from exc
+        return row is not None
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """Fetch one relation by ID (the handler's read-merge-write seam)."""
+        rows = await self._fetch(
+            """
+            SELECT relation_id::text AS relation_id,
+                   source_entity_id::text AS source_entity_id,
+                   target_entity_id::text AS target_entity_id,
+                   relation_type, weight, metadata::text AS metadata
+            FROM relations
+            WHERE relation_id = $1 AND tenant_id = $2
+            """,
+            [relation_id, self._tenant_id],
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        return Relation(
+            relation_id=str(row["relation_id"]),
+            source_entity_id=str(row["source_entity_id"]),
+            target_entity_id=str(row["target_entity_id"]),
+            relation_type=str(row["relation_type"]),
+            weight=float(row["weight"]),
+            metadata=metadata,
+        )
 
     # -- reads ---------------------------------------------------------------
 

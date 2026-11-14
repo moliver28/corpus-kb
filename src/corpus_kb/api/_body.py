@@ -29,6 +29,7 @@ from corpus_kb.errors import (
     ValidationError,
     error_status,
 )
+from corpus_kb.utils.whole_int import INT8_MAX, INT8_MIN, coerce_whole_int
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +43,6 @@ async def parse_body(request: Request) -> dict[str, Any]:
         return {}
     except Exception:
         return {}
-
-
-# Postgres int8 bind range: a count past this fails the asyncpg bind one
-# layer down (500/-32603), so the parse helper refuses it up front with
-# the caller's failure class (issue #238 follow-up, deliberate).
-_INT8_MAX = 9223372036854775807
-_INT8_MIN = -9223372036854775808
 
 
 @overload
@@ -73,30 +67,16 @@ def opt_int(
     keeps the full Postgres int8 range instead; anything past that range
     still raises, because the database bind would fail.
     """
-    if raw is None:
-        return default
-    if isinstance(raw, bool):
-        raise ValidationError(f"{name} must be a whole number.")
-    if isinstance(raw, int):
-        value = raw
-    elif isinstance(raw, float):
-        if not raw.is_integer():
-            raise ValidationError(f"{name} must be a whole number.")
-        value = int(raw)
-    elif isinstance(raw, str):
-        try:
-            value = int(raw)
-        except ValueError:
-            raise ValidationError(f"{name} must be a whole number.") from None
-    else:
-        raise ValidationError(f"{name} must be a whole number.")
+    value = coerce_whole_int(raw, default, name=name)
+    if value is None:
+        return None
     if allow_negative:
-        if not _INT8_MIN <= value <= _INT8_MAX:
+        if not INT8_MIN <= value <= INT8_MAX:
             raise ValidationError(f"{name} is out of range.")
     else:
         if value < 0:
             raise ValidationError(f"{name} must not be negative.")
-        if value > _INT8_MAX:
+        if value > INT8_MAX:
             raise ValidationError(f"{name} is out of range.")
     return value
 

@@ -1,5 +1,5 @@
 import { Table, Tag, type TableProps } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 export interface TopicRow {
   id: string;
@@ -10,7 +10,12 @@ export interface TopicRow {
 
 const COLUMNS: TableProps<TopicRow>["columns"] = [
   { title: strings.topicsColumnLabel, dataIndex: "label", key: "label" },
-  { title: strings.topicsColumnSize, dataIndex: "size", key: "size" },
+  {
+    title: strings.topicsColumnSize,
+    dataIndex: "size",
+    key: "size",
+    render: (value: number) => <span className="ui-num">{value}</span>,
+  },
   {
     title: strings.topicsColumnKeywords,
     key: "keywords",

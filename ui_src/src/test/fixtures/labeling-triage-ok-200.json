@@ -1,0 +1,34 @@
+{
+  "name": "labeling-triage-ok-200",
+  "source": "canonical",
+  "note": "POST /api/labeling/triage queue shape (tools/labeling_triage_tools.py labeling_triage, worst support first). Read-only op: the queue advises, nothing is relabelled. Re-record against a running server after a labeling build.",
+  "request": { "method": "POST", "path": "/api/labeling/triage" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "n_flagged": 3,
+      "queue": [
+        {
+          "chunk_id": "0f0a1b2c-3d4e-4f50-8a1b-2c3d4e5f6a7b",
+          "assigned_label": "method_quality",
+          "oos_probability": 0.41,
+          "runner_up_label": "outcome_report",
+          "runner_up_probability": 0.38
+        },
+        {
+          "chunk_id": "1a0b1c2d-3e4f-4a50-9b2c-3d4e5f6a7b8c",
+          "assigned_label": "outcome_report",
+          "oos_probability": 0.52,
+          "runner_up_label": "method_quality",
+          "runner_up_probability": 0.3
+        }
+      ],
+      "n_units": 40,
+      "cv_folds": 5,
+      "flag_threshold": 0.2,
+      "classes": ["method_quality", "outcome_report"],
+      "reason": "3/40 units below out-of-sample support 0.2; queue is advisory - never auto-relabel"
+    }
+  }
+}

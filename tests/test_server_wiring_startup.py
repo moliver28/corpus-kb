@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.server_wiring as sw
 from corpus_kb.errors import ConfigError
 from corpus_kb.handlers.coding_handler import reset_coding_handler
@@ -44,7 +44,7 @@ from corpus_kb.server_wiring import (
 @pytest.fixture
 def _singletons_restored(monkeypatch: pytest.MonkeyPatch):
     """Restore every singleton the wiring helpers set during a test."""
-    monkeypatch.setattr(query_handler_module, "_query_handler", query_handler_module._query_handler)
+    monkeypatch.setattr(query_wiring_module, "_query_handler", query_wiring_module._query_handler)
     yield
     reset_router_handler()
     reset_tag_handler()
@@ -76,7 +76,7 @@ async def test_wire_query_stack_returns_shared_stack(_singletons_restored) -> No
     assert embedder is not None
     assert query_handler is not None
     assert command_handler is not None
-    assert query_handler_module._query_handler is query_handler
+    assert query_wiring_module._query_handler is query_handler
 
 
 @pytest.mark.asyncio

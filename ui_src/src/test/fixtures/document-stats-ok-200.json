@@ -1,0 +1,23 @@
+{
+  "name": "document-stats-ok-200",
+  "source": "canonical",
+  "note": "GET /api/document-stats shape (tools/versioning_tools.py document_stats over versioning_handler.handle_query_document_stats). Re-record against a running server.",
+  "request": { "method": "GET", "path": "/api/document-stats" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "totals": {
+        "total_documents": 5,
+        "total_chunks": 42,
+        "total_vectors": 42,
+        "total_entities": 18,
+        "total_relations": 27
+      },
+      "by_source_type": [
+        { "source_type": "text", "count": 2 },
+        { "source_type": "pdf", "count": 3 }
+      ]
+    }
+  }
+}

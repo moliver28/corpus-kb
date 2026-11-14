@@ -1,113 +1,199 @@
-import { Button, Card, Input, Table, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Button, Card, Table, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import type { OpResult } from "../../api/types";
+import { pageConfig } from "../../api/table";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { getOp } from "../../api/ops";
+import { useCopy } from "../../hooks/useCopy";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
-import { isSearchEnvelope, excludedCount, scoreText, type SearchRow } from "./shapes";
+import { strings } from "../../strings/ask";
+import { excludedCount, isSearchEnvelope, type SearchRow } from "./shapes";
+import { SEARCH_PAGE_SIZE, columnsOf, searchExpandable } from "./searchColumns";
 
-const COLUMNS: ColumnsType<SearchRow> = [
-  { title: strings.askColumnSource, dataIndex: "source", key: "source" },
-  { title: strings.askColumnText, dataIndex: "text", key: "text" },
-  {
-    title: strings.askColumnScore,
-    key: "score",
-    render: (_value: unknown, row: SearchRow) => scoreText(row.score),
+type Mode = "text" | "similar" | "context";
+
+const MODES: readonly Mode[] = ["text", "similar", "context"];
+
+const MODE_LABELS: Record<Mode, string> = {
+  text: strings.askSearchModeText,
+  similar: strings.askSearchModeSimilar,
+  context: strings.askSearchModeContext,
+};
+
+const OP_IDS: Record<Mode, string> = {
+  text: "search",
+  similar: "search-similar",
+  context: "search-context",
+};
+
+/** One mode's result body: the same table for all three search routes. */
+function resultBody(
+  result: OpResult<unknown> | null,
+  opts: {
+    opId: string;
+    retry: () => void;
+    copiedKey: string | null;
+    copyUnavailable: boolean;
+    onCopy: (id: string) => void;
   },
-];
+): ReactNode {
+  if (result === null) return null;
+  if (result.kind === "unavailable") {
+    return <UnavailablePanel result={result} onRetry={opts.retry} />;
+  }
+  if (result.ok && isSearchEnvelope(result.data)) {
+    const rows = result.data.result;
+    // Only the plain /api/search envelope carries degraded_excluded; the
+    // count alone decides the banner (0 hides it on every mode).
+    const excluded = excludedCount(result.data.degraded_excluded);
+    return (
+      <div className="ui-stack">
+        {rows.length === 0 && <StatusBanner kind="warn">{strings.askSearchEmpty}</StatusBanner>}
+        {excluded > 0 && (
+          <StatusBanner kind="warn">
+            {strings.askDegradedExcluded.replace("{count}", String(excluded))}
+          </StatusBanner>
+        )}
+        <Table<SearchRow>
+          size="small"
+          rowKey="chunk_id"
+          pagination={pageConfig(SEARCH_PAGE_SIZE)}
+          expandable={searchExpandable}
+          dataSource={rows}
+          columns={columnsOf(opts.copiedKey, opts.copyUnavailable, opts.onCopy)}
+        />
+      </div>
+    );
+  }
+  if (result.ok) {
+    return (
+      <div>
+        <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
+        <JsonViewer value={result.data} />
+      </div>
+    );
+  }
+  return <ErrorPanel result={result} onRetry={opts.retry} opId={opts.opId} />;
+}
 
 /**
- * The search tab: hybrid lexical + vector search through the one search
- * op, with the honest degraded-excluded count when an index is impaired.
+ * The search tab: hybrid lexical + vector search, find-similar by chunk
+ * id, and context search — three manifest routes, one result table. The
+ * mode toggle follows the stage switcher pattern (plain aria-pressed
+ * buttons); each mode keeps its own last result and the primary search
+ * alone carries the degraded-excluded count its envelope returns.
  */
 export default function SearchCard() {
+  const [mode, setMode] = useState<Mode>("text");
   const [query, setQuery] = useState("");
-  const [hint, setHint] = useState("");
-  const search = useOp("search");
+  const [chunkId, setChunkId] = useState("");
+  const [error, setError] = useState("");
+  const { rootRef, flag } = useFirstErrorFocus();
+  // One shared copy hook: the row's chunk id is its own key, so two
+  // rows never share a "Copied." note and the timer never outlives us.
+  const { copiedKey, unavailable, copy } = useCopy();
+  const text = useOp("search");
+  const similar = useOp("search-similar");
+  const context = useOp("search-context");
+
+  function pick(next: Mode): void {
+    setMode(next);
+    setError("");
+  }
+
+  function validate(value: string, message: string): boolean {
+    if (value === "") {
+      setError(message);
+      flag();
+      return false;
+    }
+    setError("");
+    return true;
+  }
 
   async function run(): Promise<void> {
-    if (query.trim() === "") {
-      setHint(strings.askQueryRequired);
+    if (mode === "similar") {
+      const id = chunkId.trim();
+      if (!validate(id, strings.askSearchChunkRequired)) return;
+      similar.reset();
+      await similar.run({ chunk_id: id });
       return;
     }
-    setHint("");
-    search.reset();
-    await search.run({ query: query.trim() });
+    const words = query.trim();
+    if (!validate(words, strings.askSearchQueryRequired)) return;
+    if (mode === "context") {
+      context.reset();
+      await context.run({ query: words });
+      return;
+    }
+    text.reset();
+    await text.run({ query: words });
   }
 
-  let body: ReactNode = null;
-  const result = search.result;
-  if (result !== null) {
-    if (result.kind === "unavailable") {
-      body = <UnavailablePanel result={result} onRetry={() => void run()} />;
-    } else if (result.ok && isSearchEnvelope(result.data)) {
-      const env = result.data;
-      const rows = env.result;
-      body = (
-        <div className="ui-stack">
-          {rows.length === 0 && <StatusBanner kind="warn">{strings.askSearchEmpty}</StatusBanner>}
-          {excludedCount(env.degraded_excluded) > 0 && (
-            <StatusBanner kind="warn">
-              {strings.askDegradedExcluded.replace(
-                "{count}",
-                String(excludedCount(env.degraded_excluded)),
-              )}
-            </StatusBanner>
-          )}
-          <Table<SearchRow>
-            size="small"
-            rowKey="chunk_id"
-            pagination={false}
-            dataSource={rows}
-            columns={COLUMNS}
-          />
-        </div>
-      );
-    } else if (result.ok) {
-      body = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={result.data} />
-        </div>
-      );
-    } else {
-      body = <ErrorPanel result={result} onRetry={() => void run()} opId="search" />;
-    }
+  function retry(): void {
+    void run();
   }
+
+  const active = mode === "text" ? text : mode === "similar" ? similar : context;
 
   return (
     <Card title={strings.askTabSearch}>
-      {/* F7 puts similar and context search on this tab too; both routes
-          exist server-side but have no manifest rows yet — the honest
-          banners stand until the rows land (VerifyCard pattern). */}
-      {getOp("search-similar") === undefined && (
-        <StatusBanner kind="warn">{strings.askSearchSimilarNotWired}</StatusBanner>
-      )}
-      {getOp("search-context") === undefined && (
-        <StatusBanner kind="warn">{strings.askSearchContextNotWired}</StatusBanner>
-      )}
-      <Typography.Paragraph type="secondary">
-        {strings.askSearchQueryLabel}:
-      </Typography.Paragraph>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={strings.askSearchQueryLabel}
-          onPressEnter={() => void run()}
-        />
-        <Button type="primary" loading={search.running} onClick={() => void run()}>
-          {strings.askSearchAction}
-        </Button>
+      <div className="ui-stack" ref={rootRef}>
+        <div className="ui-actions">
+          {MODES.map((key) => (
+            <Button
+              key={key}
+              aria-pressed={mode === key}
+              type={mode === key ? "primary" : "default"}
+              onClick={() => pick(key)}
+            >
+              {MODE_LABELS[key]}
+            </Button>
+          ))}
+        </div>
+        {mode === "similar" ? (
+          <LabeledField
+            label={strings.askSearchChunkLabel}
+            value={chunkId}
+            onChange={setChunkId}
+            error={error}
+            machine
+            name="chunk_id"
+            widthClass="ui-narrow"
+            onPressEnter={() => void run()}
+          />
+        ) : (
+          <LabeledField
+            label={strings.askSearchQueryLabel}
+            value={query}
+            onChange={setQuery}
+            error={error}
+            name="query"
+            widthClass="ui-narrow"
+            onPressEnter={() => void run()}
+          />
+        )}
+        <div className="ui-actions">
+          <Button type="primary" loading={active.running} onClick={() => void run()}>
+            {strings.askSearchAction}
+          </Button>
+        </div>
+        {/* The one honest scope note: the result table pages its hits. */}
+        <Typography.Paragraph type="secondary" className="ui-flush">
+          {strings.askSearchCapHint}
+        </Typography.Paragraph>
+        {resultBody(active.result, {
+          opId: OP_IDS[mode],
+          retry,
+          copiedKey,
+          copyUnavailable: unavailable,
+          onCopy: (id: string) => copy(id, id),
+        })}
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
-      {body}
     </Card>
   );
 }

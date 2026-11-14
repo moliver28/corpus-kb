@@ -1,0 +1,20 @@
+{
+  "name": "labeling-triage-insufficient-200",
+  "source": "canonical",
+  "note": "POST /api/labeling/triage honest thin-corpus envelope (the fold-coverage guard in tools/labeling_triage_tools.py): status insufficient_data with reason and remedy, empty queue, HTTP 200.",
+  "request": { "method": "POST", "path": "/api/labeling/triage" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "insufficient_data",
+      "n_flagged": 0,
+      "queue": [],
+      "n_units": 6,
+      "cv_folds": 5,
+      "flag_threshold": 0.2,
+      "classes": ["method_quality", "outcome_report"],
+      "reason": "the thinnest class 'outcome_report' holds only 2 of the needed 5 labeled units.",
+      "remedy": "Label more chunks, then retry."
+    }
+  }
+}

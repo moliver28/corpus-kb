@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import asyncpg
 
+from corpus_kb.errors import InternalError
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
@@ -37,17 +38,21 @@ __all__ = [
 
 async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> GraphHandler:
     """Return the wired graph handler, or build one over this pool."""
-    from corpus_kb.errors import InternalError
     from corpus_kb.handlers.graph_handler import get_graph_handler
 
     try:
         return get_graph_handler()
     except (RuntimeError, InternalError):
-        pass  # no server wired the singleton; build over the given store
+        # The singleton refuses with the taxonomy class when the server
+        # never wired it; a standalone caller (CLI, MCP stdio, tests)
+        # builds its own handler over its pool instead.
+        pass
 
     from corpus_kb.handlers.graph_handler import GraphHandler
     from corpus_kb.storage.graph_factory import create_graph_store
 
+    # Both backends hand the factory the pool (Postgres pool or DuckDB
+    # gateway); the factory opens its own store over that source.
     graph_store = await create_graph_store(cfg, pool)
     return GraphHandler(graph_store, cfg)
 

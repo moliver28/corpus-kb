@@ -21,8 +21,9 @@ if TYPE_CHECKING:
 
 def test_get_query_handler_refuses_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     import corpus_kb.handlers.query_handler as qh
+    import corpus_kb.handlers.query_wiring as qw
 
-    monkeypatch.setattr(qh, "_query_handler", None)
+    monkeypatch.setattr(qw, "_query_handler", None)
     with pytest.raises(DependencyMissingError, match="not initialized"):
         qh.get_query_handler(None)
 

@@ -1,7 +1,7 @@
 import { Card } from "antd";
 import StatusBanner from "../../components/StatusBanner";
 import { getOp } from "../../api/ops";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 /**
  * The paste-text ingest. The server route exists but the op has no

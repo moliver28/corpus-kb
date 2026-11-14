@@ -1,18 +1,20 @@
-import { Button, Card, Typography } from "antd";
+import { Card, Typography } from "antd";
 import type { ReactNode } from "react";
 
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LongOpControls from "../../components/LongOpControls";
 import StatusBanner from "../../components/StatusBanner";
 import ConfirmGate from "../../components/ConfirmGate";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { callOp } from "../../api/client";
-import { getOp } from "../../api/ops";
+import { getOp, statusOpFor } from "../../api/ops";
 import { useLongOp } from "../../hooks/useLongOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/codebook";
 
 interface CycleEnvelope {
   status: string;
+  exit_code: number;
   gate: unknown;
 }
 
@@ -54,7 +56,7 @@ export default function CycleCard() {
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor("research-cycle"));
 
   async function run(): Promise<void> {
     await cycle.start();
@@ -106,20 +108,10 @@ export default function CycleCard() {
           onConfirm={() => void run()}
         />
       </div>
-      {cycle.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(cycle.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => cycle.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {cycle.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {cycle.unknownOutcome && (
-        // No "Check status" here: it polls the ingest ledger, which
-        // says nothing about a research cycle. The stage runs again.
-        <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-      )}
+      {/* The shared wait block with no retry props: research-cycle has
+          no status op, so the ledger button never renders, and the next
+          step stays the gated stage run above. */}
+      <LongOpControls op={cycle} />
       {outcome}
     </Card>
   );

@@ -5,7 +5,7 @@
 import type { Citation } from "../../components/CitedAnswer";
 import type { VerifySummary } from "../../api/verify";
 import type { EvidenceItem } from "./EvidenceList";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 
 /** One cited answer sentence (research/notebook.py cite_sentences). */
 interface Sentence {
@@ -115,7 +115,10 @@ export interface SearchRow {
 interface SearchEnvelope {
   status: string;
   result: SearchRow[];
-  degraded_excluded: { count: unknown };
+  // Only the plain /api/search envelope carries this key; similar and
+  // context never do, so the type keeps it optional (excludedCount
+  // reads the missing key as 0).
+  degraded_excluded?: { count: unknown };
 }
 
 export function isSearchEnvelope(value: unknown): value is SearchEnvelope {
@@ -209,4 +212,26 @@ export function notebookSentences(env: NotebookEnvelope): Citation[] {
       .filter((label) => label !== "")
       .join(", "),
   }));
+}
+
+/** One research project row (tools/lifecycle_read_tools.py projects_list). */
+export interface ProjectRow {
+  project_id: string;
+  name: string;
+}
+
+interface ProjectsEnvelope {
+  status: string;
+  result: ProjectRow[];
+}
+
+export function isProjectsEnvelope(value: unknown): value is ProjectsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.result)) return false;
+  return v.result.every((row) => {
+    if (typeof row !== "object" || row === null) return false;
+    const r = row as Record<string, unknown>;
+    return typeof r.project_id === "string" && typeof r.name === "string";
+  });
 }

@@ -1,13 +1,14 @@
-import { Button, Card, Input, Skeleton, Typography } from "antd";
+import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import AssignmentsTable from "./AssignmentsTable";
 import OverrideForm from "./OverrideForm";
 import { isAssignmentsEnvelope } from "./shapes";
@@ -47,8 +48,9 @@ export default function ReviewQueueCard() {
   }
 
   function pickReviewer(name: string): void {
+    // Keystrokes only move the state; the name persists on blur and on
+    // submit, never once per character.
     setReviewer(name);
-    saveReviewer(name);
   }
 
   async function send(row: AssignmentRow, kind: Decision, noteText: string): Promise<void> {
@@ -57,6 +59,7 @@ export default function ReviewQueueCard() {
       setNoteWarning(strings.reviewReviewerRequired);
       return;
     }
+    saveReviewer(reviewer.trim());
     // The server reviews the AGGREGATE (a UUID), not the int row id
     // (research/review_surface.py execute_review).
     const hook = kind === "accept" ? accept : overrideOp;
@@ -121,6 +124,7 @@ export default function ReviewQueueCard() {
         ) : (
           <AssignmentsTable
             rows={rows}
+            pending={accept.running || overrideOp.running}
             onAccept={(row) => void send(row, "accept", "")}
             onOverride={openOverride}
           />
@@ -141,12 +145,13 @@ export default function ReviewQueueCard() {
       <Typography.Paragraph type="secondary">{strings.reviewQueueBody}</Typography.Paragraph>
       <div className="ui-stack">
         <div>
-          <Typography.Text>{strings.reviewReviewerLabel}: </Typography.Text>
-          <Input
-            className="ui-narrow--name"
+          <LabeledField
+            label={strings.reviewReviewerLabel}
             value={reviewer}
-            onChange={(event) => pickReviewer(event.target.value)}
-            placeholder={strings.reviewReviewerLabel}
+            onChange={pickReviewer}
+            onBlur={() => saveReviewer(reviewer.trim())}
+            name="reviewer"
+            widthClass="ui-narrow--name"
           />
           <Typography.Paragraph type="secondary" className="ui-flush">
             {strings.reviewReviewerHint}

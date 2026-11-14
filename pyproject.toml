@@ -135,6 +135,14 @@ pynvml = ["pynvml"]
 # pytz: DuckDB TIMESTAMPTZ fetches and binds need it at runtime (three
 # independent WPs hit the missing wheel on the phase C/D ports).
 duckdb = ["duckdb>=1.5,<2.0", "pytz"]
+# Chat rungs (Phase-2 Wave 7): the claude-agent-sdk rung. The floor is
+# the verified 0.2.181 (ToolAnnotations arrive there); the <0.3 cap
+# holds the 0.x churn down (PyPI showed 8 patch releases in as many
+# days at verification, 2026-11-13). CI NEVER installs this extra; the
+# base install never imports it (lazy imports in chat/claude_rung.py,
+# chat/claude_stream.py, chat/agent_tools.py — a test asserts the SDK
+# stays out of sys.modules at package import).
+chat = ["claude-agent-sdk>=0.2.181,<0.3"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
 # permissive set: sentence-transformers Apache-2.0, transformers Apache-2.0,
@@ -427,6 +435,7 @@ known_first_party = ["corpus_kb"]
 # comments above.
 DEP002 = [
     "graphqlite",
+    "claude-agent-sdk",
     "langextract",
     "sentence-transformers",
     "transformers",
@@ -831,6 +840,15 @@ help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 cmd = "pnpm -C ui_src run check-bundle"
 help = "UI initial-route bundle budget gate (350 kB gzip)"
 
+[tool.poe.tasks.ui-import-graph]
+# Phase-2 Wave 6 (rule 10 triple: poe target + ci.yml ui step +
+# enforcement-map row). Proves the lazy-Map law: @xyflow/react and
+# @dagrejs/dagre are imported ONLY in the Map module set, and no built
+# chunk carrying the xyflow runtime marker sits in the entry closure —
+# the map libraries contribute 0 kB to the initial route.
+cmd = "node ui_src/scripts/check-import-graph.mjs"
+help = "Import-graph gate: map libraries stay out of the entry chunk"
+
 [tool.poe.tasks.ui-e2e]
 # SPA Playwright smoke + axe scan against a REAL throwaway server
 # (Task 9): scripts/ui_e2e.py boots corpus-kb on a scratch database
@@ -843,8 +861,9 @@ help = "SPA e2e smoke + a11y scan on a live throwaway server"
 
 [tool.poe.tasks.ui-licenses]
 # Real gate (Task 4): production deps stay on the MIT / Apache-2.0 / BSD /
-# ISC / 0BSD allowlist; the lock records the production tree only (dev
-# trees are platform-specific). --check exits 1 on drift.
+# ISC / 0BSD allowlist (plus CC0-1.0, MIT-0, and OFL-1.1 for the
+# self-hosted @fontsource fonts); the lock records the production tree
+# only (dev trees are platform-specific). --check exits 1 on drift.
 cmd = "python scripts/ui_licenses.py --check"
 help = "UI production-license allowlist gate (writes ui_licenses.lock.json)"
 

@@ -34,10 +34,31 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "search_graph",
         "graph_neighbors",
         "graph_traverse",
+        # Phase-2 Wave 4: the entity list read (tools/entity_read_tools.py)
+        # and the graph writes' registry rows (tools/graph_tools.py).
+        "list_entities",
+        "add_entity",
+        "add_relation",
+        # Phase-2 Wave 8: the graph U/D writes (tools/graph_tools.py).
+        "update_entity",
+        "delete_entity",
+        "update_relation",
+        "delete_relation",
         "sql_query",
         "sql_tables",
         "get_document_tags",
         "get_metadata",
+        # Phase-2 Wave 5: the chunk window read (tools/chunk_read_tools.py);
+        # r9: the registry row joined in bfd8d32, the name belongs here too.
+        "chunks_list",
+        # Phase-2 Wave 6: the Map's edge window read
+        # (tools/relation_read_tools.py).
+        "list_relations",
+        # Phase-2 Wave 2: the tag/metadata write ops (tools/tag_tools.py).
+        "add_tag",
+        "tag_document",
+        "untag_document",
+        "set_metadata",
         "query_document_stats",
         "sync_database",
         # -- research/coding surfaces (todos 11-18) --------------------------
@@ -120,6 +141,20 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "active_learn_next",
         # -- calibrate family (issue #200, tools/calibrate_tools.py) ---------
         "calibrate_apply",
+        # -- Phase-2 Wave 3: the corpus stats pair plus the derived-analysis
+        #    family rows (statements/conflicts/beliefs) that gained registry
+        #    rows ------------------------------------------------------------
+        "stats",
+        "document_stats",
+        "statements_list",
+        "statements_timeline",
+        "conflicts_scan",
+        "conflicts_list",
+        "conflicts_resolve",
+        "beliefs_current",
+        "beliefs_timeline",
+        "beliefs_predict",
+        "beliefs_compare",
         # -- chunk-coding ops (issue #350, tools/coding_tools.py) ------------
         "coding_embed_codebook",
         "coding_pool",
@@ -133,20 +168,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "events_summary",
         # -- graph/beliefs/conflicts/statements reads (W3c auto-approve
         #    derivation brought these catalogue ops into host lists) -------
-        "beliefs_compare",
-        "beliefs_predict",
-        "beliefs_timeline",
-        "beliefs_current",
-        "conflicts_list",
-        "conflicts_scan",
-        "conflicts_resolve",
-        "statements_list",
-        "statements_timeline",
         "query",
         # -- catalogue write/ingest ops the W3c classification names (the
         #    master allowlist covers every live MCP tool, safe or not) -----
-        "add_entity",
-        "add_relation",
         "analysis_embed_meta",
         "extraction_tune",
         "ingest_text",

@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useLocation } from "react-router";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import demoLoaded from "../test/fixtures/demo-loaded-200.json";
@@ -14,8 +16,20 @@ import Ingest from "./Ingest";
  * The Ingest page from canonical fixtures: one tab per source, each a
  * typed form over its single manifest op. The upload cap moved here
  * from Setup; the paste tab shows the honest gap banner; the sample
- * tab reuses the demo-load card Setup keeps as its quick start.
+ * tab reuses the demo-load card Setup keeps as its quick start. The
+ * active tab rides the hash query (default, restore, write rows).
  */
+
+let query = "";
+
+/** Reports the router location's query so rows can assert the write. */
+function QueryProbe() {
+  const search = useLocation().search;
+  useEffect(() => {
+    query = search;
+  });
+  return null;
+}
 
 function openTab(label: string): void {
   fireEvent.click(screen.getByRole("button", { name: label }));
@@ -38,6 +52,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   clearCalls();
+  query = "";
 });
 
 describe("Ingest page", () => {
@@ -49,6 +64,7 @@ describe("Ingest page", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: strings.setupUploadAction })).toBeTruthy();
   });
+
 
   it("ingests one web address, with the crawl toggle in the request", async () => {
     stubFetch([
@@ -167,9 +183,46 @@ describe("Ingest page", () => {
     render(<Ingest />, { wrapper: makeWrapper() });
     openTab(strings.ingestTabQueue);
     expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
-    expect(screen.getByTestId("queue-path")).toBeTruthy();
-    // The status card answers the first poll with the active rows.
+    expect(screen.getByLabelText(strings.queuePathLabel, { exact: false })).toBeTruthy();
+    // The status card answers the first poll with the active rows, and
+    // the status tags carry plain words, not the server's enum words.
     expect(await screen.findByText("A History of Networks")).toBeTruthy();
+    expect(screen.getAllByText(strings.queueStatusRunning).length).toBe(1);
+    expect(screen.getAllByText(strings.queueStatusPending).length).toBe(1);
+  });
+
+  it("keeps an unknown queue status word honest instead of guessing", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/queue/status",
+        reply: respond(200, {
+          status: "success",
+          entries: [
+            {
+              id: "eeee4444-5555-4f66-9a77-88889999bbbb",
+              path: "/data/books/maps.pdf",
+              title: null,
+              status: "frozen",
+              attempts: 0,
+              max_attempts: 3,
+              last_error: null,
+              elapsed_seconds: null,
+              queued_at: "2026-10-28T12:00:00Z",
+              run_id: null,
+              project_id: null,
+              pages_done: null,
+              pages_total: null,
+              chunks: null,
+            },
+          ],
+          count: 1,
+        }),
+      },
+    ]);
+    render(<Ingest />, { wrapper: makeWrapper(true, ["/ingest?tab=queue"]) });
+    // A word the app cannot map renders itself — never a wrong plain word.
+    expect(await screen.findByText("frozen")).toBeTruthy();
   });
 
   it("loads the sample knowledge behind its confirm gate", async () => {
@@ -183,4 +236,36 @@ describe("Ingest page", () => {
     expect(await screen.findByText(strings.receiptDone)).toBeTruthy();
     expect(screen.getByRole("button", { name: strings.setupDemoNext })).toBeTruthy();
   });
+
+  it("restores the tab from the address query", async () => {
+    stubFetch([]);
+    render(<Ingest />, { wrapper: makeWrapper(true, ["/ingest?tab=queue"]) });
+    expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
+  });
+
+  it("falls back to the first tab when the query word is unknown", async () => {
+    stubFetch([]);
+    render(<Ingest />, { wrapper: makeWrapper(true, ["/ingest?tab=bogus"]) });
+    expect(
+      await screen.findByText(strings.setupUploadCap.replace("{mb}", "50")),
+    ).toBeTruthy();
+  });
+
+  it("writes the active tab into the address query", async () => {
+    stubFetch([]);
+    render(
+      <>
+        <Ingest />
+        <QueryProbe />
+      </>,
+      { wrapper: makeWrapper() },
+    );
+    openTab(strings.ingestTabQueue);
+    expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
+    expect(query).toBe("?tab=queue");
+    openTab(strings.ingestTabFiles);
+    expect(query).toBe("");
+  });
+
+
 });

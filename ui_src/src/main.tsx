@@ -4,6 +4,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider } from "antd";
 import { loadRuntimeConfig } from "./api/runtimeConfig";
 import App from "./App";
+import AppErrorBoundary from "./components/AppErrorBoundary";
+import { corpusKbTheme } from "./theme";
+
+// Chrome fonts load up front: Plex Sans for the UI face, Plex Mono for
+// the machine voice. The evidence serif (Source Serif 4) rides in the
+// Ask stage chunk, where the only evidence text renders.
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./ui.css";
 
 // One boot load of /app/runtime-config.json; every consumer (the client
@@ -15,19 +26,12 @@ const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ConfigProvider
-        theme={{
-          token: {
-            colorPrimary: "#0958d9",
-            // AA contrast: antd defaults (#8c8c8c on white) fail 4.5:1.
-            colorTextDescription: "#595959",
-            colorTextSecondary: "#595959",
-          },
-        }}
-      >
-        <App />
-      </ConfigProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ConfigProvider theme={corpusKbTheme}>
+          <App />
+        </ConfigProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 );

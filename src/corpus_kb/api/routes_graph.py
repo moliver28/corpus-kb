@@ -35,7 +35,7 @@ async def add_entity(request: Request) -> JSONResponse:
         metadata=body.get("metadata", {}),
     )
     handler = get_command_handler()
-    result = handler.handle_add_entity(cmd)
+    result = await handler.handle_add_entity(cmd)
     return JSONResponse(result)
 
 
@@ -54,7 +54,7 @@ async def add_relation(request: Request) -> JSONResponse:
         metadata=body.get("metadata", {}),
     )
     handler = get_command_handler()
-    result = handler.handle_add_relation(cmd)
+    result = await handler.handle_add_relation(cmd)
     return JSONResponse(result)
 
 
@@ -165,3 +165,85 @@ async def get_entity_relations(request: Request) -> JSONResponse:
         limit=limit,
     )
     return JSONResponse({"status": "success", "result": results})
+
+
+@route_errors
+async def list_relations(request: Request) -> JSONResponse:
+    """GET /api/graph/relations — list relations, one window (Wave 6 Map)."""
+    from corpus_kb.domain.models import ListRelationsQuery
+    from corpus_kb.handlers.query_wiring import get_query_handler
+
+    query = ListRelationsQuery(
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
+        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
+    )
+    handler = get_query_handler()
+    results = await handler.handle_list_relations(query)
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
+
+
+@route_errors
+async def update_entity(request: Request) -> JSONResponse:
+    """POST /api/entities/{entity_id}/update — update one entity's fields."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    result = await handler.handle_update_entity(
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        UUID(request.path_params.get("entity_id")),
+        name=body.get("name"),
+        entity_type=body.get("entity_type"),
+        metadata=body.get("metadata"),
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def delete_entity(request: Request) -> JSONResponse:
+    """POST /api/entities/{entity_id}/delete — delete one entity, hard."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    result = await handler.handle_delete_entity(
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        UUID(request.path_params.get("entity_id")),
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def update_relation(request: Request) -> JSONResponse:
+    """POST /api/relations/{relation_id}/update — update one relation."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    result = await handler.handle_update_relation(
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        UUID(request.path_params.get("relation_id")),
+        relation_type=body.get("relation_type"),
+        weight=body.get("weight"),
+        metadata=body.get("metadata"),
+        source_entity_id=body.get("source_entity_id"),
+        target_entity_id=body.get("target_entity_id"),
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def delete_relation(request: Request) -> JSONResponse:
+    """POST /api/relations/{relation_id}/delete — delete one relation, hard."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    result = await handler.handle_delete_relation(
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        UUID(request.path_params.get("relation_id")),
+    )
+    return JSONResponse(result)

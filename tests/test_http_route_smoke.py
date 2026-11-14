@@ -27,8 +27,8 @@ import corpus_kb.api.research_http as research_http
 import corpus_kb.handlers.coding_handler as coding_handler_module
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.graph_handler as graph_handler_module
-import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.query_integrity as query_integrity_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
@@ -36,6 +36,7 @@ import corpus_kb.handlers.versioning_handler as versioning_handler_module
 import corpus_kb.tools.ask_tools as ask_tools
 import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
+import corpus_kb.tools.versioning_tools as versioning_tools_module
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.research_http import ToolRoute, _tool_routes
 from corpus_kb.handlers.coding_handler import CodingHandler
@@ -221,7 +222,7 @@ class _Seam:
 
 _SEAMS = {
     "command": _Seam(command_handler_module, "get_command_handler", CommandHandler),
-    "query": _Seam(query_handler_module, "get_query_handler", QueryHandler),
+    "query": _Seam(query_wiring_module, "get_query_handler", QueryHandler),
     "router": _Seam(router_handler_module, "get_router_handler", RouterHandler),
     "graph": _Seam(graph_handler_module, "get_graph_handler", GraphHandler),
     "tag": _Seam(tag_handler_module, "get_tag_handler", TagHandler),
@@ -438,6 +439,15 @@ _HANDLER_ROUTES = [
         id="GET /api/graph/relations/{entity_id}",
     ),
     pytest.param(
+        "GET",
+        "/api/graph/relations",
+        "query",
+        "handle_list_relations",
+        "dumpable_list",
+        {},
+        id="GET /api/graph/relations",
+    ),
+    pytest.param(
         "POST", "/api/tags", "tag", "handle_add_tag", "dict", {"name": "t"}, id="POST /api/tags"
     ),
     pytest.param(
@@ -448,6 +458,15 @@ _HANDLER_ROUTES = [
         "dict",
         {"tag": "t"},
         id="POST /api/documents/{doc_id}/tags",
+    ),
+    pytest.param(
+        "POST",
+        f"/api/documents/{uuid4()}/tags/remove",
+        "tag",
+        "handle_untag_document",
+        "dict",
+        {"tag": "t"},
+        id="POST /api/documents/{doc_id}/tags/remove",
     ),
     pytest.param(
         "GET",
@@ -480,20 +499,10 @@ _HANDLER_ROUTES = [
         id="GET /api/versions",
     ),
     pytest.param(
-        "GET", "/api/stats", "versioning", "handle_get_stats", "dict", {}, id="GET /api/stats"
-    ),
-    pytest.param(
         "GET", "/api/tables", "versioning", "handle_sql_tables", "list", {}, id="GET /api/tables"
     ),
-    pytest.param(
-        "GET",
-        "/api/document-stats",
-        "versioning",
-        "handle_query_document_stats",
-        "dict",
-        {},
-        id="GET /api/document-stats",
-    ),
+    # The stats pair moved to the tool layer (Phase-2 Wave 3); its smoke
+    # lives in _STATS_TOOL_ROUTES above.
 ]
 
 
@@ -555,6 +564,37 @@ _INGEST_TOOL_ROUTES = [
         id="POST /api/ingest/reingest",
     ),
 ]
+
+# Phase-2 Wave 3: the stats routes route through the shared tool
+# functions over the research pool (the catalogue-op pattern), so their
+# smoke stubs the tools module, not the legacy handler singleton.
+_STATS_TOOL_ROUTES = [
+    pytest.param("GET", "/api/stats", {}, "stats", id="GET /api/stats"),
+    pytest.param("GET", "/api/document-stats", {}, "document_stats", id="GET /api/document-stats"),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body", "fn_name"), _STATS_TOOL_ROUTES)
+def test_stats_tool_route_supplies_pool(
+    method: str, path: str, body: dict[str, str], fn_name: str, monkeypatch: Any
+) -> None:
+    real = getattr(versioning_tools_module, fn_name)
+    captured: dict[str, object] = {}
+
+    async def stub(*args: object, **kwargs: object) -> dict[str, object]:
+        captured["args"] = args
+        return dict(_CANNED)
+
+    monkeypatch.setattr(versioning_tools_module, fn_name, stub)
+    pool = _FakePool()
+    monkeypatch.setattr(research_http, "_pool", pool)
+
+    client = TestClient(create_http_app())
+    response = client.request(method, path, json=body or None)
+
+    assert _assert_live_response(response) == _CANNED
+    assert pool in captured.get("args", ()), "route did not pass the pool positionally"
+    inspect.signature(real).bind(pool, None)
 
 
 @pytest.mark.parametrize(("method", "path", "body", "module", "fn_name"), _INGEST_TOOL_ROUTES)

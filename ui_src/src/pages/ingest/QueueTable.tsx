@@ -1,6 +1,6 @@
 import { Button, Popconfirm, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 import type { QueueEntry } from "../../api/queue";
 
 /** The statuses a cancel may still stop (queue_tools.py queue_cancel). */
@@ -14,6 +14,20 @@ const TAG_COLOR: Record<string, string> = {
   failed: "error",
   cancelled: "warning",
 };
+
+/** The server's enum words never render raw when a plain word exists. */
+const STATUS_WORDS: Record<string, string> = {
+  pending: strings.queueStatusPending,
+  running: strings.queueStatusRunning,
+  done: strings.queueStatusDone,
+  failed: strings.queueStatusFailed,
+  cancelled: strings.queueStatusCancelled,
+};
+
+/** One plain status word; an unknown enum word stays itself. */
+export function statusWord(status: string): string {
+  return STATUS_WORDS[status] ?? status;
+}
 
 function dash(value: string | null): string {
   return value !== null && value !== "" ? value : "-";
@@ -74,7 +88,7 @@ export default function QueueTable({
       title: strings.queueColumnStatus,
       key: "status",
       render: (_: unknown, record: QueueEntry) => (
-        <Tag color={TAG_COLOR[record.status] ?? "default"}>{record.status}</Tag>
+        <Tag color={TAG_COLOR[record.status] ?? "default"}>{statusWord(record.status)}</Tag>
       ),
     },
     {
@@ -85,12 +99,16 @@ export default function QueueTable({
     {
       title: strings.queueColumnAttempts,
       key: "attempts",
-      render: (_: unknown, record: QueueEntry) => attemptsOf(record),
+      render: (_: unknown, record: QueueEntry) => (
+        <span className="ui-num">{attemptsOf(record)}</span>
+      ),
     },
     {
       title: strings.queueColumnElapsed,
       key: "elapsed",
-      render: (_: unknown, record: QueueEntry) => elapsedOf(record),
+      render: (_: unknown, record: QueueEntry) => (
+        <span className="ui-num">{elapsedOf(record)}</span>
+      ),
     },
     {
       title: strings.queueColumnError,

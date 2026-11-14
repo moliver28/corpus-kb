@@ -1,18 +1,18 @@
-import { Button, Card, Input, Typography } from "antd";
+import { Button, Card, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
+import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
-import JsonViewer from "./JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "./LabeledField";
+import LongOpControls from "./LongOpControls";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
-import StatusBanner from "./StatusBanner";
-import UnavailablePanel from "./UnavailablePanel";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 interface PathCardProps {
   title: string;
@@ -34,7 +34,8 @@ interface PathCardProps {
  * longRunning flag picks the wait: long ops (crawl, directory walk,
  * research ingest) run behind the confirm gate with the honest wait —
  * elapsed, stop waiting, check status — never a 60 s abort; short ops
- * (single transcript) run directly.
+ * (single transcript) run directly. Enter routes through the same gate
+ * as the button, so it can never start a long op on its own.
  */
 export default function PathCard({
   title,
@@ -48,7 +49,9 @@ export default function PathCard({
   children,
 }: PathCardProps) {
   const [path, setPath] = useState("");
-  const [hint, setHint] = useState("");
+  const [error, setError] = useState("");
+  const [gateOpen, setGateOpen] = useState(false);
+  const { rootRef, flag } = useFirstErrorFocus();
   const bodyRef = useRef<unknown>({});
   const isLong = getOp(opId)?.longRunning === true;
   const short = useOp(opId);
@@ -60,14 +63,15 @@ export default function PathCard({
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor(opId));
 
   async function run(): Promise<void> {
     if (path.trim() === "") {
-      setHint(requiredMessage);
+      setError(requiredMessage);
+      flag();
       return;
     }
-    setHint("");
+    setError("");
     bodyRef.current = { [pathKey]: path.trim(), ...extraBody };
     if (isLong) {
       await long.start();
@@ -77,49 +81,55 @@ export default function PathCard({
     }
   }
 
+  /**
+   * The one submit path (button and Enter). A long op opens the gate;
+   * the op itself starts only when the gate confirms.
+   */
+  function requestRun(): void {
+    if (isLong) {
+      if (path.trim() === "") {
+        setError(requiredMessage);
+        flag();
+        return;
+      }
+      setError("");
+      setGateOpen(true);
+      return;
+    }
+    void run();
+  }
+
   function retry(): void {
     void run();
   }
 
   const settled: OpResult | null = isLong ? long.result : short.result;
   const running = isLong ? long.running : short.running;
-  let resultView: ReactNode = null;
-  if (settled !== null && !running) {
-    if (settled.kind === "unavailable") {
-      resultView = <UnavailablePanel result={settled} onRetry={retry} />;
-    } else if (settled.kind === "unknown") {
-      // A 200 with no status word is not a receipt.
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={settled.data} />
-        </div>
-      );
-    } else if (settled.ok && settled.kind !== "network") {
-      resultView = <ReceiptCard result={settled} />;
-    } else {
-      resultView = <ErrorPanel result={settled} onRetry={retry} opId={opId} />;
-    }
-  }
 
   return (
     <Card title={title}>
       {body !== undefined && (
         <Typography.Paragraph type="secondary">{body}</Typography.Paragraph>
       )}
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow--form"
+      <div className="ui-actions" ref={rootRef}>
+        <LabeledField
+          label={label}
           value={path}
-          onChange={(event) => setPath(event.target.value)}
-          placeholder={label}
-          onPressEnter={() => void run()}
+          onChange={setPath}
+          error={error}
+          required
+          machine
+          name={pathKey}
+          widthClass="ui-narrow--form"
+          onPressEnter={requestRun}
         />
         {isLong ? (
           <ConfirmGate
             title={strings.confirmLongTitle}
             description={gateDescription ?? strings.confirmLongBody}
             loading={long.running}
+            open={gateOpen}
+            onOpenChange={setGateOpen}
             onConfirm={() => void run()}
           />
         ) : (
@@ -128,31 +138,19 @@ export default function PathCard({
           </Button>
         )}
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {children}
-      {long.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
+      <LongOpControls op={long} onRetry={requestRun} />
+      {settled !== null && !running && (
+        <OpBody
+          result={settled}
+          ok={settled.ok && settled.kind !== "unknown"}
+          retry={retry}
+          opId={opId}
+          failure={(failed) => <ErrorPanel result={failed} onRetry={retry} opId={opId} />}
+        >
+          <ReceiptCard result={settled} />
+        </OpBody>
       )}
-      {long.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {long.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <StatusBanner kind="info">
-          {long.statusResult.message !== ""
-            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-            : strings.runnerStatusEmpty}
-        </StatusBanner>
-      )}
-      {resultView}
     </Card>
   );
 }

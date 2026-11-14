@@ -60,6 +60,51 @@ export function manifestOpId(registerOp: string): string {
   return registerOp.replace(/_/g, "-");
 }
 
+// -- Classification read shapes (tools/classification_tools.py
+//    classification_list -> classification/store.py read_predictions).
+//    Same drift rule: a payload that misses a field takes the honest
+//    fallback path.
+
+/** One stored prediction row (classification/store.py read_predictions). */
+export interface PredictionRow {
+  chunk_id: string;
+  set_id: string;
+  label: string;
+  probability: number;
+  calibrated_probability: number | null;
+  tier: string;
+  review: boolean;
+}
+
+interface PredictionsEnvelope {
+  status: string;
+  prediction_count: number;
+  predictions: PredictionRow[];
+}
+
+export function isPredictionsEnvelope(value: unknown): value is PredictionsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const predictions = (value as Record<string, unknown>).predictions;
+  return (
+    Array.isArray(predictions) &&
+    predictions.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.chunk_id === "string" &&
+        typeof r.set_id === "string" &&
+        typeof r.label === "string" &&
+        typeof r.probability === "number" &&
+        Number.isFinite(r.probability) &&
+        (r.calibrated_probability === null ||
+          (typeof r.calibrated_probability === "number" &&
+            Number.isFinite(r.calibrated_probability))) &&
+        typeof r.tier === "string" &&
+        typeof r.review === "boolean"
+      );
+    })
+  );
+}
 
 // -- Question routing (analysis routing program, wave 3) -------------------
 

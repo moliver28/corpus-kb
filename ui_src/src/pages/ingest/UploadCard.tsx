@@ -6,47 +6,21 @@ import JsonViewer from "../../components/JsonViewer";
 import ReceiptCard from "../../components/ReceiptCard";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { networkResult, normalize, unreadableResult } from "../../api/errors";
-import { requestTimeoutMs, runtimeConfig } from "../../api/runtimeConfig";
+import { sendMultipart } from "../../api/client";
+import { runtimeConfig } from "../../api/runtimeConfig";
 import type { OpResult } from "../../api/types";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 // The multipart upload route is not a JSON op, so it has no op-manifest
 // row (screens must not change the registry). The path mirrors the
 // server route ingest_upload_route; the response is the standard file
-// ingest envelope, normalized through the shared error model.
+// ingest envelope, normalized through the shared error model in
+// api/client.ts (sendMultipart caps the wait, so a hung server cannot
+// spin the button forever; an expired wait reads as network).
 const UPLOAD_PATH = "/api/ingest/upload";
 
 function capBytes(): number {
   return runtimeConfig().maxUploadMb * 1024 * 1024;
-}
-
-/** One multipart POST through fetch, normalized to the house result.
-    The wait is capped by the runtime request timeout, so a hung server
-    cannot spin the button forever; an expired wait reads as network. */
-async function sendUpload(file: File): Promise<OpResult> {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), requestTimeoutMs());
-  try {
-    const res = await fetch(UPLOAD_PATH, { method: "POST", body: form, signal: ctrl.signal });
-    const text = await res.text();
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      // non-JSON body — handled by the unreadable result below
-    }
-    if (parsed === null) {
-      return unreadableResult(res.status);
-    }
-    return normalize(res.status, parsed);
-  } catch {
-    return networkResult();
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
@@ -84,7 +58,10 @@ export default function UploadCard() {
     }
     setNote("");
     setSending(true);
-    const res = await sendUpload(file);
+    // The card assembles the multipart body; api/client.ts sends it.
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const res = await sendMultipart(UPLOAD_PATH, form);
     setSending(false);
     setResult(res);
   }
@@ -119,7 +96,9 @@ export default function UploadCard() {
         <Upload beforeUpload={pick} onRemove={clear} maxCount={1}>
           <Button>{strings.setupUploadPick}</Button>
         </Upload>
-        <Button type="primary" loading={sending} disabled={file === null} onClick={() => void send()}>
+        {/* Enabled with a hint banner, like every other form: the empty
+            submit says what is missing instead of sleeping silently. */}
+        <Button type="primary" loading={sending} onClick={() => void send()}>
           {strings.setupUploadAction}
         </Button>
       </div>

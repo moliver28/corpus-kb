@@ -2,10 +2,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
 import { makeWrapper, respond, stubFetch } from "../test/testUtils";
+import type { Route } from "../test/testUtils";
 import demoDegraded from "../test/fixtures/demo-degraded-200.json";
 import demoLoaded from "../test/fixtures/demo-loaded-200.json";
 import demoPartial from "../test/fixtures/demo-partial-200.json";
+import documentStatsOk from "../test/fixtures/document-stats-ok-200.json";
 import doctorOk from "../test/fixtures/doctor-ok.json";
+import statsOk from "../test/fixtures/stats-ok-200.json";
 import Setup from "./Setup";
 
 /**
@@ -21,9 +24,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The Wave 3 stats strip reads (on mount with the page). */
+function statsRoutes(): Route[] {
+  return [
+    { method: "GET", path: "/api/stats", reply: respond(200, statsOk.response.body) },
+    { method: "GET", path: "/api/document-stats", reply: respond(200, documentStatsOk.response.body) },
+  ];
+}
+
+/** The doctor read plus the stats strip reads. */
+function setupRoutes(): Route[] {
+  return [
+    { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+    ...statsRoutes(),
+  ];
+}
+
 describe("Setup page", () => {
   it("renders the doctor table and an honest model-server warning", async () => {
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    stubFetch(setupRoutes());
     render(<Setup />, { wrapper: makeWrapper() });
     // The banner joins the fixed words with the server message, and both
     // the banner div and its content span match — so findAllByText.
@@ -39,7 +58,7 @@ describe("Setup page", () => {
   });
 
   it("shows the embedding dims and the reranker state as plain lines", async () => {
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    stubFetch(setupRoutes());
     render(<Setup />, { wrapper: makeWrapper() });
     expect(
       await screen.findByText(
@@ -52,7 +71,7 @@ describe("Setup page", () => {
   });
 
   it("warns when the embedding width is known and under 1024", async () => {
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    stubFetch(setupRoutes());
     render(<Setup />, { wrapper: makeWrapper() });
     expect(await screen.findByText(strings.setupEmbeddingDimsLow)).toBeTruthy();
   });
@@ -60,7 +79,10 @@ describe("Setup page", () => {
   it("does not warn when the embedding width is unknown", async () => {
     const body = JSON.parse(JSON.stringify(doctorOk.response.body));
     body.result.embedding.dimensions = null;
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    stubFetch([
+      ...statsRoutes(),
+      { method: "GET", path: "/api/doctor", reply: respond(200, body) },
+    ]);
     render(<Setup />, { wrapper: makeWrapper() });
     expect(
       await screen.findByText(
@@ -76,7 +98,10 @@ describe("Setup page", () => {
   it("does not warn when the embedding width reaches the research width", async () => {
     const body = JSON.parse(JSON.stringify(doctorOk.response.body));
     body.result.embedding.dimensions = 2560;
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    stubFetch([
+      ...statsRoutes(),
+      { method: "GET", path: "/api/doctor", reply: respond(200, body) },
+    ]);
     render(<Setup />, { wrapper: makeWrapper() });
     expect(
       await screen.findByText(
@@ -92,7 +117,10 @@ describe("Setup page", () => {
     const body = JSON.parse(JSON.stringify(doctorOk.response.body));
     delete body.result.embedding;
     delete body.result.reranker;
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    stubFetch([
+      ...statsRoutes(),
+      { method: "GET", path: "/api/doctor", reply: respond(200, body) },
+    ]);
     render(<Setup />, { wrapper: makeWrapper() });
     expect(
       (await screen.findAllByText(/model server is not reachable/)).length,
@@ -103,7 +131,7 @@ describe("Setup page", () => {
 
   it("runs the demo load behind the confirm gate and shows the receipt", async () => {
     stubFetch([
-      { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+      ...setupRoutes(),
       { method: "POST", path: "/api/demo/load", reply: respond(200, demoLoaded.response.body) },
     ]);
     render(<Setup />, { wrapper: makeWrapper() });
@@ -115,7 +143,7 @@ describe("Setup page", () => {
 
   it("routes a status-less envelope to the unreadable panel, never Done", async () => {
     stubFetch([
-      { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+      ...setupRoutes(),
       { method: "POST", path: "/api/demo/load", reply: respond(200, {}) },
     ]);
     render(<Setup />, { wrapper: makeWrapper() });
@@ -127,7 +155,7 @@ describe("Setup page", () => {
 
   it("keeps the viewer on a partial receipt with no next-stage jump", async () => {
     stubFetch([
-      { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+      ...setupRoutes(),
       { method: "POST", path: "/api/demo/load", reply: respond(200, demoPartial.response.body) },
     ]);
     render(<Setup />, { wrapper: makeWrapper() });
@@ -152,12 +180,11 @@ describe("Setup page", () => {
   });
 
   it("keeps the ingest surfaces off the stage (they live on Ingest)", async () => {
-    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    stubFetch(setupRoutes());
     render(<Setup />, { wrapper: makeWrapper() });
     expect(await screen.findByRole("button", { name: strings.setupDemoAction })).toBeTruthy();
     expect(
       screen.queryByText(strings.setupUploadCap.replace("{mb}", "50")),
     ).toBeNull();
-    expect(screen.queryByText(strings.setupIngestTitle)).toBeNull();
   });
 });

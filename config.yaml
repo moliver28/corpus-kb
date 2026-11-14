@@ -339,6 +339,61 @@ ui:
     # Largest file the upload page accepts (megabytes per file).
     max_upload_mb: 50
 
+# Chat (Phase-2 Wave 7, src/corpus_kb/chat/). Ships OFF: no session
+# starts until the owner sets enabled to true. The default rung
+# (claude-agent-sdk) bills the owner's Claude subscription, so it runs
+# for one owner on one machine only: a server.host that is not loopback,
+# or single_owner false, is refused at load. Use ollama for a shared
+# server. See docs/CHAT.md.
+chat:
+  enabled: false
+  # Rung ladder: claude-agent-sdk | anthropic-api | ollama.
+  backend: claude-agent-sdk
+  # The one-owner assertion for the claude-agent-sdk rung.
+  single_owner: true
+  # Live sessions at one time. One Claude session holds about 1 GiB RAM.
+  max_sessions: 1
+  # Idle seconds before a session closes. Transcripts stay on disk.
+  session_ttl_s: 1800
+  claude:
+    # The work-account pin: a Claude login apart from any personal one.
+    config_dir: ~/.claude-corpus
+    # The Claude Code CLI path. Empty = the SDK finds claude on PATH or
+    # its bundled binary; set it when neither exists (ARM64 Windows).
+    cli_path: ""
+    # Empty = the Claude CLI default model.
+    model: ""
+    max_turns: 20
+    # The agent may call the corpus search tool and nothing else. The
+    # deny list covers the auto-allowed read-only built-ins too, and a
+    # PreToolUse hook denies every call outside the allow list.
+    allowed_tools: ["mcp__corpus__search"]
+    disallowed_tools:
+      [
+        Bash,
+        Write,
+        Edit,
+        MultiEdit,
+        NotebookEdit,
+        NotebookRead,
+        Read,
+        Glob,
+        Grep,
+        LS,
+        WebFetch,
+        WebSearch,
+        Task,
+        TodoWrite,
+        SlashCommand,
+        KillShell,
+        BashOutput,
+      ]
+    # Filled ONLY from CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN, never from a file.
+    oauth_token: ""
+  ollama:
+    # Past turns the ollama rung sends with each new question.
+    history_turns: 6
+
 # marimo notebooks console (UX program Wave 6, src/corpus_kb/notebooks/):
 # serves a folder of marimo .py notebooks at /notebooks on the SAME HTTP
 # server. Lazy behind the [notebook] extra; without it (or without the

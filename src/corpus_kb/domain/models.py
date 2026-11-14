@@ -13,17 +13,11 @@ from pydantic import BaseModel, Field
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _DEFAULT_TENANT_ID_STR
 
-# ============================================================================
-# Default tenant (single-tenant placeholder); the canonical sentinel string
-# lives in corpus_kb.contracts.model — this module exposes it as a UUID.
-# ============================================================================
-
+# The canonical sentinel string lives in corpus_kb.contracts.model.
 DEFAULT_TENANT_ID = UUID(_DEFAULT_TENANT_ID_STR)
 
 
-# ============================================================================
-# Commands
-# ============================================================================
+# -- Commands ---------------------------------------------------------
 
 
 class DomainCommand(BaseModel):
@@ -87,9 +81,7 @@ class DeleteDocumentCommand(DomainCommand):
     doc_id: UUID
 
 
-# ============================================================================
-# Queries
-# ============================================================================
+# -- Queries ----------------------------------------------------------
 
 
 class SearchQuery(BaseModel):
@@ -128,6 +120,24 @@ class ListEntitiesQuery(BaseModel):
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
     entity_type: str | None = None
     limit: int = 100
+    offset: int = 0
+
+
+class ListDocumentChunksQuery(BaseModel):
+    """List one document's chunks, one window (Phase-2 Wave 5)."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    doc_id: UUID
+    limit: int = 100
+    offset: int = 0
+
+
+class ListRelationsQuery(BaseModel):
+    """List graph relations, one window (Phase-2 Wave 6 Map)."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    limit: int = 100
+    offset: int = 0
 
 
 class SearchSimilarQuery(BaseModel):
@@ -167,78 +177,47 @@ class RoutedQuery(BaseModel):
     k: int | None = None
 
 
-# ============================================================================
-# Results
-# ============================================================================
+# -- Results ----------------------------------------------------------
 
 
-class SearchResult(BaseModel):
-    """A single search hit."""
-
-    chunk_id: UUID
-    text: str
-    score: float
-    source: str
-    doc_id: UUID
-    file_path: str | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-    chunk_index: int | None = None
-    heading_path: list[str] | None = None
-    # Issue #271: the textbook strategy's chunk-metadata keys, exposed to
-    # search consumers. The strategy writes ``citation`` (a plain-English
-    # page citation) and a sorted ``units`` list; both stay None for any
-    # chunk without that metadata.
-    citation: str | None = None
-    units: list[str] | None = None
+# -- Results (re-exported from domain/results.py, the 250-line rule) --
 
 
-class DocumentResult(BaseModel):
-    """Document metadata in list responses."""
+from corpus_kb.domain.results import ClaimVerdict as ClaimVerdict  # noqa: E402
+from corpus_kb.domain.results import DocumentChunkResult as DocumentChunkResult  # noqa: E402
+from corpus_kb.domain.results import DocumentResult as DocumentResult  # noqa: E402
+from corpus_kb.domain.results import EntityResult as EntityResult  # noqa: E402
+from corpus_kb.domain.results import RelationListResult as RelationListResult  # noqa: E402
+from corpus_kb.domain.results import RouteDecision as RouteDecision  # noqa: E402
+from corpus_kb.domain.results import RoutedResult as RoutedResult  # noqa: E402
+from corpus_kb.domain.results import SearchResult as SearchResult  # noqa: E402
+from corpus_kb.domain.results import VerifyAnswerResult as VerifyAnswerResult  # noqa: E402
 
-    doc_id: UUID
-    source: str
-    source_type: str
-    chunk_count: int
-    created_at: str
-
-
-class EntityResult(BaseModel):
-    """Entity in list/search responses."""
-
-    entity_id: UUID
-    name: str
-    entity_type: str
-    metadata: dict[str, object] = Field(default_factory=dict)
-
-
-class ClaimVerdict(BaseModel):
-    """Verdict for a single claim extracted from an answer."""
-
-    claim: str
-    label: str
-    confidence: float
-    cited_chunk_ids: list[UUID]
-
-
-class VerifyAnswerResult(BaseModel):
-    """Result of verifying an answer's claims against cited chunks."""
-
-    verdicts: list[ClaimVerdict]
-    groundedness: float
-    abstained: bool
-
-
-class RouteDecision(BaseModel):
-    """The route chosen for a query, plus confidence and fallback flag."""
-
-    route: str
-    confidence: float
-    fallback: bool
-
-
-class RoutedResult(BaseModel):
-    """Result of a routed query: the decision plus the underlying results."""
-
-    decision: RouteDecision
-    results: list[dict[str, object]]
+__all__ = [
+    "AddEntityCommand",
+    "AddRelationCommand",
+    "ClaimVerdict",
+    "DeleteDocumentCommand",
+    "DocumentChunkResult",
+    "DocumentResult",
+    "DomainCommand",
+    "EntityResult",
+    "IngestDirectoryCommand",
+    "IngestFileCommand",
+    "IngestTextCommand",
+    "ListDocumentChunksQuery",
+    "ListDocumentsQuery",
+    "ListEntitiesQuery",
+    "ListRelationsQuery",
+    "RelationListResult",
+    "RouteDecision",
+    "RoutedQuery",
+    "RoutedResult",
+    "SQLQuery",
+    "SearchContextQuery",
+    "SearchQuery",
+    "SearchResult",
+    "SearchSimilarQuery",
+    "VerifyAnswerQuery",
+    "VerifyAnswerResult",
+]

@@ -32,8 +32,8 @@ from corpus_kb.errors import ValidationError
 @route_errors
 async def search(request: Request) -> JSONResponse:
     """POST /api/search — hybrid vector + FTS search."""
-    from corpus_kb.handlers.query_handler import get_query_handler
     from corpus_kb.handlers.query_integrity import envelope_to_payload
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     body = await parse_body(request)
     query = SearchQuery(
@@ -54,7 +54,7 @@ async def search(request: Request) -> JSONResponse:
 @route_errors
 async def search_similar(request: Request) -> JSONResponse:
     """POST /api/search/similar — find chunks similar to a given chunk."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     body = await parse_body(request)
     query = SearchSimilarQuery(
@@ -72,7 +72,7 @@ async def search_similar(request: Request) -> JSONResponse:
 @route_errors
 async def search_context(request: Request) -> JSONResponse:
     """POST /api/search/context — search with surrounding context chunks."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     body = await parse_body(request)
     query = SearchContextQuery(
@@ -91,8 +91,8 @@ async def search_context(request: Request) -> JSONResponse:
 @route_errors
 async def verify(request: Request) -> JSONResponse:
     """POST /api/verify — claim-level groundedness verification against cited chunks."""
-    from corpus_kb.handlers.query_handler import get_query_handler
     from corpus_kb.handlers.query_integrity import attach_trace_id
+    from corpus_kb.handlers.query_wiring import get_query_handler
     from corpus_kb.utils.tracing import SPAN_VERIFY_ANSWER, span
 
     body = await parse_body(request)
@@ -132,7 +132,7 @@ async def route_query(request: Request) -> JSONResponse:
 @route_errors
 async def query_sql(request: Request) -> JSONResponse:
     """POST /api/query/sql — execute a read-only SQL query."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     body = await parse_body(request)
     query = SQLQuery(

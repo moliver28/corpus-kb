@@ -22,6 +22,7 @@ import corpus_kb.api.socket_ops as socket_ops
 import corpus_kb.handlers.query_crud_reads as query_crud
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.query_integrity as query_integrity_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.tools.ingest_tools as ingest_tools
 from corpus_kb.api.http import create_http_app
 from corpus_kb.domain.models import DocumentResult, SearchResult, SQLQuery
@@ -77,7 +78,7 @@ class _FakeQueryHandler:
 
 
 def _client_with_fake_handler(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda: _FakeQueryHandler())
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda: _FakeQueryHandler())
     return TestClient(create_http_app())
 
 
@@ -123,7 +124,7 @@ def test_search_routes_return_json_with_uuid_rows(
 
 @pytest.mark.asyncio
 async def test_socket_list_documents_json_safe(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda: _FakeQueryHandler())
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda: _FakeQueryHandler())
     envelope = await socket_ops._list_documents({}, DEFAULT_TENANT)
     dumped = json.dumps(envelope)
     assert isinstance(envelope["result"][0]["doc_id"], str)

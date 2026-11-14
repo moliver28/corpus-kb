@@ -70,6 +70,12 @@ TOOL_LAYER_OVERRIDES: dict[str, str] = {
     "verify_answer": "corpus_kb.tools.query_tools:verify_answer",
     "add_entity": "corpus_kb.tools.graph_tools:add_entity",
     "add_relation": "corpus_kb.tools.graph_tools:add_relation",
+    # Phase-2 Wave 8 graph U/D: the Class.method catalogue handlers ride
+    # the same shared tool functions the other surfaces route through.
+    "update_entity": "corpus_kb.tools.graph_tools:update_entity",
+    "delete_entity": "corpus_kb.tools.graph_tools:delete_entity",
+    "update_relation": "corpus_kb.tools.graph_tools:update_relation",
+    "delete_relation": "corpus_kb.tools.graph_tools:delete_relation",
 }
 
 # surface_registry MCP tool names OUTSIDE the catalogue, mapped to their

@@ -1,5 +1,5 @@
 import { Button, Typography } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
@@ -36,7 +36,7 @@ export default function BlockedPanel({
       {unmet.length > 0 && (
         <>
           <Typography.Text strong>{strings.releaseBlockedGates}</Typography.Text>
-          <ul className="ui-citations">
+          <ul className="ui-gate-list">
             {unmet.map((gate) => (
               <li key={gate}>{gate}</li>
             ))}

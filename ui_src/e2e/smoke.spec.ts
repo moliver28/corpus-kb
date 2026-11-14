@@ -104,10 +104,304 @@ test.describe("SPA smoke on a live server", () => {
     await expect(ledger.getByRole("columnheader", { name: "Project" })).toBeVisible();
     await expect(ledger.getByRole("cell").first()).toBeVisible();
   });
+
+  test("chat ships off: the honest disabled panel, never a composer", async ({ page }) => {
+    // The throwaway server runs the default config (chat.enabled false),
+    // so the page must show the typed off-state and NO composer — it
+    // never pretends a session can start (Wave-7 step 9).
+    await page.goto("/app/#/chat");
+    await expect(page.getByText("Chat is not available")).toBeVisible();
+    await expect(
+      page.getByText("Chat ships switched off. The owner turns it on in config.yaml."),
+    ).toBeVisible();
+    await expect(page.getByPlaceholder("Ask the corpus")).toHaveCount(0);
+  });
+
+  test("the document drawer adds a tag and edits metadata through the manifest ops", async ({
+    page,
+  }) => {
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Details" }).first().click();
+    // The drawer is the document dialog; the reads land first and the
+    // two editors render under their headings.
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByRole("heading", { name: "Tags" })).toBeVisible();
+    await expect(drawer.getByRole("heading", { name: "Metadata" })).toBeVisible();
+    // Write one tag through the tag-document op; the ok banner names
+    // the save and the re-read shows the tag chip.
+    const unique = `e2e-${Date.now()}`;
+    await drawer.getByPlaceholder("Add a tag").fill(unique);
+    await drawer.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(drawer.getByText("Tag added.")).toBeVisible({ timeout: 60_000 });
+    await expect(drawer.getByText(unique)).toBeVisible();
+    // Remove it again through the untag-document op behind its confirm
+    // (the Popconfirm renders in a portal next to the dialog).
+    await drawer.getByRole("button", { name: `Remove tag ${unique}` }).click();
+    await page.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(drawer.getByText("Tag removed.")).toBeVisible({ timeout: 60_000 });
+    // Save one metadata key through the set-metadata op.
+    await drawer.getByPlaceholder("Key").fill("e2e-check");
+    await drawer.getByPlaceholder("Value").fill("wave2");
+    await drawer.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(drawer.getByText("Metadata saved.")).toBeVisible({ timeout: 60_000 });
+  });
+
+  test("the drawer NLP panel runs a scoped analysis on one document", async ({ page }) => {
+    // Phase-2 Wave 5 done-when: from ONE document, a novice launches a
+    // scoped analysis and reads the result WITHOUT leaving the drawer.
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Analyze" }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText("Analyze this document")).toBeVisible();
+    // The chunk window read pre-fills the scope (the demo corpus carries
+    // chunked documents); keyphrase extraction runs ungated on the
+    // throwaway host, so the receipt is the full success word (the demo
+    // config disables the sentiment screen — its honest no-run note is
+    // covered by the drawer unit tests). Both scope wordings are honest:
+    // all-chunks, or the capped first-N window.
+    await expect(
+      drawer.getByText(/chunks of this document|The runs use the first/).first(),
+    ).toBeVisible({ timeout: 60_000 });
+    await drawer.getByRole("button", { name: "Keyphrase extraction" }).click();
+    await drawer.getByRole("button", { name: "Run", exact: true }).click();
+    // Every settled headline is honest: the receipt word for a run that
+    // finished whole, or the not-success line when it did not. A GREEN
+    // run proves more than "settled": the success word, plus at least one
+    // rendered phrase row in the raw envelope (an empty keyphrases list
+    // on the demo corpus is a real failure, never a pass).
+    await expect(
+      drawer
+        .getByText(
+          /^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|The server finished without success\. Read its note:)$/,
+        )
+        .first(),
+    ).toBeVisible({ timeout: 120_000 });
+    await expect(drawer.getByText("Done", { exact: true })).toBeVisible();
+    const raw = drawer.locator(".ui-json pre");
+    await drawer.locator(".ui-json summary").click();
+    await expect(raw).toContainText('"phrase"');
+  });
+
+  // The workbench pair (aaa- prefix sorts first, so both entities sit
+  // in every first window the Map reads).
+  const unique = Date.now().toString();
+  const first = `aaa-e2e-${unique}-a`;
+  const second = `aaa-e2e-${unique}-b`;
+
+  test("the graph workbench creates, finds, inspects, and links an entity", async ({
+    page,
+  }) => {
+    // The picker re-read (P1-1) and the server-side read-your-writes
+    // (P1-2) make every step answer in seconds; a hung step now costs
+    // three minutes, not the suite-wide 15 (P3-5).
+    test.setTimeout(180_000);
+    await page.goto("/app/#/graph");
+    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    const createForm = page.locator(".ant-card").filter({ hasText: "Create an entity" });
+    // CREATE: two entities through the form; each ok banner names the
+    // save and the window re-reads (the write op is add-entity).
+    for (const name of [first, second]) {
+      await createForm.getByPlaceholder("Name").fill(name);
+      await createForm.getByPlaceholder("Type").fill(`e2e-${unique}`);
+      await createForm.getByRole("button", { name: "Create an entity" }).click();
+      await expect(page.getByText("Entity created.")).toBeVisible({ timeout: 60_000 });
+    }
+    // FIND: the type filter narrows the window read to this run. The
+    // assertion on a row of the FILTERED window (a demo-corpus name the
+    // filter excludes) proves the fresh window settled, so the click
+    // below cannot land on a row the re-read replaces mid-click. The
+    // count check polls the TABLE rows only: the pick targets a table
+    // row, and hidden demo names outside the table (stale picker state
+    // on a loaded host) are not part of the settlement proof.
+    await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
+    await entities.getByPlaceholder("Only this type").press("Enter");
+    await expect(entities.getByText(first)).toBeVisible({ timeout: 60_000 });
+    await expect(entities.getByRole("row", { name: /^Ade/ })).toHaveCount(0, {
+      timeout: 60_000,
+    });
+    // INSPECT: the drawer reads relations and neighbors for the row.
+    const row = entities.getByRole("row", { name: new RegExp("^" + first) });
+    await row.getByRole("button", { name: "Details" }).click();
+    const drawer = page.getByRole("dialog");
+    await expect(
+      drawer.getByText("No relations yet. Link this entity with the form below."),
+    ).toBeVisible({ timeout: 60_000 });
+    await drawer.getByRole("button", { name: "Close" }).click();
+    // LINK: both endpoints picked from the entity picker, never typed.
+    // AntD repeats the option text in a visually hidden aria mirror, so
+    // click the option element a user sees, inside the dropdown that is
+    // neither hidden nor still leaving (the Scale smoke's own pattern).
+    const openPicker = page.locator(
+      ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
+    );
+    const relation = page.locator(".ant-card").filter({ hasText: "Link two entities" });
+    // One pick = open the picker, then click the option. The picker
+    // re-reads on open, and a read landing mid-click replaces the
+    // option node, so one click can pend forever; the bounded retry
+    // re-opens and re-picks instead (host-load flake policy).
+    const pickOption = async (index: number, name: string): Promise<void> => {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await relation.getByRole("combobox").nth(index).click({ timeout: 15_000 });
+        try {
+          await openPicker
+            .locator(".ant-select-item-option")
+            .filter({ hasText: name })
+            .first()
+            .click({ timeout: 5_000 });
+          return;
+        } catch {
+          if (attempt === 3) {
+            throw new Error(`option ${name} not clickable after 3 attempts`);
+          }
+        }
+      }
+    };
+    await pickOption(0, first);
+    await pickOption(1, second);
+    await relation.getByRole("button", { name: "Link two entities" }).click();
+    await expect(page.getByText("Relation created.")).toBeVisible({ timeout: 60_000 });
+    // The relation read answers in the drawer of the source entity: the
+    // row names source, relation, and target (the title also carries the
+    // source name, so the bare name would match twice).
+    await row.getByRole("button", { name: "Details" }).click();
+    await expect(drawer.getByText(`${first} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
+  });
+
+  test("the drawer edits an entity, removes its relation, deletes the entity", async ({
+    page,
+  }) => {
+    // The Wave-8 U/D arms ride the workbench pair above: the run's
+    // first/second entities and their relation already exist. Update
+    // through the drawer form, remove the relation behind its
+    // Popconfirm, then delete the entity behind ConfirmGate — and the
+    // window re-reads reflect every write (read-your-writes).
+    test.setTimeout(180_000);
+    const renamed = `${first}-renamed`;
+    await page.goto("/app/#/graph");
+    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
+    await entities.getByPlaceholder("Only this type").press("Enter");
+    const row = entities.getByRole("row", { name: new RegExp("^" + first) });
+    await expect(row).toBeVisible({ timeout: 60_000 });
+    await row.getByRole("button", { name: "Details" }).click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText(`${first} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    // UPDATE: the drawer form saves through the update-entity op; the
+    // form stays open and its banner names the save.
+    await drawer.getByRole("button", { name: "Edit the entity" }).click();
+    const form = drawer.locator('[data-testid="entity-edit-form"]');
+    await form.getByPlaceholder("Name").fill(renamed);
+    await form.getByRole("button", { name: "Save changes" }).click();
+    await expect(form.getByText("Entity updated.")).toBeVisible({ timeout: 60_000 });
+    await drawer.getByRole("button", { name: "Cancel", exact: true }).click();
+    // The table (the re-read window) shows the new name.
+    await expect(
+      entities.getByRole("row", { name: new RegExp("^" + renamed) }),
+    ).toBeVisible({ timeout: 60_000 });
+    // DELETE RELATION: single-record destructive — Popconfirm, portal.
+    await expect(drawer.getByText(`${renamed} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    await drawer.getByRole("button", { name: "Remove this relation?" }).click();
+    const popover = page.locator(".ant-popover:not(.ant-popover-hidden)");
+    await popover.getByRole("button", { name: "Remove this relation?" }).click();
+    await expect(drawer.getByText("Relation removed.")).toBeVisible({ timeout: 60_000 });
+    await expect(
+      drawer.getByText("No relations yet. Link this entity with the form below."),
+    ).toBeVisible({ timeout: 60_000 });
+    // DELETE ENTITY: irreversible and cascading — ConfirmGate names the
+    // cascade count the drawer actually shows (0 here: the relation is
+    // already gone). The drawer closes; the ok banner reports the
+    // server's honest count; the row leaves the re-read window.
+    await drawer.getByRole("button", { name: "Delete this entity?" }).click();
+    await expect(
+      page.getByText("The drawer shows 0 relations."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Run it" }).click();
+    await expect(page.getByText("Entity deleted. 0 relations removed.")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(entities.getByText(renamed)).toHaveCount(0);
+    // A graph read reflects the delete: the filtered window holds the
+    // sibling only.
+    await expect(entities.getByText(second)).toBeVisible();
+  });
+
+  test("the map links honestly into the workbench and lands on #/graph", async ({ page }) => {
+    // The Wave-8 Map arm: exactly one cross-link into the workbench;
+    // the canvas itself never gains editing (read-only is structural).
+    await page.goto("/app/#/map");
+    const link = page.getByRole("link", { name: "Edit entities in the graph workbench." });
+    await expect(link).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".react-flow")).toBeVisible({ timeout: 60_000 });
+    await link.click();
+    await expect(page).toHaveURL(/#\/graph/);
+    // The create form's primary button (the card title carries the same
+    // words, so the role scopes the strict match).
+    await expect(page.getByRole("button", { name: "Create an entity" })).toBeVisible({
+      timeout: 60_000,
+    });
+  });
+
+  test("the map draws the seeded graph read-only", async ({ page }) => {
+    // Phase-2 Wave 6 done-when: a novice opens the Map from the rail
+    // and SEES the graph — entities as nodes, relations as edges —
+    // with the canvas read-only and the same data in the tables under
+    // it. The leg seeds its OWN graph through the API with a run-unique
+    // stamp, so it never leans on the workbench test's state: the
+    // aaa- names and the 00- relation type lead the honest FIRST
+    // windows of the entity and relation reads (program rule 9 order).
+    const stamp = Date.now().toString();
+    const sourceName = `aaa-wave6-${stamp}-a`;
+    const targetName = `aaa-wave6-${stamp}-b`;
+    const relationType = `00-wave6-${stamp}`;
+    const created = async (name: string): Promise<string> => {
+      const response = await page.request.post("/api/entities", {
+        data: { name, entity_type: "wave6" },
+      });
+      const body = (await response.json()) as { entity_id: string };
+      return body.entity_id;
+    };
+    const sourceId = await created(sourceName);
+    const targetId = await created(targetName);
+    await page.request.post("/api/relations", {
+      data: { source_entity_id: sourceId, target_entity_id: targetId, relation_type: relationType },
+    });
+    await page.goto("/app/#/setup");
+    await page.getByRole("menuitem", { name: "Map" }).click();
+    await expect(page).toHaveURL(/#\/map/);
+    const canvas = page.locator(".react-flow");
+    await expect(canvas).toBeVisible({ timeout: 60_000 });
+    // The seeded entities draw as nodes (they lead the first window).
+    await expect(canvas.locator(".react-flow__node", { hasText: targetName })).toBeVisible({
+      timeout: 60_000,
+    });
+    // The seeded relation draws as the edge its 00- type leads.
+    await expect(canvas.locator(".react-flow__edge").first()).toBeVisible();
+    // Read-only is structural: the page mounts no write op, so the
+    // canvas offers no connect affordance to click.
+    // The canvas never carries the only path to data: the relations
+    // table carries the seeded row (source, type, target cells), and
+    // the entities table names the seeded entities.
+    const relationRow = page.getByRole("row").filter({ hasText: relationType });
+    await expect(relationRow).toBeVisible();
+    await expect(relationRow.filter({ hasText: sourceName })).toBeVisible();
+  });
 });
 
 test.describe("accessibility (axe-core)", () => {
-  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale"]) {
+  // The whole shell: the ask page scans its focusable citation list,
+  // setup/review/codebook their dense tables and forms.
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph", "#/map", "#/chat"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.
@@ -131,4 +425,33 @@ test.describe("accessibility (axe-core)", () => {
       expect(blocking).toEqual([]);
     });
   }
+
+  test("no critical or serious violations with the drawer NLP panel open", async ({ page }) => {
+    // The Wave-5 drawer path: the dialog, its tabs, the picker, and the
+    // run controls scan with the panel open (the canvas never carries
+    // the only path to data — the drawer is a dialog over the table).
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Analyze" }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText("Analyze this document")).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze();
+    const blocking = results.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    if (blocking.length > 0) {
+      console.error(
+        "axe violations:",
+        JSON.stringify(
+          blocking.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })),
+          null,
+          2,
+        ),
+      );
+    }
+    expect(blocking).toEqual([]);
+  });
 });

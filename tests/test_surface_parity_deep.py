@@ -63,7 +63,7 @@ import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.delete_audit as delete_audit_module
 import corpus_kb.handlers.graph_handler as graph_handler_module
 import corpus_kb.handlers.llm_handler as llm_handler_module
-import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
@@ -115,6 +115,7 @@ import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
+import corpus_kb.tools.versioning_tools as versioning_tools_module
 from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
@@ -135,6 +136,7 @@ PROJECT_ID = "44444444-4444-4444-4444-444444444444"
 ASSIGNMENT_ID = "77777777-7777-7777-7777-777777777777"
 ENTITY_A = "55555555-5555-5555-5555-555555555555"
 ENTITY_B = "66666666-6666-6666-6666-666666666666"
+RELATION_ID = "88888888-8888-8888-8888-888888888888"
 
 TEXT_BODY = "Corpus parity seed document. " * 4
 _URL_HTML = "<html><body><p>parity page body</p></body></html>"
@@ -856,7 +858,7 @@ async def _shared_query(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_verify(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import VerifyAnswerQuery
 
-    result = await query_handler_module.get_query_handler().handle_verify_answer(
+    result = await query_wiring_module.get_query_handler().handle_verify_answer(
         VerifyAnswerQuery(answer="parity answer", chunk_ids=[])
     )
     return {"status": "success", "result": result.model_dump(mode="json")}
@@ -884,16 +886,46 @@ async def _shared_get_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
     return await tag_tools_module.get_metadata(ctx["pool"], key="parity")
 
 
+# -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits ------
+async def _shared_add_tag(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.add_tag(ctx["pool"], "parity")
+
+
+async def _shared_tag_document(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.tag_document(ctx["pool"], DOC_ID, "parity")
+
+
+async def _shared_untag_document(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.untag_document(ctx["pool"], DOC_ID, "parity")
+
+
+async def _shared_set_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.set_metadata(ctx["pool"], "parity", "parity-value", doc_id=DOC_ID)
+
+
 async def _shared_calibrate_apply(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.calibrate_tools import calibrate_apply
 
     return await calibrate_apply("parity", write=True, config=ctx["config"])
 
 
+# -- Phase-2 Wave 3: the corpus stats pair. The stub pool answers 0 for
+#    every COUNT probe and [] for the source-type grouping, so both legs
+#    return the real zero-count success envelopes.
+
+
+async def _shared_stats(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await versioning_tools_module.stats(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_document_stats(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await versioning_tools_module.document_stats(ctx["pool"], config=ctx["config"])
+
+
 async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddEntityCommand
 
-    return command_handler_module.get_command_handler().handle_add_entity(
+    return await command_handler_module.get_command_handler().handle_add_entity(
         AddEntityCommand(
             tenant_id=UUID(TENANT), name="parity-entity", entity_type="concept", metadata={}
         )
@@ -903,7 +935,7 @@ async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddRelationCommand
 
-    return command_handler_module.get_command_handler().handle_add_relation(
+    return await command_handler_module.get_command_handler().handle_add_relation(
         AddRelationCommand(
             tenant_id=UUID(TENANT),
             source_entity_id=UUID(ENTITY_A),
@@ -913,6 +945,40 @@ async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
             metadata={},
         )
     )
+
+
+async def _shared_update_entity(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_update_entity(
+        UUID(TENANT),
+        UUID(ENTITY_A),
+        name="parity-renamed",
+        entity_type="concept",
+    )
+
+
+async def _shared_delete_entity(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_delete_entity(UUID(TENANT), UUID(ENTITY_B))
+
+
+async def _shared_update_relation(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_update_relation(
+        UUID(TENANT),
+        UUID(RELATION_ID),
+        relation_type="parity-updated",
+        weight=2.0,
+    )
+
+
+async def _shared_delete_relation(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    return await get_graph_handler().handle_delete_relation(UUID(TENANT), UUID(RELATION_ID))
 
 
 async def _shared_search_graph(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -937,6 +1003,24 @@ async def _shared_graph_traverse(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.graph_read_tools import graph_traverse
 
     return await graph_traverse(ctx["pool"], ENTITY_A, max_depth=2, config=ctx["config"])
+
+
+async def _shared_list_entities(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.entity_read_tools import list_entities
+
+    return await list_entities(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_chunks_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.chunk_read_tools import chunks_list
+
+    return await chunks_list(ctx["pool"], DOC_ID, config=ctx["config"])
+
+
+async def _shared_list_relations(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.relation_read_tools import relations_list
+
+    return await relations_list(ctx["pool"], config=ctx["config"])
 
 
 def _release_leg(
@@ -1580,6 +1664,31 @@ LEGS: dict[str, _Leg] = {
         _sock("get_metadata", {"key": "parity"}),
         _mcp({}),
     ),
+    # -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits ------
+    "add_tag": _Leg(
+        _shared_add_tag,
+        _post("/api/tags", {"name": "parity"}),
+        _sock("add_tag", {"name": "parity"}),
+        _mcp({"name": "parity"}),
+    ),
+    "tag_document": _Leg(
+        _shared_tag_document,
+        _post(f"/api/documents/{DOC_ID}/tags", {"tag": "parity"}),
+        _sock("tag_document", {"doc_id": DOC_ID, "tag": "parity"}),
+        _mcp({"doc_id": DOC_ID, "tag": "parity"}),
+    ),
+    "untag_document": _Leg(
+        _shared_untag_document,
+        _post(f"/api/documents/{DOC_ID}/tags/remove", {"tag": "parity"}),
+        _sock("untag_document", {"doc_id": DOC_ID, "tag": "parity"}),
+        _mcp({"doc_id": DOC_ID, "tag": "parity"}),
+    ),
+    "set_metadata": _Leg(
+        _shared_set_metadata,
+        _post("/api/metadata", {"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
+        _sock("set_metadata", {"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
+        _mcp({"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
+    ),
     "search_similar": _Leg(
         _shared_search_similar,
         _post("/api/search/similar", {"chunk_id": DOC_ID, "k": 10}),
@@ -1634,6 +1743,43 @@ LEGS: dict[str, _Leg] = {
             }
         ),
     ),
+    # -- Phase-2 Wave 8: graph U/D legs. POST path-slot routes (the
+    #    Wave-2 untag precedent); deletes answer the idempotent envelope. --
+    "update_entity": _Leg(
+        _shared_update_entity,
+        _post(
+            f"/api/entities/{ENTITY_A}/update", {"name": "parity-renamed", "entity_type": "concept"}
+        ),
+        _sock(
+            "update_entity",
+            {"entity_id": ENTITY_A, "name": "parity-renamed", "entity_type": "concept"},
+        ),
+        mcp=_mcp({"entity_id": ENTITY_A, "name": "parity-renamed", "entity_type": "concept"}),
+    ),
+    "delete_entity": _Leg(
+        _shared_delete_entity,
+        _post(f"/api/entities/{ENTITY_B}/delete", {}),
+        _sock("delete_entity", {"entity_id": ENTITY_B}),
+        mcp=_mcp({"entity_id": ENTITY_B}),
+    ),
+    "update_relation": _Leg(
+        _shared_update_relation,
+        _post(
+            f"/api/relations/{RELATION_ID}/update",
+            {"relation_type": "parity-updated", "weight": 2.0},
+        ),
+        _sock(
+            "update_relation",
+            {"relation_id": RELATION_ID, "relation_type": "parity-updated", "weight": 2.0},
+        ),
+        mcp=_mcp({"relation_id": RELATION_ID, "relation_type": "parity-updated", "weight": 2.0}),
+    ),
+    "delete_relation": _Leg(
+        _shared_delete_relation,
+        _post(f"/api/relations/{RELATION_ID}/delete", {}),
+        _sock("delete_relation", {"relation_id": RELATION_ID}),
+        mcp=_mcp({"relation_id": RELATION_ID}),
+    ),
     "search_graph": _Leg(
         _shared_search_graph,
         _post("/api/graph/search", {"query": "parity"}),
@@ -1660,6 +1806,26 @@ LEGS: dict[str, _Leg] = {
         _post("/api/graph/traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
         _sock("graph_traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
         _mcp({"entity_id": ENTITY_A, "max_depth": 2}),
+    ),
+    "list_entities": _Leg(
+        _shared_list_entities,
+        _get("/api/entities", {"limit": "50", "offset": "0"}),
+        _sock("list_entities", {"limit": 50}),
+        _mcp({"limit": 50}),
+    ),
+    # -- Phase-2 Wave 5: the drawer NLP panel's chunk window read -----------
+    "chunks_list": _Leg(
+        _shared_chunks_list,
+        _get(f"/api/documents/{DOC_ID}/chunks", {"limit": "50", "offset": "0"}),
+        _sock("chunks_list", {"doc_id": DOC_ID, "limit": 50}),
+        _mcp({"doc_id": DOC_ID, "limit": 50}),
+    ),
+    # -- Phase-2 Wave 6: the Map's edge window read -------------------------
+    "list_relations": _Leg(
+        _shared_list_relations,
+        _get("/api/graph/relations", {"limit": "50", "offset": "0"}),
+        _sock("list_relations", {"limit": 50}),
+        _mcp({"limit": 50}),
     ),
     "release_assess": _Leg(
         **_release_leg(
@@ -1822,6 +1988,20 @@ LEGS: dict[str, _Leg] = {
         _shared_research_demo,
         _post("/api/research/demo", {}),
         _sock("research_demo", {}),
+        mcp=_mcp({}),
+    ),
+    # -- Phase-2 Wave 3: the corpus stats pair (GET legs; the routes
+    #    predate the catalogue rows and now route through the tools). ------
+    "stats": _Leg(
+        _shared_stats,
+        _get("/api/stats", {}),
+        _sock("stats", {}),
+        mcp=_mcp({}),
+    ),
+    "document_stats": _Leg(
+        _shared_document_stats,
+        _get("/api/document-stats", {}),
+        _sock("document_stats", {}),
         mcp=_mcp({}),
     ),
     # Lifecycle UI op (momus F8 close-out): the demo load row. The
@@ -2112,9 +2292,6 @@ class _ParityGraphStore:
             )
         ]
 
-    async def get_entity(self, entity_id: str) -> Entity | None:
-        return None
-
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
         return [
             Relation(
@@ -2163,6 +2340,45 @@ class _ParityGraphStore:
                 "depth": 1,
             }
         ]
+
+    # -- Phase-2 Wave 8: the U/D canned answers. get_entity answers for
+    #    ENTITY_A so the update flow can read-merge-save; the relation
+    #    read/write pair answers for RELATION_ID so the endpoints-immutable
+    #    check sees the stored pair. ------------------------------------
+    async def get_entity(self, entity_id: str) -> Entity | None:
+        if entity_id != ENTITY_A:
+            return None
+        return Entity(
+            entity_id=ENTITY_A,
+            name="parity-entity",
+            entity_type="concept",
+            source_type="code",
+            metadata={},
+        )
+
+    async def update_entity(self, entity: Entity) -> Entity | None:
+        return entity
+
+    async def delete_entity(self, entity_id: str) -> int | None:
+        return 0
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        if relation_id != RELATION_ID:
+            return None
+        return Relation(
+            relation_id=RELATION_ID,
+            source_entity_id=ENTITY_A,
+            target_entity_id=ENTITY_B,
+            relation_type="related_to",
+            weight=1.0,
+            metadata={},
+        )
+
+    async def update_relation(self, relation: Relation) -> Relation | None:
+        return relation
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        return True
 
 
 class _ReleaseResult:
@@ -2291,6 +2507,19 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     async def canned_list_documents(self: Any, query: Any) -> list[Any]:
         return []
 
+    async def canned_list_entities(self: Any, query: Any) -> list[Any]:
+        return []
+
+    # Phase-2 Wave 5: the chunk window read answers through the same
+    # canned QueryHandler singleton.
+    async def canned_list_document_chunks(self: Any, query: Any) -> list[Any]:
+        return []
+
+    # Phase-2 Wave 6: the Map's edge window read answers through the same
+    # canned QueryHandler singleton.
+    async def canned_list_relations(self: Any, query: Any) -> list[Any]:
+        return []
+
     # Issue #182 read ops: the similar/context searches answer through the
     # same canned QueryHandler; the tag/metadata reads answer through the
     # same canned TagHandler singleton.
@@ -2308,10 +2537,36 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     ) -> list[Any]:
         return []
 
-    monkeypatch.setattr(query_handler_module, "get_query_handler", fake_query_handler)
+    # Phase-2 Wave 2 write ops: the canned answers carry the ONE uniform
+    # envelope the handler really returns, so the raw HTTP passthrough,
+    # the tool layer, the socket arm, and the MCP tool all agree.
+    async def canned_add_tag(
+        self: Any, tenant_id: Any, name: Any, color: Any = None, description: Any = None
+    ) -> dict[str, Any]:
+        return {"status": "success", "tag_id": "00000000-0000-0000-0000-0000000000a1", "name": name}
+
+    async def canned_tag_document(
+        self: Any, tenant_id: Any, doc_id: Any, tag: Any
+    ) -> dict[str, Any]:
+        return {"status": "success", "doc_id": str(doc_id), "tag": tag}
+
+    async def canned_untag_document(
+        self: Any, tenant_id: Any, doc_id: Any, tag: Any
+    ) -> dict[str, Any]:
+        return {"status": "success", "doc_id": str(doc_id), "tag": tag}
+
+    async def canned_set_metadata(
+        self: Any, tenant_id: Any, key: Any, value: Any, doc_id: Any = None
+    ) -> dict[str, Any]:
+        return {"status": "success", "key": key, "value": value}
+
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", fake_query_handler)
     monkeypatch.setattr(QueryHandler, "handle_search_with_meta", canned_search)
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
+    monkeypatch.setattr(QueryHandler, "handle_list_entities", canned_list_entities)
+    monkeypatch.setattr(QueryHandler, "handle_list_document_chunks", canned_list_document_chunks)
+    monkeypatch.setattr(QueryHandler, "handle_list_relations", canned_list_relations)
     monkeypatch.setattr(QueryHandler, "handle_search_similar", canned_search_similar)
     monkeypatch.setattr(QueryHandler, "handle_search_context", canned_search_context)
     monkeypatch.setattr(
@@ -2321,6 +2576,12 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         tag_handler_module.TagHandler, "handle_get_document_tags", canned_document_tags
     )
     monkeypatch.setattr(tag_handler_module.TagHandler, "handle_get_metadata", canned_metadata)
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_add_tag", canned_add_tag)
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_tag_document", canned_tag_document)
+    monkeypatch.setattr(
+        tag_handler_module.TagHandler, "handle_untag_document", canned_untag_document
+    )
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_set_metadata", canned_set_metadata)
     monkeypatch.setattr(router_handler_module, "get_router_handler", _StubRouter)
 
     # Graph read ops: one canned store behind the handler singleton, so the
@@ -2772,10 +3033,47 @@ def test_catalogue_matches_surface_registry() -> None:
         "search_context",
         # Issue #200: the calibrate apply row byte-matches its registry row.
         "calibrate_apply",
+        # Phase-2 Wave 2: the tag/metadata write rows carry the op names.
+        "add_tag",
+        "tag_document",
+        "untag_document",
+        "set_metadata",
+        # Phase-2 Wave 3: the stats pair plus the derived-analysis family
+        # rows (the op names ARE the registry ids, dash for underscore).
+        "stats",
+        "document_stats",
+        "statements_list",
+        "statements_timeline",
+        "conflicts_scan",
+        "conflicts_list",
+        "conflicts_resolve",
+        "beliefs_current",
+        "beliefs_timeline",
+        "beliefs_predict",
+        "beliefs_compare",
         # Track C: the per-project raw-table op rows byte-match.
         "project_provision",
         "project_list",
         "project_drop",
+        # Phase-2 Wave 4: the graph reads and writes byte-match their
+        # registry rows (list_entities was handler-only before Wave 4).
+        "add_entity",
+        "add_relation",
+        "update_entity",
+        "delete_entity",
+        "update_relation",
+        "delete_relation",
+        "search_graph",
+        "get_entity_relations",
+        "graph_neighbors",
+        "graph_traverse",
+        "list_entities",
+        # Phase-2 Wave 5: the chunk window read byte-matches its registry
+        # row (the op name IS the registry id, dash for underscore).
+        "chunks_list",
+        # Phase-2 Wave 6: the Map's edge window read byte-matches its
+        # registry row (relations-list).
+        "list_relations",
         # Issue #350: the coding + events rows byte-match their registry rows.
         "coding_embed_codebook",
         "coding_pool",
@@ -2863,6 +3161,76 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Wave-5 review P2: one bad window count answers the SAME typed failure on
+# all four surfaces. The shared tool guard (tools/_count_input) defines the
+# canonical rule: limit >= 1, offset >= 0, both inside the int8 range.
+# ---------------------------------------------------------------------------
+
+
+def _bad_count_cases(kind: str, cases: list[tuple[object, str]]) -> Any:
+    return [pytest.param(kind, raw, message, id=f"{kind}-{raw}") for raw, message in cases]
+
+
+@pytest.mark.parametrize(
+    ("kind", "raw", "message"),
+    _bad_count_cases(
+        "limit",
+        [
+            (-5, "limit must be at least 1."),
+            (0, "limit must be at least 1."),
+            (2**63, "limit is out of range."),
+        ],
+    )
+    + _bad_count_cases("offset", [(-1, "offset must not be negative.")]),
+)
+async def test_chunks_list_bad_count_parity(
+    kind: str, raw: object, message: str, parity_env: dict[str, Any]
+) -> None:
+    ctx = parity_env
+    from corpus_kb.errors import ValidationError
+    from corpus_kb.tools.chunk_read_tools import chunks_list
+
+    params: dict[str, Any] = {"doc_id": DOC_ID, kind: raw}
+
+    # Shared tool layer: the guard raises the taxonomy error.
+    with pytest.raises(ValidationError) as raised:
+        await chunks_list(ctx["pool"], DOC_ID, config=ctx["config"], **{kind: raw})
+    assert str(raised.value) == message
+
+    # HTTP: the same typed 400 with the same message.
+    client: TestClient = ctx["client"]
+    response = client.get(f"/api/documents/{DOC_ID}/chunks", params={kind: str(raw)})
+    assert response.status_code == 400, response.text
+    assert response.json()["error_type"] == "validation_error"
+    assert response.json()["error"] == message
+
+    # Socket: the same -32602 with the same message.
+    server: JSONRPCServer = ctx["server"]
+    rpc = await server._process_request(
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "chunks_list", "params": params})
+    )
+    assert rpc["error"]["code"] == -32602, rpc
+    assert rpc["error"]["message"] == message
+
+    # MCP: the tool call FAILS as a tool error (the guard's typed class
+    # fired in the tool layer). The SDK wraps a non-ToolError crash into
+    # its generic "Error executing tool" text, so the message itself does
+    # not cross this wire — the class, not the text, is the MCP answer.
+    from mcp.client._memory import InMemoryTransport
+    from mcp.client.session import ClientSession
+
+    transport = InMemoryTransport(ctx["mcp_server"])
+    async with (
+        transport as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool("chunks_list", params)
+    assert result.is_error, result.content
+    assert "chunks_list" in result.content[0].text
+
+
+# ---------------------------------------------------------------------------
 # Issue #349: the SQL query route refuses writes, on every surface
 # ---------------------------------------------------------------------------
 
@@ -2904,14 +3272,14 @@ async def test_sql_route_write_refusal_on_http_and_socket(
         assert body["error"]
 
     # The socket surface answers the same failure class with its ONE code.
-    import corpus_kb.handlers.query_handler as query_handler_module
+    import corpus_kb.handlers.query_wiring as query_wiring_module
     from corpus_kb.errors import ERROR_MAP, WriteRefusedError
 
     class _Refuser:
         async def handle_verify_answer(self, _query: object) -> object:
             raise WriteRefusedError("The SQL route accepts read statements only.")
 
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda *a, **k: _Refuser())
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda *a, **k: _Refuser())
     server: JSONRPCServer = parity_env["server"]
     rpc = await server._process_request(
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "verify_answer", "params": {}})

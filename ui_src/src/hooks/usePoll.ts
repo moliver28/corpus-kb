@@ -1,17 +1,15 @@
-// The one poll loop for status reads (the ingest ledger, the ingest
-// queue): poll the op every ui.spa.poll_ms while the browser tab is
-// visible, park on a visibilitychange wake while it is hidden, and back
-// off for 10 s after a 503. refresh() kicks the loop at once. One loop,
-// no parallel polls. The op table (api/ops) is the one endpoint source.
+// The one poll hook for status reads (the ingest ledger, the ingest
+// queue, the doctor probes). Since the Phase-2 Wave 4 shared poll cache
+// (hooks/pollCache.ts), N consumers of one op ride ONE network loop —
+// the Desk rail's doctor poll and a page's poll of the same op share
+// the loop instead of doubling the fetches. refresh() kicks that one
+// loop at once. The op table (api/ops) is the one endpoint source.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
-import { runtimeConfig } from "../api/runtimeConfig";
+import { subscribePoll } from "./pollCache";
+import type { PollSnapshot } from "./pollCache";
 import type { OpResult } from "../api/types";
 
-const POLL_BACKOFF_MS = 10_000;
-
-interface Poll<T> {
+export interface Poll<T> {
   /** The most recent answer (null until the first poll lands). */
   result: OpResult<T> | null;
   /** True while the browser tab is hidden (no fetches go out). */
@@ -23,92 +21,27 @@ interface Poll<T> {
 }
 
 export function usePoll<T>(opId: string, body?: unknown): Poll<T> {
-  const [result, setResult] = useState<OpResult<T> | null>(null);
-  const [paused, setPaused] = useState(document.hidden);
-  const [backingOff, setBackingOff] = useState(false);
-  // The sleep resolves early on a wake; the dirty flag covers a refresh
-  // that lands while a poll is in flight (it re-polls right after).
-  const wakeRef = useRef<(() => void) | null>(null);
-  const dirtyRef = useRef(false);
+  const [snapshot, setSnapshot] = useState<PollSnapshot<T>>(() => ({
+    result: null,
+    paused: document.hidden,
+    backingOff: false,
+  }));
   // The loop reads the latest body without restarting on a new object
-  // identity (callers pass literals, so [opId] is the only effect key).
+  // identity (callers pass literals, so [opId, bodyKey] are the keys).
   const bodyRef = useRef(body);
   useEffect(() => {
     bodyRef.current = body;
   });
-
+  const bodyKey = JSON.stringify(body ?? null);
+  // The latest loop's kick, reached through a stable callback.
+  const refreshRef = useRef<() => void>(() => {});
   useEffect(() => {
-    const op = getOp(opId);
-    if (op === undefined) {
-      return undefined;
-    }
-    let stopped = false;
-    const sleepOrWake = (ms: number): Promise<void> =>
-      new Promise<void>((resolve) => {
-        const timer = window.setTimeout(done, ms);
-        function done(): void {
-          wakeRef.current = null;
-          window.clearTimeout(timer);
-          resolve();
-        }
-        wakeRef.current = () => done();
-      });
-    // The hidden park: the loop awaits this promise until the tab
-    // becomes visible again — a visibilitychange wake, not a timer.
-    const untilVisible = () =>
-      new Promise<void>((resolve) => {
-        const onChange = () => {
-          if (stopped) {
-            document.removeEventListener("visibilitychange", onChange);
-            return;
-          }
-          if (!document.hidden) {
-            document.removeEventListener("visibilitychange", onChange);
-            resolve();
-          }
-        };
-        document.addEventListener("visibilitychange", onChange);
-      });
-    void (async () => {
-      while (!stopped) {
-        if (document.hidden) {
-          setPaused(true);
-          await untilVisible();
-          if (stopped) {
-            return;
-          }
-        }
-        setPaused(false);
-        // A poll reads the freshest state there is, so a refresh that
-        // fired before this moment is answered by THIS read, not another.
-        dirtyRef.current = false;
-        const res = await callOp<T>(op.path, {
-          method: op.method,
-          body: bodyRef.current,
-        });
-        if (stopped) {
-          return;
-        }
-        setResult(res);
-        const backoff = res.httpStatus === 503 || res.kind === "unavailable";
-        setBackingOff(backoff);
-        // A refresh during the read asks for one more pass right away.
-        if (dirtyRef.current) {
-          continue;
-        }
-        await sleepOrWake(backoff ? POLL_BACKOFF_MS : runtimeConfig().pollMs);
-      }
-    })();
-    return () => {
-      stopped = true;
-      wakeRef.current = null;
-    };
-  }, [opId]);
-
+    const handle = subscribePoll<T>(opId, bodyRef.current, setSnapshot);
+    refreshRef.current = handle.refresh;
+    return handle.release;
+  }, [opId, bodyKey]);
   const refresh = useCallback((): void => {
-    dirtyRef.current = true;
-    wakeRef.current?.();
+    refreshRef.current();
   }, []);
-
-  return { result, paused, backingOff, refresh };
+  return { result: snapshot.result, paused: snapshot.paused, backingOff: snapshot.backingOff, refresh };
 }

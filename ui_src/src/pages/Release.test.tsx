@@ -4,6 +4,7 @@ import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import releaseAssessOk from "../test/fixtures/release-assess-ok-200.json";
 import releaseBlocked409 from "../test/fixtures/release-blocked-409.json";
+import releaseReviewOk from "../test/fixtures/release-review-ok-200.json";
 import releaseStatusOk from "../test/fixtures/release-status-ok-200.json";
 import Release from "./Release";
 
@@ -73,6 +74,29 @@ describe("Release page", () => {
     expect(poll?.url).toContain("codebook_version_id=aaaa1111-2222-4333-8444-555566667777");
   });
 
+  it("renders the review packet receipt as Done, never not-success", async () => {
+    stubFetch([
+      { method: "POST", path: "/api/release/review", reply: respond(200, releaseReviewOk.response.body) },
+    ]);
+    render(<Release />, { wrapper: makeWrapper() });
+    const reviewCard = cardOf(strings.releaseReviewTitle);
+    fill(reviewCard, strings.releaseVersionLabel, "aaaa1111-2222-4333-8444-555566667777");
+    fill(reviewCard, strings.releaseReleaseLabel, "7777cccc-8888-4ddd-9eee-5555ffff6666");
+    fireEvent.click(within(reviewCard).getByRole("button", { name: strings.runnerRunLabel }));
+    // The packet's own next action leads, and the receipt headline is
+    // Done: the review_packet word rides the normalizer's ok, never the
+    // not-success banner.
+    expect(
+      await within(reviewCard).findByText(
+        "Improve precision or waive g_precision, then execute.",
+      ),
+    ).toBeTruthy();
+    expect(within(reviewCard).getByText(strings.receiptDone)).toBeTruthy();
+    expect(within(reviewCard).queryByText(strings.receiptNotSuccess)).toBeNull();
+    const sent = calls.find((c) => c.url.includes("/api/release/review"));
+    expect(sent?.body).toContain('"release_id":"7777cccc-8888-4ddd-9eee-5555ffff6666"');
+  });
+
   it("renders the blocked execute as the structured refusal", async () => {
     stubFetch([
       { method: "POST", path: "/api/release/release", reply: respond(409, releaseBlocked409.response.body) },
@@ -103,7 +127,12 @@ describe("Release page", () => {
     render(<Release />, { wrapper: makeWrapper() });
     const requestCard = cardOf(strings.releaseRequestTitle);
     fireEvent.click(within(requestCard).getByRole("button", { name: strings.runnerRunLabel }));
-    expect(await screen.findByText(strings.formRequired)).toBeTruthy();
+    const missing = strings.formFieldRequired.replace("{field}", strings.releaseVersionLabel);
+    expect(await screen.findByText(missing)).toBeTruthy();
+    // Focus moves to the first errored field on a failed submit.
+    expect(document.activeElement).toBe(
+      within(requestCard).getByPlaceholderText(strings.releaseVersionLabel),
+    );
     expect(calls.some((c) => c.url.includes("/api/release/request"))).toBe(false);
   });
 });

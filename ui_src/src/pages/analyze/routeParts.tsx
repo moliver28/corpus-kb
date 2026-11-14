@@ -2,7 +2,7 @@ import { Button, Collapse, Typography } from "antd";
 import type { ReactNode } from "react";
 import StatusBanner from "../../components/StatusBanner";
 import { getOp } from "../../api/ops";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import {
   manifestOpId,
   routeNote,

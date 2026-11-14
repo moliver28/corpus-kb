@@ -2,7 +2,7 @@ import { Button } from "antd";
 import { useState } from "react";
 import PathCard from "./PathCard";
 import StatusBanner from "./StatusBanner";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /**
  * The research ingest (spec F6, bulk start): one file, folder, or glob

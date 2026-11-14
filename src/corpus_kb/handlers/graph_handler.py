@@ -19,6 +19,7 @@ from uuid import UUID
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
+from corpus_kb.handlers.graph_handler_writes import GraphUdMixin
 from corpus_kb.storage.graph_sql import DEFAULT_LIMIT, DIRECTIONS, MAX_NEIGHBOR_HOPS
 from corpus_kb.storage.graph_store import GraphStore
 from corpus_kb.utils.models import Entity, Relation
@@ -70,8 +71,15 @@ def _name_list(value: object) -> list[str] | None:
     raise ValidationError("Type filters must be a list of names.")
 
 
-class GraphHandler:
-    """Graph query handler that delegates to an injected GraphStore backend."""
+class GraphHandler(GraphUdMixin):
+    """Graph query handler that delegates to an injected GraphStore backend.
+
+    The Wave-8 U/D methods (``handle_update_entity`` and siblings) come
+    from ``GraphUdMixin`` (``graph_handler_writes.py``, the 250-line
+    split): each writes through the GraphStore inside the request path —
+    read-your-writes without a projection drain. No audit trail and no
+    undo, by decision; see the writes module.
+    """
 
     def __init__(self, graph_store: GraphStore, config: dict[str, Any] | None = None) -> None:
         self._graph_store = graph_store

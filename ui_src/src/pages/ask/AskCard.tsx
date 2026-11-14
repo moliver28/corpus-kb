@@ -1,15 +1,17 @@
-import { Button, Card, Input, Skeleton, Typography } from "antd";
+import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import CitedAnswer from "../../components/CitedAnswer";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
+import LongOpControls from "../../components/LongOpControls";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
 import { callOpStream } from "../../api/stream";
 import { useLongOp } from "../../hooks/useLongOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { loadHistory, saveHistory, type HistoryEntry } from "./askHistory";
 import EvidenceList from "./EvidenceList";
 import {
@@ -32,8 +34,9 @@ import {
  */
 export default function AskCard() {
   const [query, setQuery] = useState("");
-  const [hint, setHint] = useState("");
+  const [error, setError] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  const { rootRef, flag } = useFirstErrorFocus();
   // The streamed answer so far (grounded sentences only). The settled
   // view below replaces it once the envelope lands.
   const [streamText, setStreamText] = useState("");
@@ -62,10 +65,11 @@ export default function AskCard() {
       return;
     }
     if (query.trim() === "") {
-      setHint(strings.askQueryRequired);
+      setError(strings.askQueryRequired);
+      flag();
       return;
     }
-    setHint("");
+    setError("");
     queryRef.current = query.trim();
     cancelRequestedRef.current = false;
     setStreamText("");
@@ -83,6 +87,11 @@ export default function AskCard() {
   function stopWaiting(): void {
     cancelRequestedRef.current = true;
     ask.cancel();
+  }
+
+  function clearHistory(): void {
+    setHistory([]);
+    saveHistory([]);
   }
 
   function retry(): void {
@@ -169,19 +178,21 @@ export default function AskCard() {
   return (
     <Card title={strings.askTitle}>
       <Typography.Paragraph type="secondary">{strings.askBody}</Typography.Paragraph>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow"
+      <div className="ui-actions" ref={rootRef}>
+        <LabeledField
+          label={strings.askQueryLabel}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={strings.askQueryLabel}
+          onChange={setQuery}
+          error={error}
+          required
+          name="query"
+          widthClass="ui-narrow"
           onPressEnter={() => void run()}
         />
         <Button type="primary" loading={ask.running} onClick={() => void run()}>
           {strings.askAction}
         </Button>
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {ask.running && streamText === "" && (
         <Skeleton active title={false} paragraph={{ rows: 3 }} />
       )}
@@ -193,20 +204,16 @@ export default function AskCard() {
           <StatusBanner kind="info">{strings.askStreamingNote}</StatusBanner>
         </div>
       )}
-      {ask.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(ask.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={stopWaiting}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {ask.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {ask.unknownOutcome && (
-        <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-      )}
+      <LongOpControls op={ask} onRetry={retry} onCancel={stopWaiting} />
       {resultView}
-      <Typography.Title level={5}>{strings.askHistoryTitle}</Typography.Title>
+      <div className="ui-heading-row">
+        <h2 className="ui-heading">{strings.askHistoryTitle}</h2>
+        {history.length > 0 && (
+          <Button type="text" size="small" onClick={clearHistory}>
+            {strings.askHistoryClear}
+          </Button>
+        )}
+      </div>
       {history.length === 0 ? (
         <Typography.Text type="secondary">{strings.askHistoryEmpty}</Typography.Text>
       ) : (

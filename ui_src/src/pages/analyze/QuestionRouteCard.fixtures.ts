@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { calls, respond, stubFetch, stubFetchImpl } from "../../test/testUtils";
 
 /**

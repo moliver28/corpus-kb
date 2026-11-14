@@ -7,7 +7,7 @@ import type { OpResult } from "../../api/types";
 import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
 import { usePoll } from "../../hooks/usePoll";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 import EnqueueCard from "./EnqueueCard";
 import QueueTable from "./QueueTable";
 

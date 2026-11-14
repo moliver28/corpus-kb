@@ -1,0 +1,21 @@
+{
+  "name": "verify-abstained-200",
+  "source": "canonical",
+  "note": "POST /api/verify abstain (handlers/query_crud_reads.py verify_answer returns abstained=True when the chunks are unknown or the answer yields no claims).",
+  "request": {
+    "method": "POST",
+    "path": "/api/verify"
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "verdicts": [],
+        "groundedness": 0.0,
+        "abstained": true
+      },
+      "trace_id": "verify-abstained-0001"
+    }
+  }
+}

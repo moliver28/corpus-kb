@@ -187,4 +187,38 @@ describe("Codebook page", () => {
     expect(screen.queryByText(strings.codebookReliabilityNotWired)).toBeNull();
     expect(screen.queryByText(strings.codebookSaturationNotWired)).toBeNull();
   });
+
+
+  it("marks the governance run stale when the level changes under it", async () => {
+    stubFetch([
+      ...codebookRoutes(),
+      {
+        method: "POST",
+        path: "/api/research/report",
+        reply: respond(200, {
+          novice_view: {
+            traffic_lights: { corpus: { level: "green", message: "The corpus is whole." } },
+            next_actions: [],
+          },
+        }),
+      },
+    ]);
+    render(<Codebook />, { wrapper: makeWrapper() });
+    const card = cardOf(strings.codebookGovernanceTitle);
+    // The level is a selection (segmented), Run is the one action.
+    expect(within(card).getByRole("button", { name: strings.runnerRunLabel })).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
+    expect(await within(card).findByText("The corpus is whole.")).toBeTruthy();
+    const stale = (level: string): string =>
+      strings.codebookGovernanceStale.replace("{level}", level);
+    expect(within(card).queryByText(stale(strings.codebookLevelExpert))).toBeNull();
+    // Picking the other level leaves the old report visible but marked.
+    fireEvent.click(within(card).getByText(strings.codebookLevelExpert));
+    expect(within(card).getByText(stale(strings.codebookLevelExpert))).toBeTruthy();
+    expect(within(card).getByText("The corpus is whole.")).toBeTruthy();
+    // Back to the run's level: the mark goes.
+    fireEvent.click(within(card).getByText(strings.codebookLevelNovice));
+    expect(within(card).queryByText(stale(strings.codebookLevelExpert))).toBeNull();
+  });
+
 });

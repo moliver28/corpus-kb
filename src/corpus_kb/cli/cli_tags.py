@@ -1,10 +1,13 @@
-"""The ``corpus-kb`` tags/metadata read front door (issue #182).
+"""The ``corpus-kb`` tags/metadata READ front door (issue #182).
 
 Top-level commands registered on the main app (see ``register``):
 
   * ``corpus-kb get-document-tags ID`` — one document's tags.
   * ``corpus-kb get-metadata``         — stored metadata rows, filtered
     by ``--key`` and/or ``--doc-id``.
+
+The write commands (``add-tag``, ``tag-document``, ``untag-document``,
+``set-metadata``, Phase-2 Wave 2) live in ``cli_tag_writes.py``.
 
 Each command calls the SAME shared tool function the MCP + HTTP + socket
 surfaces call (``tools.tag_tools``), so every surface returns the same

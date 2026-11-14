@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import type { OpResult } from "../api/types";
 import StatusBanner from "./StatusBanner";
 

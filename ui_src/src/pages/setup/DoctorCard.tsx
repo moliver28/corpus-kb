@@ -7,7 +7,7 @@ import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/setup";
 import { allChecks, dimsBelowResearchWidth, envelopeResult, isDoctorResult, stateWord } from "./doctor";
 import type { CheckRow, DoctorResult } from "./doctor";
 
@@ -69,7 +69,7 @@ function DoctorView({ result }: { result: DoctorResult }) {
             : strings.setupRerankerOff}
         </Typography.Paragraph>
       )}
-      <Typography.Title level={5}>{strings.setupDoctorChecksHeading}</Typography.Title>
+      <h2 className="ui-heading">{strings.setupDoctorChecksHeading}</h2>
       {rows.length === 0 ? (
         <StatusBanner kind="info">{strings.setupDoctorChecksNone}</StatusBanner>
       ) : (

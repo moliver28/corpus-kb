@@ -215,3 +215,6 @@ Fleiss
 DSNs
 journaled
 userConfig
+id_list
+object_list
+tfidf

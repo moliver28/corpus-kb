@@ -30,6 +30,7 @@ Route families (the Route order below is the original single-file order):
                                GET  /api/graph/relations/{entity_id}
   api/routes_tags_metadata.py  POST /api/tags, /api/metadata  GET /api/metadata
                                POST+GET /api/documents/{doc_id}/tags
+                               POST /api/documents/{doc_id}/tags/remove
   api/research_http.py         research + release surfaces (U5/P7)
   api/routes_topics.py         POST /api/topics/build  GET /api/topics
                                POST /api/topics/trends
@@ -83,6 +84,12 @@ from corpus_kb.api.routes_beliefs import (
     beliefs_predict_route,
     beliefs_timeline_route,
 )
+from corpus_kb.api.routes_chat import (
+    chat_status,
+    create_chat_session,
+    list_chat_sessions,
+    send_chat_message,
+)
 from corpus_kb.api.routes_classification import (
     classification_build_route,
     classification_list_route,
@@ -109,10 +116,15 @@ from corpus_kb.api.routes_graph import (
     add_relation,
     bfs_traversal,
     delete_document,
+    delete_entity,
+    delete_relation,
     get_entity_relations,
     graph_neighbors,
     graph_traverse,
+    list_relations,
     search_graph,
+    update_entity,
+    update_relation,
 )
 from corpus_kb.api.routes_ingest import (
     ingest_directory,
@@ -134,6 +146,7 @@ from corpus_kb.api.routes_meta import (
     doctor_route,
     document_stats,
     get_stats,
+    list_document_chunks,
     list_documents,
     list_entities,
     list_versions,
@@ -170,6 +183,7 @@ from corpus_kb.api.routes_tags_metadata import (
     get_metadata_route,
     set_metadata_route,
     tag_document_route,
+    untag_document_route,
 )
 from corpus_kb.api.routes_topics import (
     topics_build_route,
@@ -263,6 +277,14 @@ def create_http_app() -> FastAPI:
         Route("/api/embed", embed_text, methods=["POST"]),
         # UX Wave 1 ask operation: the grounded answer front door.
         Route("/api/ask", ask, methods=["POST"]),
+        # Phase-2 Wave 7 chat: the streaming session surface. NON-MANIFEST
+        # ([D2], runtime-config sanction): config-gated by chat.enabled —
+        # a disabled feature answers the typed ConfigError, never 404.
+        # Never a surface-catalogue row; SERVER_AUTO_APPROVE untouched.
+        Route("/api/chat/sessions", create_chat_session, methods=["POST"]),
+        Route("/api/chat/sessions", list_chat_sessions, methods=["GET"]),
+        Route("/api/chat/sessions/{sid}/messages", send_chat_message, methods=["POST"]),
+        Route("/api/chat/status", chat_status, methods=["GET"]),
         # UI SPA Task 5a: the demo slice — sample corpus load for investors.
         Route("/api/demo/load", demo_load, methods=["POST"]),
         Route("/api/coding/embed-codebook", coding_embed_codebook, methods=["POST"]),
@@ -276,18 +298,27 @@ def create_http_app() -> FastAPI:
         Route("/api/coding/export", coding_export_route, methods=["POST"]),
         Route("/api/events/summary", events_summary_route, methods=["GET"]),
         Route("/api/documents", list_documents, methods=["GET"]),
+        Route("/api/documents/{doc_id}/chunks", list_document_chunks, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),
         Route("/api/entities", add_entity, methods=["POST"]),
         Route("/api/relations", add_relation, methods=["POST"]),
+        # Phase-2 Wave 8 graph U/D: gen-default POST path-slot routes (the
+        # Wave-2 untag precedent, CORS-safe). DELETE_SURFACE_NAMES untouched.
+        Route("/api/entities/{entity_id}/update", update_entity, methods=["POST"]),
+        Route("/api/entities/{entity_id}/delete", delete_entity, methods=["POST"]),
+        Route("/api/relations/{relation_id}/update", update_relation, methods=["POST"]),
+        Route("/api/relations/{relation_id}/delete", delete_relation, methods=["POST"]),
         Route("/api/documents/{doc_id}", delete_document, methods=["DELETE"]),
         Route("/api/graph/search", search_graph, methods=["POST"]),
         Route("/api/graph/bfs", bfs_traversal, methods=["POST"]),
         Route("/api/graph/neighbors", graph_neighbors, methods=["POST"]),
         Route("/api/graph/traverse", graph_traverse, methods=["POST"]),
+        Route("/api/graph/relations", list_relations, methods=["GET"]),
         Route("/api/graph/relations/{entity_id}", get_entity_relations, methods=["GET"]),
         Route("/api/tags", add_tag_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", tag_document_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", get_document_tags_route, methods=["GET"]),
+        Route("/api/documents/{doc_id}/tags/remove", untag_document_route, methods=["POST"]),
         Route("/api/metadata", set_metadata_route, methods=["POST"]),
         Route("/api/metadata", get_metadata_route, methods=["GET"]),
         Route("/api/versions", list_versions, methods=["GET"]),

@@ -1,0 +1,27 @@
+{
+  "name": "beliefs-compare-ok-200",
+  "source": "canonical",
+  "note": "POST /api/beliefs/compare shape (tools/beliefs_tools.py beliefs_compare; rows carry the same shape as beliefs-current). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/beliefs/compare", "body": { "subject": "weekly syncs" } },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "subject": "weekly syncs",
+      "rows": [
+        {
+          "belief_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          "subject": "weekly syncs",
+          "relation": "helps",
+          "object": "project clarity",
+          "alpha": 3.0,
+          "beta": 1.0,
+          "evidence_count": 4,
+          "era_count": 1,
+          "updated_at": "2026-01-07 09:00:00+00:00"
+        }
+      ],
+      "count": 1
+    }
+  }
+}

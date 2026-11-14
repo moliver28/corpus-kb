@@ -160,6 +160,46 @@
     "required": []
   },
   {
+    "description": "Side-by-side belief posteriors for one subject across objects (read-only).",
+    "id": "beliefs-compare",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/compare",
+    "required": []
+  },
+  {
+    "description": "Current belief posteriors, recomputed from the statements (read-only).",
+    "id": "beliefs-current",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/current",
+    "required": []
+  },
+  {
+    "description": "Posterior predictive for one belief with its credible interval (read-only).",
+    "id": "beliefs-predict",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/predict",
+    "required": []
+  },
+  {
+    "description": "Era history for one belief with the exact posterior on top (read-only).",
+    "id": "beliefs-timeline",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/timeline",
+    "required": []
+  },
+  {
     "description": "Copy a profile lock's proposed overrides into config.yaml.",
     "id": "calibrate-apply",
     "longRunning": false,
@@ -366,6 +406,36 @@
     "required": []
   },
   {
+    "description": "List recorded conflict flags newest-first (read-only).",
+    "id": "conflicts-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/list",
+    "required": []
+  },
+  {
+    "description": "Finalize one conflict flag; a confirmed revision supersedes the older claim.",
+    "id": "conflicts-resolve",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/resolve",
+    "required": []
+  },
+  {
+    "description": "Run the contradiction cascade over live statements and record flags.",
+    "id": "conflicts-scan",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/scan",
+    "required": []
+  },
+  {
     "description": "Load the bundled sample corpus through the standard ingest pipeline.",
     "id": "demo-load",
     "longRunning": true,
@@ -383,6 +453,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/doctor",
+    "required": []
+  },
+  {
+    "description": "Aggregate the document statistics: totals plus per-source-type rows.",
+    "id": "document-stats",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/document-stats",
     "required": []
   },
   {
@@ -406,6 +486,16 @@
     "required": []
   },
   {
+    "description": "List one document's chunks in ingest order (read-only).",
+    "id": "chunks-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/chunks",
+    "required": []
+  },
+  {
     "description": "List one document's tags (read-only).",
     "id": "document-tags",
     "longRunning": false,
@@ -416,6 +506,66 @@
     "required": []
   },
   {
+    "description": "Apply one tag to a document; a missing tag is created first.",
+    "id": "tag-document",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/tags",
+    "required": []
+  },
+  {
+    "description": "Remove one tag from a document; a missing link is a typed error.",
+    "id": "untag-document",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/tags/remove",
+    "required": []
+  },
+  {
+    "description": "List graph entities, one name-ordered window (read-only).",
+    "id": "list-entities",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities",
+    "required": []
+  },
+  {
+    "description": "Add one entity to the knowledge graph.",
+    "id": "add-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities",
+    "required": []
+  },
+  {
+    "description": "Delete one entity and its linked relations.",
+    "id": "delete-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/delete",
+    "required": []
+  },
+  {
+    "description": "Update one entity's name and type.",
+    "id": "update-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/update",
+    "required": []
+  },
+  {
     "description": "Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only).",
     "id": "events-summary",
     "longRunning": false,
@@ -423,6 +573,56 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/events/summary",
+    "required": []
+  },
+  {
+    "description": "List entities within 1 to 3 hops of one entity (read-only).",
+    "id": "graph-neighbors",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/neighbors",
+    "required": []
+  },
+  {
+    "description": "List graph relations, one type-ordered window (read-only).",
+    "id": "list-relations",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/relations",
+    "required": []
+  },
+  {
+    "description": "List one entity's relations (read-only).",
+    "id": "get-entity-relations",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/relations/{entity_id}",
+    "required": []
+  },
+  {
+    "description": "Search graph entities by name (read-only).",
+    "id": "search-graph",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/search",
+    "required": []
+  },
+  {
+    "description": "Walk the graph from one entity up to the depth cap (read-only).",
+    "id": "graph-traverse",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/traverse",
     "required": []
   },
   {
@@ -542,6 +742,16 @@
     "id": "document-metadata",
     "longRunning": false,
     "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/metadata",
+    "required": []
+  },
+  {
+    "description": "Set one metadata key for a document; the write is an upsert.",
+    "id": "set-metadata",
+    "longRunning": false,
+    "method": "POST",
     "optional": [],
     "paramsKnown": false,
     "path": "/api/metadata",
@@ -688,6 +898,36 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/queue/status",
+    "required": []
+  },
+  {
+    "description": "Add one relation between two entities.",
+    "id": "add-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations",
+    "required": []
+  },
+  {
+    "description": "Delete one relation.",
+    "id": "delete-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/delete",
+    "required": []
+  },
+  {
+    "description": "Update one relation's type and weight.",
+    "id": "update-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/update",
     "required": []
   },
   {
@@ -929,6 +1169,46 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/search/similar",
+    "required": []
+  },
+  {
+    "description": "List statement atoms newest-first (read-only).",
+    "id": "statements-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/statements/list",
+    "required": []
+  },
+  {
+    "description": "Chronological statement history for one text query (read-only).",
+    "id": "statements-timeline",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/statements/timeline",
+    "required": []
+  },
+  {
+    "description": "Count the corpus rows: documents, chunks, vectors, graph, tags.",
+    "id": "stats",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/stats",
+    "required": []
+  },
+  {
+    "description": "Create one tag in the tag vocabulary.",
+    "id": "add-tag",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/tags",
     "required": []
   },
   {
