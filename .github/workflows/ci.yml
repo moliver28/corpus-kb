@@ -559,9 +559,10 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test steps:
-  #   - ubuntu timeout-minutes: 30 (rule 20 floor is 20; the covered suite
+  #   - ubuntu timeout-minutes: 40 (rule 20 floor is 20; the covered suite
   #     measured 19:57 of pytest alone and hit the old 20-min cap after
-  #     every test had passed) — cross-OS legs keep 10 (hang protection)
+  #     every test had passed; the locked-env leg outgrew 30 later) —
+  #     cross-OS legs carry the same 40
   # ─────────────────────────────────────────────────────────────────────
   # ─────────────────────────────────────────────────────────────────────
   # ui-e2e: the SPA Playwright smoke + axe scan against a REAL corpus-kb
@@ -915,11 +916,14 @@ jobs:
           done
 
       - name: Run tests
-        # timeout-minutes: 30 — rule 20 requires >= 20 min on the ubuntu leg.
-        # The covered suite ran 19:57 of pytest here and hit the old 20-min
-        # cap after every test had passed (run 40471314193); 30 keeps the
-        # hang protection with headroom.
-        timeout-minutes: 30
+        # timeout-minutes: 40 — rule 20 requires >= 20 min on the ubuntu
+        # leg, and this is now the same budget the cross-OS legs carry.
+        # History: the covered suite ran 19:57 of pytest and hit the old
+        # 20-min cap after every test had passed (run 40471314193; PR
+        # #189 raised it to 30). The locked-env leg outgrew 30 again
+        # (run 43530817482: the step timed out — install plus the
+        # 3-model pull plus the covered suite no longer fit 30).
+        timeout-minutes: 40
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=xml --cov-report=term-missing
 
       # Coverage gates (PR-F, zero-drift rule 10). ONE suite run feeds
