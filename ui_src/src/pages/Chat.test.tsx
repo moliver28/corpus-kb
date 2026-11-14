@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Chat from "./Chat";
 import { strings } from "../strings/chat";
 import {
+  calls,
   clearCalls,
   makeWrapper,
   respond,
@@ -95,6 +96,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   clearCalls();
+  sessionStorage.clear();
 });
 
 describe("Chat page", () => {
@@ -132,6 +134,61 @@ const composer = await screen.findByPlaceholderText(strings.chatPlaceholder);
 const composer = await screen.findByPlaceholderText(strings.chatPlaceholder);
     fireEvent.change(composer, { target: { value: "q" } });
     fireEvent.keyDown(composer, { key: "Enter" });
+    // The panel renders with the frame's taxonomy message...
+    await screen.findByText(strings.errorTitle);
+    await screen.findByText("One turn runs at a time.");
+    // ...and it survives the stream settling: the taxonomy error wins
+    // (the pinned decision); the generic unreadable result never
+    // overwrites it.
+    await waitFor(() =>
+      expect(screen.queryByText(strings.chatStopLabel)).toBeNull(),
+    );
+    expect(screen.getByText("One turn runs at a time.")).not.toBeNull();
+    expect(screen.queryByText(strings.unreadableResponse)).toBeNull();
+  });
+
+  it("a closed session recovers: the id drops and a fresh session opens", async () => {
+    // The pinned end of the 409-forever wedge: a send against a dead
+    // session 404s, the hook drops the id, and the page's auto-start
+    // opens a fresh session the composer can use again.
+    let creates = 0;
+    const createReply = {
+      status: 200,
+      text: async () => {
+        creates += 1;
+        return JSON.stringify({
+          status: "success",
+          result: {
+            session_id: creates === 1 ? "s1" : "s9",
+            backend: "claude-agent-sdk",
+          },
+        });
+      },
+    };
+    stubFetch([
+      { method: "GET", path: "/api/chat/status", reply: OK_STATUS },
+      {
+        method: "POST",
+        path: "/api/chat/sessions/s1/messages",
+        reply: respond(404, {
+          status: "error",
+          error: "No live chat session s1. Open one first.",
+          error_type: "not_found",
+        }),
+      },
+      { method: "POST", path: "/api/chat/sessions", reply: createReply },
+      { method: "GET", path: "/api/chat/sessions?", reply: EMPTY_SESSIONS },
+    ]);
+    renderChat();
+    const composer = await screen.findByPlaceholderText(strings.chatPlaceholder);
+    fireEvent.change(composer, { target: { value: "q" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => {
+      const creates_ = calls.filter((call) => call.method === "POST" && call.url.endsWith("/api/chat/sessions"));
+      expect(creates_.length === 2).toBe(true);
+    });
+    expect(calls.some((call) => call.url.includes("/s1/messages"))).toBe(true);
+    expect(screen.queryByText(strings.errorTitle)).toBeNull();
   });
 
   it("stop settles the honest Stopped bubble and clears the flight", async () => {

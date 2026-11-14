@@ -54,6 +54,31 @@ interface StreamFlight {
 
 const EMPTY_FLIGHT: StreamFlight = { text: "", activity: null, warning: null };
 
+// The session id survives a page reload: the hook re-opens against the
+// live server session (or resumes the transcript) instead of fighting
+// the one-session cap with a second spawn.
+const SESSION_STORAGE_KEY = "corpus.chat.sessionId";
+
+function readStoredSessionId(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeSessionId(sessionId: string | null): void {
+  try {
+    if (sessionId === null) {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    } else {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the session still works.
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -72,7 +97,7 @@ function readCitations(envelope: Record<string, unknown>): ChatCitation[] {
 }
 
 export function useChatSession() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(readStoredSessionId);
   const [backend, setBackend] = useState<string>("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [flight, setFlight] = useState<StreamFlight | null>(null);
@@ -81,6 +106,11 @@ export function useChatSession() {
   const abortRef = useRef<AbortController | null>(null);
   const textRef = useRef("");
   const busy = flight !== null;
+
+  const updateSessionId = useCallback((next: string | null): void => {
+    setSessionId(next);
+    storeSessionId(next);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -94,21 +124,24 @@ export function useChatSession() {
     };
   }, []);
 
-  const start = useCallback(async (resume: string | null): Promise<boolean> => {
-    setError(null);
-    const result = await callOp<{ result?: { session_id: string; backend: string } }>(
-      "/api/chat/sessions",
-      { method: "POST", body: resume === null ? {} : { resume } },
-    );
-    const payload = result.ok && isRecord(result.data) ? result.data.result : undefined;
-    if (!result.ok || !isRecord(payload)) {
-      setError(result);
-      return false;
-    }
-    setSessionId(String(payload.session_id ?? ""));
-    setBackend(String(payload.backend ?? ""));
-    return true;
-  }, []);
+  const start = useCallback(
+    async (resume: string | null): Promise<boolean> => {
+      setError(null);
+      const result = await callOp<{ result?: { session_id: string; backend: string } }>(
+        "/api/chat/sessions",
+        { method: "POST", body: resume === null ? {} : { resume } },
+      );
+      const payload = result.ok && isRecord(result.data) ? result.data.result : undefined;
+      if (!result.ok || !isRecord(payload)) {
+        setError(result);
+        return false;
+      }
+      updateSessionId(String(payload.session_id ?? ""));
+      setBackend(String(payload.backend ?? ""));
+      return true;
+    },
+    [updateSessionId],
+  );
 
   const stop = useCallback((): void => {
     abortRef.current?.abort();
@@ -124,6 +157,9 @@ export function useChatSession() {
       setFlight(EMPTY_FLIGHT);
       const ctrl = new AbortController();
       abortRef.current = ctrl;
+      // The taxonomy error frame wins (the pinned decision): when one
+      // was seen, the transport result never overwrites the panel.
+      let sawFrameError = false;
       const result = await callOpStream(`/api/chat/sessions/${sessionId}/messages`, {
         method: "POST",
         body: { text: clean, stream: true },
@@ -144,6 +180,7 @@ export function useChatSession() {
             const text = frame.text;
             setFlight((prev) => ({ ...(prev ?? EMPTY_FLIGHT), warning: text }));
           } else if (frame.object === "chat.error") {
+            sawFrameError = true;
             setError({
               ok: false,
               kind: "error",
@@ -181,13 +218,19 @@ export function useChatSession() {
         ]);
         return;
       }
+      // The session is gone (closed) or the cap fought back: drop the id
+      // so the page's auto-start opens (or resumes) a usable one. This
+      // is the recovery that ends the old 409-forever wedge.
+      if (result.httpStatus === 404 || result.httpStatus === 409) {
+        updateSessionId(null);
+      }
       // The chat.error frame already set the error panel; a network or
-      // unreadable result surfaces here.
-      if (error === null) {
+      // unreadable result surfaces only when no frame error was seen.
+      if (!sawFrameError) {
         setError(result);
       }
     },
-    [busy, sessionId, error],
+    [busy, sessionId, updateSessionId],
   );
 
   return {
