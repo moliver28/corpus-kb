@@ -199,9 +199,9 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
         value = textbook.get(key)
         if _number_out_of_range(value, 1):
             errors.append(f"textbook.{key}: must be a positive int, got {value!r}")
-    timeout = textbook.get("window_timeout_s")
-    if timeout is not None and _number_out_of_range(timeout, 1):
-        errors.append(f"textbook.window_timeout_s: must be a positive number, got {timeout!r}")
+    for key in ("window_timeout_s", "worker_idle_ttl_s"):
+        if (value := textbook.get(key)) is not None and _number_out_of_range(value, 1):
+            errors.append(f"textbook.{key}: must be a positive number, got {value!r}")
     max_windows = textbook.get("worker_max_windows")
     if max_windows is not None and _number_out_of_range(max_windows, 1):
         errors.append(f"textbook.worker_max_windows: must be a positive int, got {max_windows!r}")

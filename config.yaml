@@ -108,8 +108,11 @@ ingestion:
 # worker child alive across windows and documents, so the model loads
 # once per worker, not once per window (issue #270); false restores one
 # child per window. worker_max_windows recycles that worker after the
-# given window count, so no worker grows without bound. cache_max_mb
-# caps the window cache in
+# given window count, so no worker grows without bound.
+# worker_idle_ttl_s drops a worker whose last served window sits
+# further back than this many seconds when the next window asks, so a
+# long-lived server sheds idle parser children instead of holding them
+# forever. cache_max_mb caps the window cache in
 # MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 # structured_output keeps rich page structure (heading level, page box,
 # table markdown) in the parsed windows; false keeps the plain text.
@@ -125,6 +128,7 @@ textbook:
   window_timeout_s: 3600.0
   worker_reuse: true
   worker_max_windows: 32
+  worker_idle_ttl_s: 600.0
   cache_max_mb: 2048
   structured_output: false
   citations: false

@@ -1,20 +1,23 @@
 """Tests for the persistent parser worker (issue #270).
 
 The process boundary is patched at the ``_start_worker`` seam inside
-``textbook_worker``, so the reuse, recycle, crash, timeout, and
-worker-reported-failure paths run against fakes. The fakes script each
-worker response, and the tests pin the determinism contract: a reused
-window carries the same items the per-window child ships, and the
-built chunks do not change with reuse on or off. Two tests start a
-real child: one bounded smoke test (a spawned worker serves a request
-and stops clean, no optional extra), and one opt-in live docling check
-that skips like the other optional-extra tests when it is absent.
+``textbook_worker``, so the reuse, recycle, crash, timeout,
+worker-reported-failure, idle-reaper, and single-flight-lock paths run
+against fakes. The fakes script each worker response, and the tests
+pin the determinism contract: a reused window carries the same items
+the per-window child ships, and the built chunks do not change with
+reuse on or off. Two tests start a real child: one bounded smoke test
+(a spawned worker serves a request and stops clean, no optional
+extra), and one opt-in live docling check that skips like the other
+optional-extra tests when it is absent.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty
 from typing import ClassVar
@@ -34,6 +37,7 @@ from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME, Text
 from corpus_kb.ingestion.strategies.textbook_child import _worker_main
 from corpus_kb.ingestion.strategies.textbook_docling import PageItem
 from corpus_kb.ingestion.strategies.textbook_worker import (
+    WindowPayload,
     _collect_response,
     _WorkerHandle,
     parse_window_with_worker,
@@ -117,8 +121,9 @@ class _ScriptedQueue:
 
 @pytest.fixture(autouse=True)
 def _fresh_worker_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A clean worker table per test, so module state never leaks."""
+    """A clean worker table and lock table per test, so state never leaks."""
     monkeypatch.setattr(textbook_worker, "_WORKERS", {})
+    monkeypatch.setattr(textbook_worker, "_PARSE_LOCKS", {})
 
 
 def _patch_start_worker(
@@ -303,6 +308,108 @@ def test_a_worker_reported_failure_keeps_the_worker(
     assert not handle.requests.closed
     assert _parse(3, 4) is not None  # the same worker serves the next window
     assert spawns == ["docling"]
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle: the idle reaper and the single-flight parse lock
+# ---------------------------------------------------------------------------
+
+
+def test_an_idle_worker_is_dropped_at_the_next_acquire(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker idle past the TTL is stopped; the next window spawns fresh."""
+    spawns: list[str] = []
+    handles: list[_WorkerHandle] = []
+    _patch_start_worker(monkeypatch, spawns, [[_ROWS, _ROWS]], handles)
+    assert _parse(1, 2) is not None
+    handle = handles[0]
+    handle.last_served = time.monotonic() - 601.0  # idle past the 600 s TTL
+    assert _parse(3, 4) is not None
+    assert spawns == ["docling", "docling"]  # the reaper spawned a fresh worker
+    assert handle.proc.terminated  # the idle worker was stopped
+    assert handle.requests.closed and handle.payload.closed
+    fresh = textbook_worker._WORKERS["docling"]
+    assert fresh is handles[1]
+    assert fresh.requests.requests == [("book.pdf", 3, 4, False)]
+
+
+def test_a_recently_served_worker_survives_the_idle_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Idle time under the TTL keeps the loaded worker across windows."""
+    spawns: list[str] = []
+    handles: list[_WorkerHandle] = []
+    _patch_start_worker(monkeypatch, spawns, [[_ROWS, _ROWS]], handles)
+    assert _parse(1, 2, idle_ttl_s=600.0) is not None
+    assert _parse(3, 4, idle_ttl_s=600.0) is not None
+    assert spawns == ["docling"]  # one worker served both windows
+    assert handles[0].last_served <= time.monotonic()  # stamped again on each serve
+
+
+class _GatedCollect:
+    """``_collect_response`` double: the first call holds the worker open.
+
+    The gate pins the single-flight shape: while the first caller holds
+    the parser's lock, a second caller for the same parser must block,
+    and a caller for another parser must sail through.
+    """
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, handle: _WorkerHandle, deadline: float) -> tuple[bool, WindowPayload | None]:
+        del handle, deadline
+        if not self.entered.is_set():
+            self.entered.set()
+            assert self.release.wait(10)
+        return True, _ROWS
+
+
+def test_concurrent_parses_of_one_parser_run_single_flight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second caller for the same parser waits; it never shares the queue."""
+    spawns: list[str] = []
+    handles: list[_WorkerHandle] = []
+    _patch_start_worker(monkeypatch, spawns, [[_ROWS], [_ROWS]], handles)
+    gate = _GatedCollect()
+    monkeypatch.setattr(textbook_worker, "_collect_response", gate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(_parse, 1, 2)
+        assert gate.entered.wait(10)  # caller one holds the worker
+        second = pool.submit(_parse, 3, 4)
+        time.sleep(0.2)  # caller two reaches the parse lock and blocks
+        assert handles[0].requests.requests == [("book.pdf", 1, 2, False)]
+        assert handles[0].windows_served == 0  # the serve count is not shared mid-flight
+        gate.release.set()
+        assert first.result(10) is not None
+        assert second.result(10) is not None
+    assert handles[0].requests.requests == [
+        ("book.pdf", 1, 2, False),
+        ("book.pdf", 3, 4, False),
+    ]
+    assert handles[0].windows_served == 2
+
+
+def test_a_second_parser_does_not_wait_for_the_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The parse lock is per parser: paddle-vl parses while docling holds."""
+    spawns: list[str] = []
+    handles: list[_WorkerHandle] = []
+    _patch_start_worker(monkeypatch, spawns, [[_ROWS], [_ROWS]], handles)
+    gate = _GatedCollect()
+    monkeypatch.setattr(textbook_worker, "_collect_response", gate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        docling = pool.submit(_parse, 1, 2)
+        assert gate.entered.wait(10)
+        paddle = pool.submit(parse_window_with_worker, Path("book.pdf"), "paddle-vl", 3, 4, 5.0)
+        assert paddle.result(10) is not None  # no cross-parser wait
+        gate.release.set()
+        assert docling.result(10) is not None
+    assert spawns == ["docling", "paddle-vl"]
 
 
 # ---------------------------------------------------------------------------

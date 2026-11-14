@@ -10,9 +10,17 @@ The worker speaks the same plain page rows the per-window child ships
 (:mod:`textbook_child` owns the child side), so a reused window
 carries the same items a fresh child would. Each worker's life is
 bounded: the parent recycles it after ``max_windows`` served windows,
-and drops it after a crash or a missed window deadline. A lost window
-still falls back to pypdf for that window only; the next window
-spawns a fresh worker.
+drops it after a crash or a missed window deadline, and the idle
+reaper drops it once it has sat idle past ``idle_ttl_s`` (checked at
+the next acquire), so a long-lived server sheds idle parser children
+instead of holding them for its whole life. A lost window still falls
+back to pypdf for that window only; the next window spawns a fresh
+worker.
+
+Every parse runs single-flight under the parser's lock, so two
+threads can never share one worker or steal another window's rows
+from its payload queue — even if a caller moves strategy parsing off
+the event loop onto worker threads.
 
 Tests patch :func:`_start_worker` (the spawn seam) and swap the
 ``_WORKERS`` table, so no test starts a real child process.
@@ -22,8 +30,9 @@ from __future__ import annotations
 
 import multiprocessing
 import pickle
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from queue import Empty
@@ -35,7 +44,7 @@ from .textbook_child import (
     _worker_main,
 )
 from .textbook_docling import PageItem, rich_fields_from_row
-from .textbook_settings import DEFAULT_WORKER_MAX_WINDOWS
+from .textbook_settings import DEFAULT_WORKER_IDLE_TTL_S, DEFAULT_WORKER_MAX_WINDOWS
 
 #: Poll cadence for the payload queue and the exit check (seconds).
 _POLL_SECONDS = 0.2
@@ -96,17 +105,46 @@ def _items_from_rows(rows: WindowPayload) -> list[PageItem]:
 
 @dataclass
 class _WorkerHandle:
-    """One live worker child with its queues and its served-window count."""
+    """One live worker child with its queues and its served-window count.
+
+    ``last_served`` is the monotonic timestamp of the last serve (it
+    starts at spawn); the idle reaper reads it at the next acquire.
+    """
 
     parser: str
     proc: BaseProcess
     requests: RequestQueue
     payload: PayloadQueue
     windows_served: int = 0
+    last_served: float = field(default_factory=time.monotonic)
 
 
 #: The live workers, one per parser name at most (bounded, not per window).
+#:
+#: INVARIANT (single-flight): all access to a worker — acquire, request
+#: put, payload read, serve-count update — happens inside that parser's
+#: parse lock, so no caller can read another window's rows from a shared
+#: payload queue. This holds even if a caller moves strategy parsing off
+#: the event loop onto worker threads.
 _WORKERS: dict[str, _WorkerHandle] = {}
+
+#: One parse lock per parser name; a parse holds it for the whole
+#: window exchange. The worker pool is small, so the guard-locked
+#: create-on-first-use below is enough.
+_PARSE_LOCKS: dict[str, threading.Lock] = {}
+
+#: Guards the lock table itself (two threads may name the same parser).
+_PARSE_LOCKS_GUARD = threading.Lock()
+
+
+def _parser_lock(parser: str) -> threading.Lock:
+    """The parse lock for ``parser``, created on first use."""
+    with _PARSE_LOCKS_GUARD:
+        lock = _PARSE_LOCKS.get(parser)
+        if lock is None:
+            lock = threading.Lock()
+            _PARSE_LOCKS[parser] = lock
+        return lock
 
 
 def _start_worker(parser: str) -> _WorkerHandle:
@@ -133,17 +171,19 @@ def _discard_worker(parser: str, handle: _WorkerHandle) -> None:
     _stop(handle.proc)
 
 
-def _acquire_worker(parser: str, max_windows: int) -> _WorkerHandle:
-    """The live worker for ``parser``: kept, recycled, or freshly spawned.
+def _acquire_worker(parser: str, max_windows: int, idle_ttl_s: float) -> _WorkerHandle:
+    """The live worker for ``parser``: kept, recycled, reaped, or spawned.
 
-    A worker past ``max_windows`` served windows, or dead from a crash,
-    is stopped and replaced, so no worker grows without bound across
-    documents.
+    A worker past ``max_windows`` served windows, dead from a crash, or
+    idle past ``idle_ttl_s`` is stopped and replaced, so no worker
+    grows without bound across documents and no idle server holds a
+    loaded parser child forever.
     """
     handle = _WORKERS.get(parser)
     if handle is not None:
         stale = handle.windows_served >= max_windows
-        if stale or handle.proc.exitcode is not None:
+        idle = time.monotonic() - handle.last_served >= idle_ttl_s
+        if stale or idle or handle.proc.exitcode is not None:
             _discard_worker(parser, handle)
         else:
             return handle
@@ -184,22 +224,27 @@ def parse_window_with_worker(
     timeout_s: float,
     structured: bool = False,
     max_windows: int = DEFAULT_WORKER_MAX_WINDOWS,
+    idle_ttl_s: float = DEFAULT_WORKER_IDLE_TTL_S,
 ) -> list[PageItem] | None:
     """One window through the persistent worker; ``None`` hands it to pypdf.
 
     The worker for ``parser`` is spawned on first use and kept across
     windows and documents, so the parser's model load is paid once per
-    worker life. A crashed, timed-out, or worker-reported-failed window
-    returns ``None``; the caller falls back to pypdf for that window
-    only, and the next window finds or spawns a healthy worker.
+    worker life. A crashed, timed-out, idle-past-``idle_ttl_s``, or
+    worker-reported-failed worker is dropped; the caller falls back to
+    pypdf for that window only, and the next window finds or spawns a
+    healthy worker. The whole exchange runs under the parser's parse
+    lock, so concurrent callers queue instead of sharing the worker.
     """
-    handle = _acquire_worker(parser, max_windows)
-    handle.requests.put((str(pdf_path), start, end, structured))
-    delivered, rows = _collect_response(handle, time.monotonic() + timeout_s)
-    if not delivered:
-        _discard_worker(parser, handle)  # a dead or stuck worker never serves again
-        return None
-    handle.windows_served += 1
-    if rows is None:
-        return None
-    return _items_from_rows(rows)
+    with _parser_lock(parser):
+        handle = _acquire_worker(parser, max_windows, idle_ttl_s)
+        handle.requests.put((str(pdf_path), start, end, structured))
+        delivered, rows = _collect_response(handle, time.monotonic() + timeout_s)
+        if not delivered:
+            _discard_worker(parser, handle)  # a dead or stuck worker never serves again
+            return None
+        handle.windows_served += 1
+        handle.last_served = time.monotonic()
+        if rows is None:
+            return None
+        return _items_from_rows(rows)
