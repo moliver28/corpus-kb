@@ -8,14 +8,14 @@ start. The pair itself lives in ``install._run_pull_pair``; ``install``
 re-exports the functions here so the historical ``install.<name>`` test
 patch surface keeps working.
 
-Patch seam: collaborators (``REPO_ROOT``, ``_run_cmd``) resolve through
-the ``setup_stack`` module at CALL time, so tests patch them in one
-place, exactly like the ``confirm`` seam.
+Patch seam: collaborators (``setup_assets``, ``_run_cmd``) resolve
+through their modules at CALL time, so tests patch them in one place,
+exactly like the ``confirm`` seam.
 """
 
 from __future__ import annotations
 
-from corpus_kb._setup import setup_stack
+from corpus_kb._setup import setup_assets, setup_stack
 from corpus_kb._setup.setup_steps import SETUP_REQUIRED_MODELS
 
 #: Image pulls can move several GB; the default 300s cap is too tight.
@@ -29,10 +29,10 @@ def setup_compose_pull(compose_cmd: str, apply: bool, agreed: bool | None = None
     concurrent pair collects it before the downloads start) skips the
     prompt.
     """
-    compose_file = setup_stack.REPO_ROOT.parent / "compose.yaml"
-    if not compose_file.exists():
-        print("  ERROR: compose.yaml not found at repo root.")
-        print(f"  Looked for: {compose_file}")
+    compose_file = setup_assets.resolve_setup_asset(setup_assets.COMPOSE_FILE)
+    if compose_file is None:
+        print("  ERROR: compose.yaml not found.")
+        print("  Looked inside the installed package and at the checkout root.")
         return 1
     if not apply:
         return 0

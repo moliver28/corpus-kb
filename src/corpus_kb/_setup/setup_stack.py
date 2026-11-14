@@ -19,6 +19,7 @@ import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from corpus_kb._setup import setup_assets
 from corpus_kb._setup.setup_steps import (
     EXTENSION_REMEDIATION,
     EXTENSIONS,
@@ -113,19 +114,18 @@ def _run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 300) -> 
 
 def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False) -> int:
     """Bring the docker-compose stack up if available and confirmed."""
-    repo_root = REPO_ROOT
-    compose_file = repo_root.parent / "compose.yaml"
-    if not compose_file.exists():
-        print("  ERROR: compose.yaml not found at repo root.")
-        print(f"  Looked for: {compose_file}")
+    compose_file = setup_assets.resolve_setup_asset(setup_assets.COMPOSE_FILE)
+    if compose_file is None:
+        print("  ERROR: compose.yaml not found.")
+        print("  Looked inside the installed package and at the checkout root.")
         return 1
 
-    compose_files = [repo_root.parent / "compose.yaml"]
+    compose_files = [compose_file]
     if build_local:
-        build_local_file = repo_root.parent / "compose.build-local.yaml"
-        if not build_local_file.exists():
-            print("  ERROR: compose.build-local.yaml not found at repo root.")
-            print(f"  Looked for: {build_local_file}")
+        build_local_file = setup_assets.resolve_setup_asset(setup_assets.COMPOSE_BUILD_LOCAL_FILE)
+        if build_local_file is None:
+            print("  ERROR: compose.build-local.yaml not found.")
+            print("  Looked inside the installed package and at the checkout root.")
             return 1
         compose_files.append(build_local_file)
 
@@ -147,7 +147,7 @@ def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False
     cmd = [*parts, *file_args, "up", "-d"]
     if build_local:
         cmd.append("--build")
-    return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
+    return _run_cmd(cmd, cwd=compose_file.parent, timeout=600)
 
 
 async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
