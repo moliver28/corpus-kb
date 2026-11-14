@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
+import io
 import json
 import logging
 import os
@@ -31,9 +32,11 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from io import StringIO
+from typing import Any, TextIO
 from urllib.parse import unquote, urlsplit
 
 import psutil
@@ -61,13 +64,17 @@ from corpus_kb._setup.profiles import (
     load_installer_profiles,
 )
 from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+from corpus_kb._setup.setup_pulls import (
+    collect_model_consents,
+    setup_compose_pull,
+    setup_pull_models,
+)
 from corpus_kb._setup.setup_stack import (
     DEFAULT_POSTGRES_IMAGE,
     REPO_ROOT,
     _find_compose_command,
     _run_cmd,
     _verify_postgres_image,
-    setup_pull_models,
     setup_pull_weights,
     setup_start_compose,
     setup_verify_extensions,
@@ -376,34 +383,28 @@ async def _phase_compose(
     completed: list[str],
     *,
     compose_cmd: str | None,
-    postgres_image: str,
-    skip_image_verify: bool,
     build_local: bool,
-) -> tuple[int, bool]:
-    """Phase 1: docker compose stack (checkpointed).
+) -> int:
+    """Phase: docker compose stack start (checkpointed).
 
-    Returns (exit_code, fatal); fatal means the image-verify step failed and
-    setup must stop (a compose START failure is not fatal — the later phases
-    still run, matching the historical behavior).
+    The image-signature check moved ahead of the concurrent pull pair
+    (`_verify_image_before_pulls`), so setup never downloads an image it
+    would refuse to start. A compose START failure is not fatal — the
+    later phases still run, matching the historical behavior.
     """
     if "compose" in completed:
         print("\n[Step 1/6] Docker compose stack already started; skipping.")
-        return 0, False
-    if compose_cmd:
-        if not build_local:
-            try:
-                _verify_postgres_image(postgres_image, skip_image_verify)
-            except RuntimeError as exc:
-                print(f"\n[Step 1/6] ERROR: {exc}")
-                return 1, True
-        exit_code = setup_start_compose(compose_cmd, apply=True, build_local=build_local)
-        if not exit_code:
-            completed.append("compose")
-            save_install_state(state, config)
-        return exit_code, False
-    print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
-    print("  Install Docker, then re-run setup.")
-    return 0, False
+        return 0
+    if not compose_cmd:
+        print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
+        print("  Install Docker, then re-run setup.")
+        print("  Or run: corpus-kb setup --backend duckdb for a no-Docker setup.")
+        return 0
+    exit_code = setup_start_compose(compose_cmd, apply=True, build_local=build_local)
+    if not exit_code:
+        completed.append("compose")
+        save_install_state(state, config)
+    return exit_code
 
 
 async def _run_database_phase(conn_str: str) -> int:
@@ -517,8 +518,8 @@ def _setup_phase_steps(
 ) -> list[tuple[str, str, Callable[[], Awaitable[int] | int]]]:
     """The checkpointed step table: (name, skip banner, runner) in run order.
 
-    Phase 1 (compose) is absent on purpose: its image-verify failure is
-    fatal, so _run_setup_phases runs it before this table.
+    The pull pair (images + models) and the compose phase are absent on
+    purpose: _run_setup_phases handles them before this table.
     """
     return [
         (
@@ -537,11 +538,6 @@ def _setup_phase_steps(
             lambda: setup_verify_extensions(conn_str, apply=True),
         ),
         (
-            "models",
-            "\n[Step 5/6] Ollama models already pulled; skipping.",
-            lambda: setup_pull_models(apply=True),
-        ),
-        (
             "weights",
             "\n[Step 5b/6] Extraction weights already present; skipping.",
             lambda: setup_pull_weights(apply=True),
@@ -554,27 +550,186 @@ def _setup_phase_steps(
     ]
 
 
+class _StageRouter(io.TextIOBase):
+    """A sys.stdout shim: routes each pull-pair thread's prints to its buffer.
+
+    The two download stages share one process stdout. The router keeps
+    their printed lines apart so the joined report stays ordered.
+    """
+
+    def __init__(self, routes: dict[int, StringIO], passthrough: TextIO) -> None:
+        self._routes = routes
+        self._passthrough = passthrough
+
+    def write(self, text: str) -> int:
+        sink = self._routes.get(threading.get_ident())
+        if sink is None:
+            return self._passthrough.write(text)
+        return sink.write(text)
+
+    def flush(self) -> None:
+        sink = self._routes.get(threading.get_ident())
+        if sink is None:
+            self._passthrough.flush()
+        else:
+            sink.flush()
+
+
+def _verify_image_before_pulls(plan: _SetupPlan, build_local: bool) -> bool:
+    """Run the fatal signature check before any download starts.
+
+    Returns True when setup may continue (verified, skipped, or not
+    applicable) and False when verification failed and setup must stop.
+    The check keeps its historical ``[Step 1/6]`` error prefix.
+    """
+    compose_pending = "compose" not in plan.completed and bool(plan.compose_cmd) and not build_local
+    if not compose_pending:
+        return True
+    if plan.skip_image_verify:
+        print("  Skipping Postgres image signature verification.")
+        return True
+    try:
+        _verify_postgres_image(plan.postgres_image, False)
+    except RuntimeError as exc:
+        print(f"\n[Step 1/6] ERROR: {exc}")
+        return False
+    return True
+
+
+def _pull_pair_stages(
+    plan: _SetupPlan,
+    *,
+    build_local: bool,
+    pull_possible: bool,
+    pull_agreed: bool,
+    consents: list[tuple[str, bool]],
+    buffers: dict[str, StringIO],
+    routes: dict[int, StringIO],
+) -> tuple[Callable[[], int], Callable[[], int]]:
+    """The two download stages: (image pull, model pull).
+
+    Each stage registers its thread's stdout route first, so the
+    _StageRouter keeps its printed lines inside its own buffer.
+    """
+    pull_pending = "pull" not in plan.completed
+    models_pending = "models" not in plan.completed
+
+    def _pull_stage() -> int:
+        routes[threading.get_ident()] = buffers["pull"]
+        if not pull_pending:
+            print("\n[Step 1a/6] Docker images already pulled; skipping.")
+            return 0
+        print("\n[Step 1a/6] Pulling the Docker stack images...")
+        compose_cmd = plan.compose_cmd
+        if not pull_possible or compose_cmd is None:
+            if build_local:
+                print("  --build-local set: the image builds at compose up; pull skipped.")
+            else:
+                print("  Docker not found; skipping the image pull.")
+            return 0
+        return setup_compose_pull(compose_cmd, True, agreed=pull_agreed)
+
+    def _models_stage() -> int:
+        routes[threading.get_ident()] = buffers["models"]
+        if not models_pending:
+            print("\n[Step 5/6] Ollama models already pulled; skipping.")
+            return 0
+        print("\n[Step 5/6] Pulling the required Ollama models...")
+        return setup_pull_models(True, consents=consents)
+
+    return _pull_stage, _models_stage
+
+
+def _run_pull_pair(plan: _SetupPlan, config: dict[str, Any], *, build_local: bool) -> int:
+    """Pull Docker images and Ollama models concurrently, then report in order.
+
+    The compose ``pull`` and the model downloads are the two slow network
+    steps, so they run side by side in threads. Every confirmation is
+    asked here on the calling thread first, so the prompts never race the
+    downloads. Each stage's printed lines land in its own buffer, and the
+    joined report prints pull first, models second — the same order every
+    run. Each stage checkpoints on its own success, pull then models.
+    """
+    pull_pending = "pull" not in plan.completed
+    models_pending = "models" not in plan.completed
+    pull_possible = pull_pending and bool(plan.compose_cmd) and not build_local
+    pull_agreed = False
+    consents: list[tuple[str, bool]] = []
+    if pull_possible:
+        pull_agreed = confirm("Pull the Docker images for the compose stack.")
+    if models_pending:
+        consents = collect_model_consents()
+
+    buffers = {"pull": StringIO(), "models": StringIO()}
+    routes: dict[int, StringIO] = {}
+    results: dict[str, int] = {"pull": 0, "models": 0}
+    labels = {"pull": "image pull", "models": "model pull"}
+    pull_stage, models_stage = _pull_pair_stages(
+        plan,
+        build_local=build_local,
+        pull_possible=pull_possible,
+        pull_agreed=pull_agreed,
+        consents=consents,
+        buffers=buffers,
+        routes=routes,
+    )
+
+    def _run_stage(name: str, stage: Callable[[], int]) -> None:
+        try:
+            results[name] = stage()
+        except Exception as exc:
+            results[name] = 1
+            print(f"  ERROR: the {labels[name]} failed: {exc}")
+
+    threads = (
+        threading.Thread(target=_run_stage, args=("pull", pull_stage)),
+        threading.Thread(target=_run_stage, args=("models", models_stage)),
+    )
+    real_stdout = sys.stdout
+    sys.stdout = _StageRouter(routes, real_stdout)
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        sys.stdout = real_stdout
+
+    print(buffers["pull"].getvalue(), end="")
+    print(buffers["models"].getvalue(), end="")
+
+    exit_code = results["pull"] | results["models"]
+    progressed = False
+    if pull_pending and pull_possible and not results["pull"]:
+        plan.completed.append("pull")
+        progressed = True
+    if models_pending and not results["models"]:
+        plan.completed.append("models")
+        progressed = True
+    if progressed:
+        save_install_state(plan.state, config)
+    return exit_code
+
+
 async def _run_setup_phases(
     plan: _SetupPlan, config: dict[str, Any], *, build_local: bool
 ) -> tuple[int, bool]:
-    """Run the compose phase, then every step-table phase in order.
+    """Run the pull pair, the compose phase, then every step-table phase.
 
-    Returns (exit_code, fatal); fatal means the image-verify step failed and
-    setup must stop (a compose START failure is not fatal — the later phases
-    still run, matching the historical behavior).
+    Returns (exit_code, fatal); fatal means the image-verify step failed
+    and setup must stop (a compose START failure is not fatal — the later
+    phases still run, matching the historical behavior).
     """
-    phase_exit, fatal = await _phase_compose(
+    if not _verify_image_before_pulls(plan, build_local):
+        return 1, True
+    exit_code = _run_pull_pair(plan, config, build_local=build_local)
+    exit_code |= await _phase_compose(
         plan.state,
         config,
         plan.completed,
         compose_cmd=plan.compose_cmd,
-        postgres_image=plan.postgres_image,
-        skip_image_verify=plan.skip_image_verify,
         build_local=build_local,
     )
-    if fatal:
-        return phase_exit, True
-    exit_code = phase_exit
     for name, skip_banner, step in _setup_phase_steps(config, plan.conn_str, plan.profile):
         exit_code |= await _run_phase(plan.state, config, plan.completed, name, skip_banner, step)
     return exit_code, False
@@ -592,13 +747,13 @@ async def setup_cmd(
     """One-flow guided setup for the docker-compose stack.
 
     Steps:
-      1. verify Postgres image signature (cosign)
-      2. docker compose up -d
-      3. pip install -e .[dev]
-      4. create database/user and run migrations
-      5. verify AGE + pgml extensions
-      6. pull required Ollama models
-      7. write/update user config
+      1. verify the Postgres image signature (cosign)
+      2. pull Docker images and Ollama models concurrently
+      3. docker compose up -d
+      4. pip install -e .[dev]
+      5. create database/user and run migrations
+      6. verify AGE + pgml extensions
+      7. pull extraction weights, then write the user config
 
     Completed phases are persisted so interrupted runs can resume with
     ``corpus-kb setup``. Use ``--fresh`` to reset the checkpoint.
@@ -784,6 +939,7 @@ __all__ = [
     "check_extensions",
     "check_ollama",
     "check_postgres",
+    "collect_model_consents",
     "confirm",
     "detect_profile",
     "install_database",
@@ -798,6 +954,7 @@ __all__ = [
     "psutil",
     "reset_install_state",
     "save_install_state",
+    "setup_compose_pull",
     "setup_print_dry_run_steps",
     "setup_pull_models",
     "setup_start_compose",

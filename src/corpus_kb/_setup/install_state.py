@@ -17,12 +17,15 @@ DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.yaml"
 
 # Resumable installer phases. Order matters: each phase is idempotent and
 # checkpoints to a state file on success so interrupted runs can resume.
+# "pull" and "models" run as one concurrent pair before compose up, so the
+# two big downloads overlap; the pair checkpoints pull first, models second.
 INSTALL_PHASES: tuple[str, ...] = (
+    "pull",
+    "models",
     "compose",
     "python",
     "database",
     "extensions",
-    "models",
     "weights",
     "config",
 )

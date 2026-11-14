@@ -141,3 +141,30 @@ async def test_setup_dry_run_reports_missing_docker() -> None:
     assert result == 0
     output = stdout_capture.getvalue()
     assert "not found; install Docker to proceed" in output
+    assert "corpus-kb setup --backend duckdb" in output
+
+
+@pytest.mark.asyncio
+async def test_setup_dry_run_lists_pull_step_and_concurrency() -> None:
+    """The dry run lists the image pull step and its overlap with the model pulls."""
+    stdout_capture = StringIO()
+    config = {
+        "installer": {},
+        "database": {"connection_string": "postgresql://u:p@localhost:5433/db"},
+    }
+    with (
+        patch.object(sys, "stdout", stdout_capture),
+        patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
+        patch.object(install.psutil, "cpu_count", return_value=4),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=(0.0, False)),
+        patch.object(install, "_find_compose_command", return_value="docker compose"),
+    ):
+        result = await install.setup_cmd(config, dry_run=True, fresh=False)
+
+    assert result == 0
+    output = stdout_capture.getvalue()
+    assert "Pull the Docker stack images" in output
+    assert "docker compose -f compose.yaml pull" in output
+    assert "concurrent" in output.lower()
+    assert "Pre-pull extraction model weights" in output
+    assert "docker compose -f compose.yaml up -d" in output
