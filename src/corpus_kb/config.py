@@ -265,14 +265,27 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     # Storage-portability backend truth: Postgres-only engine selections are
     # refused while database.backend is duckdb (the mix gate runs AFTER the
     # alias layers, so it sees the effective extraction backend).
-    mix_errors = backend_mix_errors(config)
-    if mix_errors:
-        raise ValueError(mix_errors[0])
+    _raise_first_error(backend_mix_errors(config))
 
+    # The remaining cross-field gates (chat rung, matryoshka, contextualize,
+    # topics, analysis, ui.spa, notebooks) each own their rules and messages
+    # in their settings module; the first refusal wins.
+    _run_load_gates(config)
+
+    return config
+
+
+def _run_load_gates(config: dict[str, object]) -> None:
+    """Run every cross-field load gate and raise the first refusal.
+
+    Each gate owns its rules and remediation text in its settings module
+    (chat rung, matryoshka MRL, contextualize v2, topics, analysis,
+    ui.spa, notebooks). One gate per call site keeps this loader flat.
+    """
     # Phase-2 Wave 7 chat: rung and ownership truth. A claude-agent-sdk
     # selection on a shared server would change the billing path without
     # the owner's knowledge, so it is refused AT LOAD, never silently
-    # switched (chat_backend_errors owns the rules and the messages).
+    # switched.
     chat_errors = chat_backend_errors(config)
     if chat_errors:
         raise ValueError(chat_errors[0])
@@ -282,8 +295,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         raise ValueError(mrl_error)
 
     # W3 contextualize v2: backend/profile/apply_to/max_context_tokens are
-    # rejected AT LOAD with the remediation text (rag/contextual_settings.py
-    # is the single source of both the rules and the messages).
+    # rejected AT LOAD with the remediation text.
     from corpus_kb.rag.contextual_settings import contextualize_settings_error
 
     contextual_error = contextualize_settings_error(config)
@@ -291,7 +303,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         raise ValueError(contextual_error)
 
     # Wave 4 topics: method/min_topic_size are rejected AT LOAD with the
-    # remediation text (topics/settings.py owns the rules and messages).
+    # remediation text.
     from corpus_kb.topics.settings import topics_settings_error
 
     topics_error = topics_settings_error(config)
@@ -299,30 +311,31 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         raise ValueError(topics_error)
 
     # Corpus analysis program: labeling.min_signals, classification.tier
-    # and topics.over_time.bins/undated are rejected AT LOAD with the
-    # remediation text (analysis/settings.py owns the rules and messages).
+    # and topics.over_time.bins/undated are rejected AT LOAD.
     from corpus_kb.analysis.settings import analysis_settings_error
 
     analysis_error = analysis_settings_error(config)
     if analysis_error is not None:
         raise ValueError(analysis_error)
 
-    # Browser UI gates AT LOAD: ui.spa.* values must be sane
-    # (ui_spa_settings_error owns the rules and the remediation text).
+    # Browser UI gates AT LOAD: ui.spa.* values must be sane.
     ui_error = ui_spa_settings_error(config)
     if ui_error is not None:
         raise ValueError(ui_error)
 
     # UX Wave 6 notebooks console: notebooks.enabled must be a real bool and
-    # notebooks.directory a non-empty string AT LOAD (notebooks/settings.py
-    # owns the rules and the remediation text).
+    # notebooks.directory a non-empty string AT LOAD.
     from corpus_kb.notebooks.settings import notebooks_settings_error
 
     notebooks_error = notebooks_settings_error(config)
     if notebooks_error is not None:
         raise ValueError(notebooks_error)
 
-    return config
+
+def _raise_first_error(errors: list[str]) -> None:
+    """Raise the first gate refusal; empty means the gate passed."""
+    if errors:
+        raise ValueError(errors[0])
 
 
 def apply_extraction_backend_alias(config: dict[str, object]) -> None:

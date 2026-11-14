@@ -584,7 +584,10 @@ describe("Ask page", () => {
           chunkFrame(sentences[1]),
           envelopeFrame,
           "data: [DONE]\n\n",
-        ]),
+          // 150 ms per frame: the mid-stream assertions below must
+          // observe the partial answer before the envelope lands, even
+          // on a loaded CI runner (the 10 ms default races the settle).
+        ], 150),
       },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
