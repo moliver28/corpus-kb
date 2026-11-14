@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 
 import pytest
@@ -421,3 +422,73 @@ class TestClaudeRungGuards:
 
 def _settings() -> ChatSettings:
     return read_chat_settings({})
+
+
+class _FakeLlm:
+    """The LlmHandler seam: a model name and a scripted chat_stream."""
+
+    model = "fake-model"
+
+    def __init__(self, events: list[object]) -> None:
+        self._events = events
+
+    async def chat_stream(
+        self, messages: list[dict[str, str]], options: dict[str, object] | None = None
+    ) -> AsyncIterator[object]:
+        for event in self._events:
+            yield event
+
+
+def _ollama_session(llm: _FakeLlm, monkeypatch: pytest.MonkeyPatch) -> ChatSession:
+    """One ollama-rung session over the faked ask machinery."""
+    from corpus_kb.chat import ollama_rung
+
+    source: dict[str, object] = {
+        "n": 1,
+        "chunk_id": "c1",
+        "doc_id": "d1",
+        "source": "docs/t.txt",
+        "file_path": "/docs/t.txt",
+        "text": "evidence text",
+        "score": 0.5,
+    }
+
+    async def fake_retrieve(
+        text: str, handler: object, tenant: object, k: int | None
+    ) -> tuple[object, list[dict[str, object]], bool]:
+        return object(), [source], False
+
+    monkeypatch.setattr("corpus_kb.rag.create_embedder", lambda config, pool: object())
+    monkeypatch.setattr(
+        "corpus_kb.handlers.query_handler.QueryHandler", lambda *args, **kwargs: object()
+    )
+    monkeypatch.setattr("corpus_kb.handlers.llm_handler.LlmHandler", lambda config: llm)
+    monkeypatch.setattr("corpus_kb.ask.steps.retrieve_evidence", fake_retrieve)
+    return ollama_rung.build_session(_settings(), {}, pg_pool=None, resume=None)
+
+    def test_completed_turn_receipts_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Sentences carry the [1] marker so the grounded emitter keeps them.
+        llm = _FakeLlm(
+            [{"message": {"content": "Hello [1]. "}}, {"message": {"content": "World [1]."}}]
+        )
+        session = _ollama_session(llm, monkeypatch)
+        events = _events(session, "q")
+        envelope = events[-1]
+        assert isinstance(envelope, ChatEnvelope)
+        assert envelope.is_error is False
+        assert envelope.terminal_reason == "completed"
+        assert envelope.model == "fake-model"
+        assert len(envelope.citations) == 1
+
+    def test_mid_stream_failure_receipts_as_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Partial text streamed, then the model errored: the receipt must
+        # NOT be a success (the pinned P2).
+        llm = _FakeLlm([{"message": {"content": "partial "}}, {"error": "connection reset"}])
+        session = _ollama_session(llm, monkeypatch)
+        events = _events(session, "q")
+        warnings = [e for e in events if isinstance(e, ChatWarning)]
+        assert warnings, "the failure must warn"
+        envelope = events[-1]
+        assert isinstance(envelope, ChatEnvelope)
+        assert envelope.is_error is True
+        assert envelope.terminal_reason == "generation_failed"

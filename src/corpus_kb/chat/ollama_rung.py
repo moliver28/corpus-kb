@@ -105,7 +105,8 @@ def _turn_stream(
             _remember(history, text, "", history_turns)
             return
         llm = LlmHandler(config)
-        deltas = _generate(text, sources, history, llm)
+        mid_stream_failed: list[bool] = []
+        deltas = _generate(text, sources, history, llm, mid_stream_failed)
         if deltas is None:
             yield ChatWarning(
                 "The local model is unavailable. Check the llm settings. Then try again."
@@ -117,7 +118,10 @@ def _turn_stream(
                 kept += piece.text
         citations = citations_from_sources(sources)
         answer = kept.strip()
-        failed = not answer
+        # A mid-stream model error receipts as a failure even when some
+        # text streamed before it — never a success receipt for a broken
+        # turn.
+        failed = not answer or bool(mid_stream_failed)
         if failed:
             yield ChatWarning("The local model did not return a citable answer for this turn.")
         yield _receipt(
@@ -137,8 +141,13 @@ def _generate(
     sources: list[dict[str, object]],
     history: list[dict[str, str]],
     llm: object,
+    failed: list[bool],
 ) -> AsyncIterator[ChatDelta] | None:
-    """The grounded-delta stream, or None when the seam is missing."""
+    """The grounded-delta stream, or None when the seam is missing.
+
+    A stream-side model error appends ``True`` to ``failed`` so the
+    turn's receipt can carry it.
+    """
     from corpus_kb.ask.streaming import GroundedEmitter
 
     emitter = GroundedEmitter(len(sources))
@@ -153,12 +162,11 @@ def _generate(
     stream_llm = cast("Callable[..., AsyncIterator[object]]", chat_stream)
 
     async def stream() -> AsyncIterator[ChatDelta]:
-        failed = False
         async for event in stream_llm(prompt_messages, options={"temperature": 0}):
             if not isinstance(event, dict):
                 continue
             if event.get("error"):
-                failed = True
+                failed.append(True)
                 break
             message = event.get("message")
             piece = message.get("content", "") if isinstance(message, dict) else ""
