@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from corpus_kb._setup.doctor_chat import chat_checks
 from corpus_kb.config import get_default_config
@@ -22,7 +22,7 @@ _LOGIN_FIX_SNIPPET = "CLAUDE_CONFIG_DIR=~/.claude-corpus claude"
 
 def _config(tmp_path: Path, **chat_overrides: Any) -> dict[str, Any]:
     config = dict(get_default_config())
-    chat = dict(config["chat"])  # type: ignore[call-overload]
+    chat = dict(cast(dict[str, Any], config["chat"]))
     claude = dict(chat.get("claude") or {})
     claude["config_dir"] = str(tmp_path / "pin")
     chat["claude"] = claude

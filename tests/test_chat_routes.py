@@ -59,7 +59,7 @@ def _scripted_turn(script: list[object]) -> Any:
     return turn
 
 
-def _script(raise_exc: Exception | None = None) -> list[object]:
+def _script() -> list[object]:
     delta = ChatDelta("Hello world")
     activity = ChatActivity("search", "Read 3 chunks", 3)
     warning = ChatWarning("Your login expires in 3 days")
