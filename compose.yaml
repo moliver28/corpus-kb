@@ -12,6 +12,7 @@
 #   docker compose up -d          # start Postgres from the pre-built image
 #   docker compose down -v        # stop and remove data volumes
 #
+# Image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17 (extensions + grant init baked); local build fallback: compose.build-local.yaml.
 # To build the Postgres image locally instead of using the pre-built image:
 #   corpus-kb setup --build-local
 #   # or manually:
