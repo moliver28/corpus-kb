@@ -102,6 +102,10 @@ async def send_chat_message(request: Request) -> Response:
     then exactly one ``chat.envelope``, then ``[DONE]``. ``stream: false``
     returns the same receipt as JSON.
     """
+    import corpus_kb.chat as chat_core
+
+    config = _config()
+    chat_core.enabled_rung(config)  # disabled answers typed, never a 404 drift
     session = await _session_or_error(request.path_params["sid"])
     manager = _manager()
     body = await parse_body(request)
@@ -134,11 +138,14 @@ async def _receipt_of(events: AsyncGenerator[object, None]) -> dict[str, object]
 @route_errors
 async def list_chat_sessions(request: Request) -> Response:
     """GET /api/chat/sessions — the CLI's own session store, newest first."""
+    import corpus_kb.chat as chat_core
     from corpus_kb.chat.claude_rung import list_transcripts
 
+    config = _config()
+    chat_core.enabled_rung(config)  # disabled answers typed, never a 404 drift
     limit = opt_int(request.query_params.get("limit"), 50, name="limit")
     offset = opt_int(request.query_params.get("offset"), 0, name="offset")
-    rows = await list_transcripts(_config(), limit, offset)
+    rows = await list_transcripts(config, limit, offset)
     return JSONResponse(
         {
             "status": "success",

@@ -20,7 +20,7 @@ from corpus_kb.chat import claude_rung
 from corpus_kb.chat.events import ChatActivity, ChatDelta, ChatEnvelope, ChatWarning
 from corpus_kb.chat.session import ChatManager, ChatSession
 from corpus_kb.chat.settings import ChatSettings, read_chat_settings
-from corpus_kb.errors import ConfigError, ConflictError
+from corpus_kb.errors import ConfigError, ConflictError, DependencyMissingError
 
 
 class FakeAgentClient:
@@ -380,6 +380,15 @@ class TestClaudeRungGuards:
             assert "corpus" in output["permissionDecisionReason"]
         no_opinion = asyncio.run(claude_rung._tool_gate(_probe("mcp__corpus__search"), "t1", {}))
         assert no_opinion == {}
+
+    def test_list_transcripts_refuses_without_the_chat_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A base install (no [chat] extra): the SDK import guard answers
+        # the typed dependency error, never a bare ImportError (500).
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
+        with pytest.raises(DependencyMissingError):
+            asyncio.run(claude_rung.list_transcripts(_settings(), 10, 0))
 
     def test_cli_path_knob_reaches_the_sdk_options(self) -> None:
         settings = read_chat_settings({"chat": {"claude": {"cli_path": "C:/bin/claude.exe"}}})

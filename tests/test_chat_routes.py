@@ -9,6 +9,7 @@ list_sessions pagination, and the disconnect close (interrupt + aclose).
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -138,6 +139,7 @@ def client() -> TestClient:
 class TestFrameSequence:
     def test_full_stream_order(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         _install(monkeypatch, _session())
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.post("/api/chat/sessions/s1/messages", json={"text": "q", "stream": True})
         assert response.status_code == 200
         body = response.text
@@ -157,6 +159,7 @@ class TestFrameSequence:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _install(monkeypatch, _session())
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         streamed = client.post("/api/chat/sessions/s1/messages", json={"text": "q", "stream": True})
         plain = client.post("/api/chat/sessions/s1/messages", json={"text": "q"})
         assert plain.status_code == 200
@@ -180,6 +183,7 @@ class TestErrorFrames:
 
         conflict = ConflictError("One turn runs at a time.")
         _install(monkeypatch, _session(raise_exc=conflict))
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.post("/api/chat/sessions/s1/messages", json={"text": "q", "stream": True})
         import json
 
@@ -202,6 +206,7 @@ class TestErrorFrames:
 
     def test_unknown_session_404(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         _install(monkeypatch, _session())
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.post("/api/chat/sessions/zz/messages", json={"text": "q"})
         assert response.status_code == 404
         assert response.json()["error_type"] == "not_found"
@@ -210,9 +215,38 @@ class TestErrorFrames:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _install(monkeypatch, _session())
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.post("/api/chat/sessions/s1/messages", json={"text": "  "})
         assert response.status_code == 400
         assert response.json()["error_type"] == "validation_error"
+
+
+class TestRouteGating:
+    """Disabled chat answers typed on every route — never a 404 drift."""
+
+    def test_send_disabled_is_typed_not_404(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _install(monkeypatch, _session())
+        response = client.post("/api/chat/sessions/s1/messages", json={"text": "q"})
+        assert response.status_code == 400
+        assert response.json()["error_type"] == "config_error"
+
+    def test_list_disabled_is_typed(self, client: TestClient) -> None:
+        response = client.get("/api/chat/sessions")
+        assert response.status_code == 400
+        assert response.json()["error_type"] == "config_error"
+
+    def test_list_without_the_chat_extra_is_typed_not_500(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Chat enabled on a base install (no [chat] extra): the SDK
+        # import guard answers the dependency error, never a 500.
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
+        response = client.get("/api/chat/sessions")
+        assert response.status_code == 503
+        assert response.json()["error_type"] == "dependency_missing"
 
 
 class TestSessionsListing:
@@ -232,6 +266,7 @@ class TestSessionsListing:
             return rows[offset : offset + (limit or len(rows))]
 
         monkeypatch.setattr("corpus_kb.chat.claude_rung.list_transcripts", fake_list)
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.get("/api/chat/sessions?limit=2&offset=1")
         assert response.status_code == 200
         result = response.json()["result"]
@@ -241,7 +276,10 @@ class TestSessionsListing:
         assert result["limit"] == 2
         assert result["offset"] == 1
 
-    def test_negative_limit_is_typed_error(self, client: TestClient) -> None:
+    def test_negative_limit_is_typed_error(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("corpus_kb.config.load_config", lambda path=None: {**_enabled_config()})
         response = client.get("/api/chat/sessions?limit=-3")
         assert response.status_code == 400
         assert response.json()["error_type"] == "validation_error"
@@ -413,6 +451,8 @@ async def _resume_create(config: object, pool: object, resume: str | None = None
     )
     return await manager.create(session)
 
+
+class TestCreateRoute:
     def test_create_session_returns_ids(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:

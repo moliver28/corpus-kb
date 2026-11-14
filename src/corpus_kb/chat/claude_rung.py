@@ -78,11 +78,19 @@ async def list_transcripts(
     """The CLI's own session store, newest first ([D9]; no second store).
 
     The sync helper runs in a thread; it reads the transcripts the
-    pinned ``cwd`` produced, so resume stays stable.
+    pinned ``cwd`` produced, so resume stays stable. A base install
+    (no ``[chat]`` extra) answers a typed dependency error, never a
+    500.
     """
     import asyncio
 
-    from claude_agent_sdk import list_sessions as sdk_list_sessions
+    try:
+        from claude_agent_sdk import list_sessions as sdk_list_sessions
+    except ImportError as exc:
+        raise DependencyMissingError(
+            "The chat extra is not installed. Install corpus-kb with the chat extra.",
+            remediation='Install the extra: pip install -e ".[chat]". Then restart the server.',
+        ) from exc
 
     directory = str(resolved_data_dir(config))
 
