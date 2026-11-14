@@ -1008,12 +1008,20 @@ def get_default_config() -> dict[str, object]:
                 "model": "",
                 "max_turns": 20,
                 "allowed_tools": ["mcp__corpus__search"],
+                # The deny list covers the auto-allowed read-only built-ins
+                # (Read/Glob/Grep/LS/NotebookRead) plus every write, shell,
+                # and web tool; the PreToolUse hook denies the rest.
                 "disallowed_tools": [
                     "Bash",
                     "Write",
                     "Edit",
                     "MultiEdit",
                     "NotebookEdit",
+                    "NotebookRead",
+                    "Read",
+                    "Glob",
+                    "Grep",
+                    "LS",
                     "WebFetch",
                     "WebSearch",
                     "Task",

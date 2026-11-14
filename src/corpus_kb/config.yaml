@@ -359,9 +359,30 @@ chat:
     # Empty = the Claude CLI default model.
     model: ""
     max_turns: 20
-    # The agent may call the corpus search tool and nothing else.
+    # The agent may call the corpus search tool and nothing else. The
+    # deny list covers the auto-allowed read-only built-ins too, and a
+    # PreToolUse hook denies every call outside the allow list.
     allowed_tools: ["mcp__corpus__search"]
-    disallowed_tools: [Bash, Write, Edit, MultiEdit, NotebookEdit, WebFetch, WebSearch, Task, TodoWrite, SlashCommand, KillShell, BashOutput]
+    disallowed_tools:
+      [
+        Bash,
+        Write,
+        Edit,
+        MultiEdit,
+        NotebookEdit,
+        NotebookRead,
+        Read,
+        Glob,
+        Grep,
+        LS,
+        WebFetch,
+        WebSearch,
+        Task,
+        TodoWrite,
+        SlashCommand,
+        KillShell,
+        BashOutput,
+      ]
     # Filled ONLY from CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN, never from a file.
     oauth_token: ""
   ollama:

@@ -73,10 +73,12 @@ doctor` names this fix when the probe fails.
 ## What the agent may do
 
 Deny-by-default: the agent sees exactly one tool,
-`mcp__corpus__search`, a read-only search over your corpus. File
-writes, shell, and web access are removed from its context, and a
-permission callback denies anything unlisted. Chat writes nothing to
-the corpus.
+`mcp__corpus__search`, a read-only search over your corpus. The
+auto-allowed read-only file tools (Read, Glob, Grep, LS, NotebookRead)
+and every write, shell, and web tool are denied by name, and a
+per-call hook denies anything outside the allow list — including a
+call no rule would have prompted for. Chat writes nothing to the
+corpus.
 
 ## Sessions
 

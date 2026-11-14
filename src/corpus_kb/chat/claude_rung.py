@@ -6,8 +6,10 @@ Session contract ([D3]-[D5]):
   list, 2026-11-13) — never a silent billing-path switch, never env
   scrubbing;
 - deny-by-default tooling: ``strict_mcp_config`` plus the one corpus
-  server, the one pre-approved tool, the disallowed built-ins, and a
-  ``can_use_tool`` backstop that denies anything unlisted;
+  server, the one pre-approved tool, the disallowed built-ins (including
+  the auto-allowed read-only ones), a ``PreToolUse`` hook that gates
+  every call (the only per-call gate; ``can_use_tool`` fires only when
+  the CLI's rules say "ask"), and the ``can_use_tool`` backstop;
 - ``setting_sources=[]`` — no filesystem settings load (None would load
   ALL sources; the SDK reference is explicit);
 - the work-account pin via ``CLAUDE_CONFIG_DIR`` and a stable ``cwd``.
@@ -32,7 +34,7 @@ from corpus_kb.errors import ConfigError, DependencyMissingError, InternalError
 
 if TYPE_CHECKING:
     from claude_agent_sdk import ClaudeAgentOptions
-    from claude_agent_sdk.types import PermissionResult
+    from claude_agent_sdk.types import HookContext, HookInput, HookJSONOutput, PermissionResult
 
 __all__ = ["PRECEDENCE_ENV_VARS", "build_session", "env_refusal", "list_transcripts"]
 
@@ -164,13 +166,39 @@ async def _deny_backstop(
 
     ``allowed_tools`` auto-approval never reaches this callback; it fires
     only for calls that would otherwise prompt — and it denies every
-    name except the one corpus read.
+    name except the one corpus read. The ``PreToolUse`` hook
+    (:func:`_tool_gate`) is the gate that also sees auto-allowed calls.
     """
     from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
     if tool_name == _CORPUS_TOOL_WIRE_NAME:
         return PermissionResultAllow(updated_input=tool_input)
     return PermissionResultDeny(message="Chat may read the corpus and nothing else.")
+
+
+async def _tool_gate(
+    input_data: HookInput,
+    _tool_use_id: str | None,
+    _context: HookContext,
+) -> HookJSONOutput:
+    """The [D5] per-call gate: the corpus read or a hook deny.
+
+    The SDK's own reference names this as the gate that fires for EVERY
+    tool call regardless of permission rules — including the read-only
+    built-ins the CLI auto-allows and never prompts for. A deny here
+    blocks the call; ``{}`` (no opinion) leaves the call to the rules,
+    where ``allowed_tools`` pre-approves the one corpus read.
+    """
+    tool_name = str(input_data.get("tool_name", "") or "")
+    if tool_name == _CORPUS_TOOL_WIRE_NAME:
+        return {}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "Chat may read the corpus and nothing else.",
+        }
+    }
 
 
 def _build_options(
@@ -183,6 +211,7 @@ def _build_options(
 ) -> ClaudeAgentOptions:
     """``ClaudeAgentOptions`` exactly per [D5]; the SDK imports lazily."""
     from claude_agent_sdk import ClaudeAgentOptions as _Options
+    from claude_agent_sdk import HookMatcher as _HookMatcher
 
     return _Options(
         cwd=str(resolved_data_dir(config)),
@@ -195,6 +224,11 @@ def _build_options(
         setting_sources=[],
         mcp_servers={"corpus": build_corpus_mcp_server(pg_pool, config)},
         can_use_tool=_deny_backstop,
+        hooks={
+            # The per-call gate ([D5]): fires for every call, including
+            # the auto-allowed ones. on_failure="block" fails closed.
+            "PreToolUse": [_HookMatcher(matcher=None, hooks=[_tool_gate], on_failure="block")]
+        },
         include_partial_messages=True,
         stderr=on_stderr,
         resume=resume,

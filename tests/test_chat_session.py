@@ -298,6 +298,14 @@ class TestClaudeRungGuards:
         assert list(options.mcp_servers) == ["corpus"]
         assert options.allowed_tools == ["mcp__corpus__search"]
         assert "Bash" in options.disallowed_tools
+        # [D5]: the auto-allowed read-only built-ins are denied by name,
+        # and the per-call hook gate is wired fail-closed.
+        for read_only in ("Read", "Glob", "Grep", "LS", "NotebookRead"):
+            assert read_only in options.disallowed_tools
+        matchers = (options.hooks or {}).get("PreToolUse", [])
+        assert len(matchers) == 1
+        assert matchers[0].on_failure == "block"
+        assert matchers[0].hooks == [claude_rung._tool_gate]
         fresh = claude_rung._build_options(
             _settings(),
             {},
@@ -314,6 +322,28 @@ class TestClaudeRungGuards:
         denied = asyncio.run(claude_rung._deny_backstop("Bash", {"command": "rm"}))
         assert allowed.behavior == "allow"
         assert denied.behavior == "deny"
+
+    def test_tool_gate_denies_everything_but_the_corpus_read(self) -> None:
+        # The PreToolUse probe: the gate fires for EVERY call, including
+        # the read-only built-ins the CLI auto-allows without prompting.
+        # No live CLI; the deny decision is the pin.
+        from claude_agent_sdk.types import PreToolUseHookInput
+
+        def _probe(tool_name: str) -> PreToolUseHookInput:
+            return {
+                "hook_event_name": "PreToolUse",
+                "tool_name": tool_name,
+                "tool_input": {"file_path": "C:/host/secret.txt"},
+                "tool_use_id": "t1",
+            }
+
+        for auto_allowed in ("Read", "Glob", "Grep", "LS", "NotebookRead", "Bash", "Task"):
+            decision = asyncio.run(claude_rung._tool_gate(_probe(auto_allowed), "t1", {}))
+            output = decision["hookSpecificOutput"]
+            assert output["permissionDecision"] == "deny", auto_allowed
+            assert "corpus" in output["permissionDecisionReason"]
+        no_opinion = asyncio.run(claude_rung._tool_gate(_probe("mcp__corpus__search"), "t1", {}))
+        assert no_opinion == {}
 
     def test_sdk_not_imported_by_package_import(self) -> None:
         code = (
