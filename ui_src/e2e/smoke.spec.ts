@@ -105,6 +105,18 @@ test.describe("SPA smoke on a live server", () => {
     await expect(ledger.getByRole("cell").first()).toBeVisible();
   });
 
+  test("chat ships off: the honest disabled panel, never a composer", async ({ page }) => {
+    // The throwaway server runs the default config (chat.enabled false),
+    // so the page must show the typed off-state and NO composer — it
+    // never pretends a session can start (Wave-7 step 9).
+    await page.goto("/app/#/chat");
+    await expect(page.getByText("Chat is not available")).toBeVisible();
+    await expect(
+      page.getByText("Chat ships switched off. The owner turns it on in config.yaml."),
+    ).toBeVisible();
+    await expect(page.getByPlaceholder("Ask the corpus")).toHaveCount(0);
+  });
+
   test("the document drawer adds a tag and edits metadata through the manifest ops", async ({
     page,
   }) => {
@@ -310,7 +322,7 @@ test.describe("SPA smoke on a live server", () => {
 test.describe("accessibility (axe-core)", () => {
   // The whole shell: the ask page scans its focusable citation list,
   // setup/review/codebook their dense tables and forms.
-  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph", "#/map"]) {
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph", "#/map", "#/chat"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.
