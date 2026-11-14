@@ -61,13 +61,34 @@ def _stream_event(text: str) -> object:
 
 
 def _tool_use() -> object:
-    return SimpleNamespace(content=[SimpleNamespace(name="search", id="t1", input={"query": "q"})])
+    return SimpleNamespace(
+        content=[SimpleNamespace(name="mcp__corpus__search", id="t1", input={"query": "q"})]
+    )
+
+
+def _contract_json(count: int) -> str:
+    return '{"results": [' + ",".join(["{}"] * count) + '], "degraded": false, "note": null}'
 
 
 def _tool_result(count: int) -> object:
-    contract = '{"results": [' + ",".join(["{}"] * count) + '], "degraded": false, "note": null}'
+    # The string content shape.
     return SimpleNamespace(
-        content=[SimpleNamespace(tool_use_id="t1", content=contract, is_error=False)]
+        content=[SimpleNamespace(tool_use_id="t1", content=_contract_json(count), is_error=False)]
+    )
+
+
+def _tool_result_list(count: int) -> object:
+    # The SDK's list-of-text-blocks shape (types.py: ToolResultBlock.
+    # content is str | list[dict] | None); the in-process SDK-MCP tool
+    # returns exactly this form.
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                tool_use_id="t1",
+                content=[{"type": "text", "text": _contract_json(count)}],
+                is_error=False,
+            )
+        ]
     )
 
 
@@ -129,6 +150,18 @@ class TestClaudeTurnMapping:
         assert envelope.model == "claude-sonnet-5"
         assert envelope.is_error is False
         assert len(envelope.citations) == 2
+
+    def test_list_content_tool_result_still_yields_chips(self) -> None:
+        # The SDK delivers ToolResultBlock.content as str | list[dict];
+        # the list-of-text-blocks shape must land on the same chips path.
+        script = [_tool_use(), _tool_result_list(3), _result()]
+        events = _events(_claude_session(script), "question")
+        activity = [e for e in events if isinstance(e, ChatActivity)]
+        assert activity[-1].summary == "Read 3 chunks"
+        assert activity[-1].chunk_count == 3
+        envelope = events[-1]
+        assert isinstance(envelope, ChatEnvelope)
+        assert len(envelope.citations) == 3
 
     def test_stderr_drains_verbatim_before_envelope(self) -> None:
         script = [_stream_event("Hi"), _result()]

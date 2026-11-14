@@ -79,7 +79,7 @@ def _message_events(message: object, citations: list[ChatCitation]) -> list[Chat
     for block in getattr(message, "content", None) or []:
         name = getattr(block, "name", None)
         if name is not None and hasattr(block, "input"):
-            if name == "search":
+            if name == "mcp__corpus__search":
                 events.append(ChatActivity("search", "Searching the corpus...", None))
             continue
         tool_use_id = getattr(block, "tool_use_id", None)
@@ -101,13 +101,28 @@ def _delta_of(raw_event: dict[str, object]) -> ChatDelta | None:
     return ChatDelta(str(text)) if text else None
 
 
+def _result_text(content: object) -> str:
+    """The tool result's text: a plain string or a list of text blocks.
+
+    The SDK types ``ToolResultBlock.content`` as ``str | list[dict] |
+    None`` and passes the CLI's blocks through verbatim; the in-process
+    SDK-MCP tool returns the list form.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block["text"]
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        )
+    return ""
+
+
 def _result_activity(block: object, citations: list[ChatCitation]) -> ChatActivity | None:
     """The activity line from a corpus tool result ("Read N chunks")."""
-    content = getattr(block, "content", None)
-    if not isinstance(content, str):
-        return None
     try:
-        contract = json.loads(content)
+        contract = json.loads(_result_text(getattr(block, "content", None)))
     except ValueError:
         return None
     if not isinstance(contract, dict):
