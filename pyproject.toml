@@ -377,9 +377,16 @@ include = ["corpus_kb*"]
 # (mount_spa logs one line, the API keeps serving).
 # eval/*.json (textbook program W0): the golden-book manifest ships so
 # the bench CLI works from an installed wheel.
+# compose*.yaml + demo_corpus/*.md (install-ease W2): the compose files and
+# the demo corpus ship so pipx/wheel installs can run `corpus-kb setup` and
+# `corpus-kb demo-kb` without a checkout. The copies are lockstep-guarded
+# against the checkout-root originals (tests/test_packaging_assets.py).
 corpus_kb = [
     "*.yaml",
+    "compose.build-local.yaml",
+    "compose.yaml",
     "config/*.yaml",
+    "demo_corpus/*.md",
     "eval/*.json",
     "migrations/*.sql",
     "migrations_duckdb/*.sql",

@@ -1,0 +1,41 @@
+# Image-first Docker Compose for Corpus-KB.
+#
+# Starts PostgreSQL 17 with pgvector, Apache AGE, and PostgresML from a pinned
+# pre-built image. Ollama is expected to run natively or externally; it is no
+# longer part of the default compose stack.
+#
+# The database service uses the project's default credentials:
+#   user: corpus_user   password: corpus_pass   database: corpus_kb   port: 5433
+# so config.yaml / src/config.py connect out of the box.
+#
+# Usage:
+#   docker compose up -d          # start Postgres from the pre-built image
+#   docker compose down -v        # stop and remove data volumes
+#
+# To build the Postgres image locally instead of using the pre-built image:
+#   corpus-kb setup --build-local
+#   # or manually:
+#   docker compose -f compose.yaml -f compose.build-local.yaml up -d --build
+
+services:
+  postgres:
+    image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+    container_name: corpus-kb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: corpus_user
+      POSTGRES_PASSWORD: corpus_pass
+      POSTGRES_DB: corpus_kb
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corpus_user -d corpus_kb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:

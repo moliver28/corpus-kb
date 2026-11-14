@@ -22,6 +22,7 @@ from corpus_kb.demo_kb import (
 from corpus_kb.errors import DependencyMissingError
 
 REPO = Path(__file__).resolve().parent.parent
+PACKAGE_CORPUS = REPO / "src" / "corpus_kb" / "demo_corpus"
 
 EXPECTED_FILES = (
     "architecture-notes.md",
@@ -56,6 +57,47 @@ def test_demo_kb_corpus_is_original_short_sentences() -> None:
         for sentence in re.split(r"(?<=[.!?])\s+", body):
             words = [w for w in sentence.split() if re.search(r"[A-Za-z0-9]", w)]
             assert len(words) <= 20, f"{name}: sentence over 20 words: {sentence.strip()[:80]}"
+
+
+# ---------------------------------------------------------------------------
+# Corpus resolution across install layouts (install-ease W2)
+# ---------------------------------------------------------------------------
+
+
+def test_packaged_corpus_is_found_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A corpus shipped inside the package wins over the checkout copy."""
+    packaged = tmp_path / "site-packages" / "corpus_kb" / "demo_corpus"
+    packaged.mkdir(parents=True)
+    (packaged / "welcome.md").write_text("packaged corpus\n", encoding="utf-8")
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: packaged)
+
+    files = demo_kb._demo_files()
+
+    assert [path.name for path in files] == ["welcome.md"]
+
+
+def test_checkout_corpus_is_the_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Without a packaged copy, the checkout corpus at docs/demo-kb is used."""
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: None)
+
+    files = demo_kb._demo_files()
+
+    assert files == sorted(DEMO_KB_ROOT.glob("*.md"))
+
+
+def test_missing_corpus_raises_the_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No corpus in either layout raises DemoCorpusMissingError."""
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: None)
+    monkeypatch.setattr(demo_kb, "DEMO_KB_ROOT", Path("does-not-exist-placeholder"))
+
+    with pytest.raises(DemoCorpusMissingError):
+        demo_kb._demo_files()
+
+
+def test_packaged_corpus_dir_exists_in_this_repo() -> None:
+    """The shipped corpus mirror exists beside the package code."""
+    assert PACKAGE_CORPUS.is_dir()
+    assert sorted(path.name for path in PACKAGE_CORPUS.glob("*.md")) == list(EXPECTED_FILES)
 
 
 # ---------------------------------------------------------------------------
@@ -170,31 +212,28 @@ class SimpleNamespaceWithClose:
 
 
 # ---------------------------------------------------------------------------
-# The installed-wheel case: the typed missing-corpus error
+# The both-layouts-missing case: the typed missing-corpus error
 # ---------------------------------------------------------------------------
 
 
-def test_missing_folder_raises_the_typed_error(tmp_path: Path) -> None:
-    missing = tmp_path / "no-such-folder"
-    original = demo_kb.DEMO_KB_ROOT
-    demo_kb.DEMO_KB_ROOT = missing
-    try:
-        with pytest.raises(DemoCorpusMissingError) as excinfo:
-            demo_kb._demo_files()
-    finally:
-        demo_kb.DEMO_KB_ROOT = original
+def test_missing_folder_raises_the_typed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: None)
+    monkeypatch.setattr(demo_kb, "DEMO_KB_ROOT", tmp_path / "no-such-folder")
+    with pytest.raises(DemoCorpusMissingError) as excinfo:
+        demo_kb._demo_files()
     assert isinstance(excinfo.value, DependencyMissingError)
     assert "docs/demo-kb" in excinfo.value.remediation
 
 
-def test_empty_folder_raises_the_typed_error_too(tmp_path: Path) -> None:
-    original = demo_kb.DEMO_KB_ROOT
-    demo_kb.DEMO_KB_ROOT = tmp_path
-    try:
-        with pytest.raises(DemoCorpusMissingError):
-            demo_kb._demo_files()
-    finally:
-        demo_kb.DEMO_KB_ROOT = original
+def test_empty_folder_raises_the_typed_error_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: None)
+    monkeypatch.setattr(demo_kb, "DEMO_KB_ROOT", tmp_path)
+    with pytest.raises(DemoCorpusMissingError):
+        demo_kb._demo_files()
 
 
 # ---------------------------------------------------------------------------
@@ -219,12 +258,9 @@ def test_demo_kb_command_missing_corpus_exits_one(
 
     from corpus_kb.cli import cli_demo_kb
 
-    original = demo_kb.DEMO_KB_ROOT
-    demo_kb.DEMO_KB_ROOT = tmp_path / "absent"
-    try:
-        with pytest.raises(typer.Exit) as excinfo:
-            cli_demo_kb.demo_kb(json_output=False)
-    finally:
-        demo_kb.DEMO_KB_ROOT = original
+    monkeypatch.setattr(demo_kb, "_packaged_corpus_root", lambda: None)
+    monkeypatch.setattr(demo_kb, "DEMO_KB_ROOT", tmp_path / "absent")
+    with pytest.raises(typer.Exit) as excinfo:
+        cli_demo_kb.demo_kb(json_output=False)
     assert excinfo.value.exit_code == 1
     assert "docs/demo-kb" in capsys.readouterr().out

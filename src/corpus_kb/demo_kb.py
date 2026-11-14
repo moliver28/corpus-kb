@@ -6,11 +6,12 @@ the MCP/HTTP/CLI surfaces use, so the demo cannot drift from the real
 pipeline. The research transcript pipeline is NOT involved: these are
 markdown documents on the default strategy.
 
-The corpus resolves REPO-ROOT-RELATIVE (``src/corpus_kb`` is two levels
-below the checkout root), like ``research/demo.py``'s bundled corpus.
-An installed wheel has no repository, so the loader raises a typed
-``DemoCorpusMissingError`` whose remediation names the folder — an
-honest miss, never a silent no-op.
+The corpus resolves in both install layouts: the copy shipped inside
+the package (``corpus_kb/demo_corpus``, wheel and pipx installs) first,
+then the checkout folder (``docs/demo-kb``). When both are absent the
+loader raises a typed ``DemoCorpusMissingError`` whose remediation
+names the folder — an honest miss, never a silent no-op. A lockstep
+test keeps the two copies equal (tests/test_packaging_assets.py).
 
 Receipt envelope (the house shape, one meaning per key; the top-level
 keys stay exactly ``status`` and ``result`` on every run):
@@ -31,6 +32,7 @@ keys stay exactly ``status`` and ``result`` on every run):
 
 from __future__ import annotations
 
+import importlib.resources
 import logging
 from pathlib import Path
 from typing import Any
@@ -54,9 +56,9 @@ class DemoCorpusMissingError(DependencyMissingError):
     """The bundled general-RAG demo corpus folder is absent."""
 
     remediation = (
-        "The sample knowledge folder ships with the repository checkout "
-        f"({DEMO_KB_FOLDER_HINT}). Run from a clone, or ingest your own files "
-        "with corpus-kb ingest."
+        "The sample knowledge folder ships inside the package and with the "
+        f"repository checkout ({DEMO_KB_FOLDER_HINT}). Reinstall corpus-kb, "
+        "or run from a clone, or ingest your own files with corpus-kb ingest."
     )
 
 
@@ -117,15 +119,26 @@ def _as_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+def _packaged_corpus_root() -> Path | None:
+    """The corpus copy shipped inside the package, or None.
+
+    Wheels are filesystem layouts, so the traversable path is a real
+    directory path.
+    """
+    ref = importlib.resources.files("corpus_kb") / "demo_corpus"
+    if not ref.is_dir():
+        return None
+    return Path(str(ref))
+
+
 def _demo_files() -> list[Path]:
     """The demo markdown files, or the typed missing-corpus error."""
-    if not DEMO_KB_ROOT.is_dir():
-        raise DemoCorpusMissingError(f"The sample knowledge folder is missing: {DEMO_KB_ROOT}")
-    files = sorted(DEMO_KB_ROOT.glob("*.md"))
+    root = _packaged_corpus_root() or DEMO_KB_ROOT
+    if not root.is_dir():
+        raise DemoCorpusMissingError(f"The sample knowledge folder is missing: {root}")
+    files = sorted(root.glob("*.md"))
     if not files:
-        raise DemoCorpusMissingError(
-            f"The sample knowledge folder holds no markdown files: {DEMO_KB_ROOT}"
-        )
+        raise DemoCorpusMissingError(f"The sample knowledge folder holds no markdown files: {root}")
     return files
 
 
