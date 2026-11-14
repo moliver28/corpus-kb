@@ -93,3 +93,16 @@ TEXTBOOK_KEYS = frozenset({"textbook"})
 # "prompt_tokens" when the provider reported one. Extractor and reranker
 # sections stay absent until a backend reports them.
 TOKEN_KEYS = frozenset({"token_usage"})
+
+# Demo-load receipt (``demo_kb.load_demo_kb``; momus F8 close-out): the
+# house top-level shape is always these two keys, on every outcome.
+DEMO_ENVELOPE = ("status", "result")
+
+# The conditional keys INSIDE ``result`` (the ask-family shape: the
+# top-level key set stays fixed). ``degraded`` is ``True`` when an
+# ingested file carries no usable vectors; the key appears only on a
+# degraded run (#415). ``failures`` maps file name to failure text on a
+# partial run. Both are absent on a clean run. A receipt that grows a
+# conditional key outside DEMO_KEYS fails the parity gate's declaration
+# pin (tests/test_surface_parity_deep.py).
+DEMO_KEYS = frozenset({"degraded", "failures"})

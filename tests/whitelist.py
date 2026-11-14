@@ -598,3 +598,11 @@ flat_ner
 adjacency_threshold
 relation_threshold
 multi_label
+
+# Demo-load receipt contract (contracts/envelopes.py, momus F8 close-out):
+# DEMO_KEYS is the declared data surface the parity gate pins
+# (tests/test_surface_parity_deep.py) and harness authors read; the demo
+# envelope tuple DEMO_ENVELOPE is consumed by the catalogue_demo row, so
+# only DEMO_KEYS needs the bare reference. Vulture scans src only and
+# sees the tests' use as outside its reach.
+DEMO_KEYS

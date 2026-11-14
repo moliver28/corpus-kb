@@ -173,6 +173,26 @@ class TestOllamaEmbedderUsage:
         assert embedder.last_usage.embedded_texts == 1
         assert embedder.last_usage.cached_texts == 0
 
+    def test_pop_usage_takes_and_clears_the_snapshot(self) -> None:
+        """One reader takes the spend; a second reader finds it gone (F9)."""
+        embedder = OllamaEmbedder(_FAKE_CONFIG)
+
+        def _respond(**kwargs: object) -> EmbedResponse:
+            inputs = cast("list[str]", kwargs["input"])
+            return EmbedResponse(
+                embeddings=[[0.1] * embedder.dimensions for _ in inputs], prompt_eval_count=42
+            )
+
+        embedder._client.embed = MagicMock(side_effect=_respond)
+        embedder.embed_batch(["a"])
+
+        taken = embedder.pop_usage()
+
+        assert taken is not None
+        assert taken.prompt_tokens == 42
+        assert embedder.last_usage is None
+        assert embedder.pop_usage() is None
+
     def test_snapshot_has_no_token_count_on_connection_failure(self) -> None:
         embedder = OllamaEmbedder(_DEAD_PORT_CONFIG)
 

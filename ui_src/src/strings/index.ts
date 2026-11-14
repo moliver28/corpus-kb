@@ -92,6 +92,7 @@ export interface Strings {
   setupDemoConfirmTitle: string;
   setupDemoConfirmBody: string;
   setupDemoNext: string;
+  setupDemoDegraded: string;
   setupUploadTitle: string;
   setupUploadBody: string;
   setupUploadCap: string;

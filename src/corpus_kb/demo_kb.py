@@ -37,6 +37,7 @@ from typing import Any
 
 import asyncpg
 
+from corpus_kb.contracts.receipts import failure_text, stored_chunk_count
 from corpus_kb.errors import DependencyMissingError
 from corpus_kb.tools.ingest_common import load_config_or_pass
 from corpus_kb.tools.ingest_tools import ingest_file
@@ -88,7 +89,7 @@ async def load_demo_kb(
             name = path.name
             result = await ingest_file(str(path), active_pool, cfg)
             status = str(result.get("status", "error"))
-            stored = status == "partial" and _stored_chunks(result) > 0
+            stored = status == "partial" and stored_chunk_count(result) > 0
             if status == "success" or stored:
                 ingested.append(name)
                 chunk_counts[name] = _as_int(result.get("chunk_count"))
@@ -97,12 +98,12 @@ async def load_demo_kb(
                     logger.warning(
                         "Demo corpus file %s loaded in degraded mode: %s",
                         name,
-                        _failure_text(result),
+                        failure_text(result),
                     )
             elif status == "skipped":
                 skipped.append(name)
             else:
-                message = _failure_text(result)
+                message = failure_text(result)
                 failures[name] = message
                 logger.warning("Demo corpus file %s failed: %s", name, message)
     finally:
@@ -114,30 +115,6 @@ async def load_demo_kb(
 def _as_int(value: object) -> int:
     """A receipt count as an int (0 for a missing or non-integer value)."""
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def _stored_chunks(result: dict[str, object]) -> int:
-    """Chunks the store holds for this file (0 when the write did not land).
-
-    ``chunk_count`` is the in-memory count, so it cannot prove a write.
-    ``pg_chunk_total`` is the stored count of the whole document. A sink
-    without that count answers 0; this run's write count is the fallback.
-    """
-    total = _as_int(result.get("pg_chunk_total"))
-    return total if total > 0 else _as_int(result.get("pg_chunk_count"))
-
-
-def _failure_text(result: dict[str, object]) -> str:
-    """The receipt's own failure words: its ``errors``, else its ``message``.
-
-    A ``partial`` receipt carries ``errors`` and no ``message``; an
-    ``error`` receipt carries ``message``. Reading only ``message`` hid
-    the real cause of every degraded run (issue #414).
-    """
-    errors = result.get("errors")
-    if isinstance(errors, list) and errors:
-        return "; ".join(str(item) for item in errors)
-    return str(result.get("message", "unknown ingest failure"))
 
 
 def _demo_files() -> list[Path]:

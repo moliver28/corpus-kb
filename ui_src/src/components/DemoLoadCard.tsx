@@ -12,6 +12,18 @@ import type { OpResult } from "../api/types";
 import { useLongOp } from "../hooks/useLongOp";
 import { strings } from "../strings";
 
+// The degraded demo receipt: the status word stays "success" and the
+// marker rides INSIDE result (the DEMO_KEYS contract). A missing or
+// junk cell reads as a clean run — the server adds the key only on a
+// degraded run.
+function hasDegradedResult(result: OpResult): boolean {
+  if (typeof result.data !== "object" || result.data === null) return false;
+  const envelope = result.data as Record<string, unknown>;
+  if (typeof envelope.result !== "object" || envelope.result === null) return false;
+  const inner = envelope.result as Record<string, unknown>;
+  return inner.degraded === true;
+}
+
 /**
  * The sample-knowledge action: the demo-load op behind a confirm gate.
  * No parameters — the server picks the bundled folder. The receipt is
@@ -50,6 +62,11 @@ export default function DemoLoadCard() {
     } else if (settled.ok && settled.kind !== "network") {
       resultView = (
         <div className="ui-stack">
+          {/* A degraded run never reads as a clean one: the note sits
+              above the receipt headline. */}
+          {hasDegradedResult(settled) && (
+            <StatusBanner kind="warn">{strings.setupDemoDegraded}</StatusBanner>
+          )}
           <ReceiptCard result={settled} />
           {/* The jump only shows on a clean run; a partial run keeps the
               viewer on the receipt with its failure list. */}

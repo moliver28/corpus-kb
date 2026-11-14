@@ -191,6 +191,19 @@ class OllamaEmbedder:
 
         return results
 
+    def pop_usage(self) -> EmbedUsage | None:
+        """Take and clear the per-call snapshot in one step (momus F9).
+
+        A reader that pops cannot count the same spend twice, and a
+        second reader finds the snapshot gone. The read-and-clear is one
+        attribute swap, so it closes the read-after-return window on the
+        event loop. This does NOT make a shared instance thread-safe:
+        the confinement contract in ``rag/embedder_usage.py`` still
+        binds every receipt reader.
+        """
+        usage, self.last_usage = self.last_usage, None
+        return usage
+
     def _request_dimensions(self) -> int | None:
         """The ``dimensions`` value to pass to Ollama, or None for native.
 

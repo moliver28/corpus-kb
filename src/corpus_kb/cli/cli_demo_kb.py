@@ -4,9 +4,9 @@ One command loads the bundled general-RAG sample corpus
 (``docs/demo-kb``) through the standard ingest tool layer, so a fresh
 database has something to search before any real files arrive.
 
-A lifecycle command in the quickstart/eval family — NOT a catalogue
-operation (the ``cli_quickstart`` precedent). Registry rows wait for
-Task 5b, which lands the MCP legs and the rows in one change.
+A lifecycle command in the quickstart/eval family. The ``demo_load``
+catalogue row (``contracts/catalogue_demo.py``) owns this operation's
+envelope contract; the MCP tool and POST /api/demo/load share it.
 
 HONEST EXIT CODES: ``0`` every sample file ingested or skipped unchanged,
 ``1`` the corpus is missing or some file failed (the receipt says which).

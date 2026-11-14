@@ -121,11 +121,13 @@ class ResearchHandler:
     def _link_embed_tallied(self) -> tuple[Callable[[str], list[float]] | None, UsageTally]:
         """The link embed fn plus the run's usage tally (issue #198).
 
-        The wrapper reads the embedder's per-call snapshot right after each
-        embed. ``link_exchanges`` is synchronous (no await points), so one
-        file's embeds never interleave with another task's: the per-file
-        attribution is exact. An injected ``embed_fn`` carries no snapshot —
-        the tally stays empty and the receipt key stays honestly absent.
+        The wrapper pops the embedder's per-call snapshot right after each
+        embed (``pop_usage`` — take and clear, so no spend is counted
+        twice; momus F9). ``link_exchanges`` is synchronous (no await
+        points), so one file's embeds never interleave with another
+        task's: the per-file attribution is exact. An injected
+        ``embed_fn`` carries no snapshot — the tally stays empty and the
+        receipt key stays honestly absent.
         """
         tally = UsageTally()
         base = self._link_embed()
@@ -135,7 +137,7 @@ class ResearchHandler:
 
         def _embed(text: str) -> list[float]:
             vectors = base(text)
-            usage = embedder.last_usage
+            usage = embedder.pop_usage()
             if usage is not None:
                 tally.add(usage)
             return vectors
