@@ -10,8 +10,7 @@ Sources (exactly two, zero-drift rule 1): ``surface_registry.SURFACES``
 loaded BY PATH (stdlib-only, never a package member), and
 ``research_http.tool_routes()`` for the body keys (lazy import). One
 declared exception: the multipart upload row names its ``file`` form
-field in :data:`MULTIPART_BODY_KEYS` below.
->>>>>>> origin/master
+field in :data:`MULTIPART_BODY_KEYS` below. Methods: gen_method_register_docs.
 
 Usage:
     python src/corpus_kb/_setup/gen_ui_manifest.py [--check] [--project-root PATH]
