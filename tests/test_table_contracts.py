@@ -324,21 +324,20 @@ async def test_30_outliers_rank_contract(both_pool: Any) -> None:
 
 
 async def test_12_clusters_inspect_contract(both_pool: Any) -> None:
-    """Two tight pairs: equal-size clusters tie and order by cluster id."""
+    """Two tight groups of six: equal-size clusters tie and order by cluster id.
+
+    Twelve points, not four: UMAP's spectral start asks for six
+    eigenvectors (n_components 5, plus one), so it needs more than six.
+    """
     from corpus_kb.tools import cluster_tools
 
-    await _seed(
-        both_pool,
-        TENANT,
-        {
-            _AA: _vec(5.0, 0.0),
-            _BB: _vec(5.1, 0.1),
-            _CC: _vec(0.0, 5.0),
-            _DD: _vec(0.1, 5.1),
-        },
-    )
+    ids = [f"{index:08d}-0000-0000-0000-{index:012d}" for index in range(1, 13)]
+    seed = {cid: _vec(5.0 + 0.1 * step, 0.1 * step) for step, cid in enumerate(ids[:6])}
+    seed |= {cid: _vec(0.1 * step, 5.0 + 0.1 * step) for step, cid in enumerate(ids[6:])}
+    await _seed(both_pool, TENANT, seed)
     envelope = await cluster_tools.clusters_inspect(both_pool, {}, TENANT, min_cluster_size=2)
     _assert_contract("12", envelope, "clusters")
+    assert envelope["screened_count"] == len(ids)
     sizes = [row["size"] for row in envelope["clusters"]]
     assert sizes == sorted(sizes, reverse=True)
     ids = [row["cluster_id"] for row in envelope["clusters"]]
