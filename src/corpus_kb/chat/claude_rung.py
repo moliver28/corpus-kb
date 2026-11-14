@@ -57,7 +57,9 @@ def env_refusal(environ: dict[str, str] | None = None) -> str | None:
     """The [D4] refusal text when a higher-ranking auth variable is set.
 
     Session-start only, never load time: a stray variable must not break
-    doctor or CLI reads for commands that do not chat.
+    doctor or CLI reads for commands that do not chat. The text offers
+    only ``ollama`` as the escape rung: ``anthropic-api`` refuses too
+    until #428 wires it.
     """
     import os
 
@@ -67,7 +69,7 @@ def env_refusal(environ: dict[str, str] | None = None) -> str | None:
         return None
     return " ".join(
         f"{name} is set. It outranks the subscription login. Unset it "
-        "for this server, or set chat.backend to anthropic-api or ollama."
+        "for this server, or set chat.backend to ollama."
         for name in present
     )
 

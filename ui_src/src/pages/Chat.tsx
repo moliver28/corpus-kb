@@ -57,7 +57,7 @@ export default function Chat() {
             <div className="ui-chat-main">
               <ChatPanel turns={turns} flight={flight} />
               <ChatComposer
-                disabled={status !== null && !status.enabled}
+                disabled={status === null || !status.enabled}
                 busy={busy}
                 flight={flight}
                 onSend={(text) => void send(text)}

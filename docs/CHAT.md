@@ -34,7 +34,7 @@ Three rules protect the subscription billing path:
    `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` in the server
    env outranks the subscription login. Session start refuses with a
    typed error naming the variable; the doctor shows a WARN. Unset the
-   variable for this server, or set `chat.backend` to a paid-key rung.
+   variable for this server, or set `chat.backend` to `ollama`.
    The env is never scrubbed.
 3. **The headless escape.** No browser login on a server: mint a
    one-year token with `claude setup-token` and feed it through the env

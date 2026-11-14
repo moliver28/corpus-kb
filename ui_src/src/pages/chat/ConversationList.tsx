@@ -68,7 +68,7 @@ export default function ConversationList({
   };
 
   if (rows === null) {
-    return <Typography.Text type="secondary">{strings.chatSessionActive}</Typography.Text>;
+    return <Typography.Text type="secondary">{strings.chatHistoryLoading}</Typography.Text>;
   }
   if (rows.length === 0) {
     return (

@@ -21,7 +21,8 @@ export default function ChatStatusPanel({
     return <ErrorPanel result={error} onRetry={onRetry} opId="chat-status" />;
   }
   if (status === null) {
-    return <Typography.Text type="secondary">{strings.chatSessionActive}</Typography.Text>;
+    // Loading asserts nothing: no session claim before the status lands.
+    return <Typography.Text type="secondary">{strings.chatStatusLoading}</Typography.Text>;
   }
   if (!status.enabled) {
     return (

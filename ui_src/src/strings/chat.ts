@@ -12,6 +12,7 @@ export interface ChatStrings {
   chatDisabledBody: string;
   chatErrorTurn: string;
   chatHistoryEmpty: string;
+  chatHistoryLoading: string;
   chatHistoryTitle: string;
   chatPlaceholder: string;
   chatReceiptCost: string;
@@ -24,6 +25,7 @@ export interface ChatStrings {
   chatSessionNew: string;
   chatStatusChecks: string;
   chatStatusEnabled: string;
+  chatStatusLoading: string;
   chatStatusTitle: string;
   chatSpeechRecording: string;
   chatStopLabel: string;

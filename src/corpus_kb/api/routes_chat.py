@@ -116,12 +116,32 @@ async def send_chat_message(request: Request) -> Response:
     events = session.send(text, k)
     if bool(body.get("stream", False)):
         return StreamingResponse(
-            chat_sse(events, manager, session, ChatFramer("")),
+            chat_sse(events, manager, session, ChatFramer(_stream_model(config))),
             media_type=SSE_MEDIA_TYPE,
             headers={"Cache-Control": "no-cache"},
         )
     receipt = await _receipt_of(events)
     return JSONResponse({"status": "success", "result": receipt})
+
+
+def _stream_model(config: dict[str, object]) -> str:
+    """The configured model for the stream's content frames.
+
+    The receipt envelope names the model that actually answered; the
+    content frames can carry only the configuration's choice, so an
+    unset model stamps ``unknown`` rather than an empty string.
+    """
+    from corpus_kb.chat.settings import read_chat_settings
+
+    settings = read_chat_settings(config)
+    if settings.backend == "claude-agent-sdk":
+        return settings.claude.model or "unknown"
+    llm_raw = config.get("llm")
+    if isinstance(llm_raw, dict):
+        model = llm_raw.get("model")
+        if isinstance(model, str) and model:
+            return model
+    return "unknown"
 
 
 async def _receipt_of(events: AsyncGenerator[object, None]) -> dict[str, object]:

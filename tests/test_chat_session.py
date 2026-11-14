@@ -324,7 +324,9 @@ class TestClaudeRungGuards:
         text = claude_rung.env_refusal({"ANTHROPIC_API_KEY": "k"})
         assert text is not None
         assert "ANTHROPIC_API_KEY" in text
-        assert "anthropic-api or ollama" in text
+        # The only escape named is ollama: anthropic-api refuses too.
+        assert "chat.backend to ollama" in text
+        assert "anthropic-api" not in text
 
     def test_clean_env_passes(self) -> None:
         assert claude_rung.env_refusal({}) is None

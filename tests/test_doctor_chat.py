@@ -74,7 +74,9 @@ class TestEnabledRows:
         assert statuses["chat auth precedence"] == "warn"
         row = next(row for row in chat_checks(config) if row.name == "chat auth precedence")
         assert "ANTHROPIC_API_KEY" in row.detail
-        assert "anthropic-api or ollama" in row.fix
+        # The only escape named is ollama: anthropic-api refuses too.
+        assert "chat.backend to ollama" in row.fix
+        assert "anthropic-api" not in row.fix
 
     def test_clean_env_reports_ok(self, tmp_path: Path, monkeypatch: Any) -> None:
         for var in (

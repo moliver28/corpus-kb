@@ -93,8 +93,9 @@ def _precedence_row(refusal: str | None, dormant: bool) -> ResearchCheck:
         name="chat auth precedence",
         status=STATUS_WARN,
         detail=refusal,
-        fix="Unset the named variables for this server,"
-        " or set chat.backend to anthropic-api or ollama.",
+        # The escape rung named is ollama only: anthropic-api refuses
+        # too until #428 wires it.
+        fix="Unset the named variables for this server, or set chat.backend to ollama.",
         doc=_DOC_CHAT,
     )
 
