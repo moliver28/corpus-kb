@@ -1061,11 +1061,35 @@ def _amr_body(
     cautions: str,
     validation: str,
     claims: str,
+    difficulty: str | None = None,
+    teaches: str | None = None,
+    requires: str | None = None,
+    next_step: str | None = None,
 ) -> str:
-    """One method card: axis walk + run + cautions (all plain English)."""
+    """One method card: axis walk + run + cautions (all plain English).
+
+    The optional progression lines (novice-UX program, wave 1) mirror the
+    register's difficulty/concepts/prerequisites/next fields; they render
+    only when the caller supplies them, so the front-door cards stay bare.
+    """
+    progression: list[str] = []
+    if difficulty:
+        progression.append(f"- Difficulty: `{difficulty}`.")
+    if teaches:
+        progression.append(f"- Teaches: {teaches}.")
+    if requires:
+        progression.append(f"- Run first: {requires}.")
+    if next_step:
+        progression.append(f"- Next step: {next_step}.")
+    progression_block = (
+        "## Progression (the register's ladder)\n\n" + "\n".join(progression) + "\n\n"
+        if progression
+        else ""
+    )
     return (
         f"# corpus-{name} — analysis method card\n\n"
         + _AMR_WALK.format(family=family, inputs=inputs, calibration=calibration, autonomy=autonomy)
+        + progression_block
         + f"## Run\n\n  ```\n  corpus-kb {run}\n  ```\n\n"
         + _AMR_FOOT.format(cautions=cautions, validation=validation, claims=claims, cli=name)
     )
@@ -1121,6 +1145,8 @@ _KEYPHRASES_BODY = _amr_body(
     validation="review tokenization, common words, phrase lengths, and the "
     "top-ranked terms by hand.",
     claims="descriptions of distinctive wording in the corpus.",
+    difficulty="novice for tfidf and yake; intermediate for the embedding arm",
+    teaches="`term_weighting`, `vector_similarity`",
 )
 _LEXICAL_BODY = _amr_body(
     "lexical-classify",
@@ -1134,6 +1160,10 @@ _LEXICAL_BODY = _amr_body(
     validation="treat this as the baseline. Inspect errors. Tune features "
     "without the final test set.",
     claims="baseline performance on independent test records.",
+    difficulty="intermediate",
+    teaches="`classification`, `term_weighting`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
+    next_step="method 16, frozen embeddings with a linear classifier (`classification-build`)",
 )
 _NEIGHBORS_BODY = _amr_body(
     "neighbors-classify",
@@ -1145,6 +1175,9 @@ _NEIGHBORS_BODY = _amr_body(
     cautions="local label errors travel. Overrepresented examples can dominate nearby votes.",
     validation="review example coverage. Tune the neighbor count and the rejection rules.",
     claims="category assignments backed by the listed neighbor examples.",
+    difficulty="intermediate",
+    teaches="`classification`, `vector_similarity`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
 )
 _CENTROIDS_BODY = _amr_body(
     "centroids-classify",
@@ -1158,6 +1191,10 @@ _CENTROIDS_BODY = _amr_body(
     validation="inspect the examples. Measure precision, recall, and "
     "abstention. Tune the margin on separate data.",
     claims="category assignments with similarities and recorded abstentions.",
+    difficulty="intermediate",
+    teaches="`classification`, `vector_similarity`",
+    requires="method 04, dictionary or rule-based classification (`labeling-build`)",
+    next_step="method 14, nearest-neighbor votes with the examples listed",
 )
 _CLUSTERS_BODY = _amr_body(
     "clusters-inspect",
@@ -1166,6 +1203,10 @@ _CLUSTERS_BODY = _amr_body(
     calibration="moderate",
     autonomy="human_in_loop",
     run="clusters-inspect [--min-cluster-size N] [--sample-cap N]",
+    difficulty="intermediate",
+    teaches="`clustering`, `vector_similarity`",
+    next_step="method 04, dictionary or rule-based classification (`labeling-build`), "
+    "once the groups suggest labels",
     cautions="a stable-looking group can reflect topic, style, speaker, or "
     "document format. The params record names the reduction that ran.",
     validation="compare representations and grouping settings. Review boundary cases by hand.",
@@ -1183,6 +1224,8 @@ _DUPLICATES_BODY = _amr_body(
     validation="label candidate pairs by hand. Measure pairwise precision "
     "and recall at the action threshold.",
     claims="duplicate candidates at a recorded threshold, for human approval.",
+    difficulty="novice",
+    teaches="`vector_similarity`",
 )
 _OUTLIERS_BODY = _amr_body(
     "outliers-rank",
@@ -1196,6 +1239,8 @@ _OUTLIERS_BODY = _amr_body(
     validation="define the reference group. Inspect the flagged records. "
     "Compare detectors when the stakes are high.",
     claims="a ranked review list with the detector and reference recorded.",
+    difficulty="novice",
+    teaches="`vector_similarity`",
 )
 _NLI_BODY = _amr_body(
     "nli-classify",
@@ -1209,6 +1254,11 @@ _NLI_BODY = _amr_body(
     validation="test paraphrased labels, negation, and overlapping labels. "
     "Tune thresholds on labeled data.",
     claims="pilot label proposals with support scores.",
+    difficulty="intermediate",
+    teaches="`classification`",
+    requires="a running Ollama NLI model (`corpus-kb setup` pulls it)",
+    next_step="method 04, dictionary or rule-based classification (`labeling-build`), "
+    "to act on the pilot labels",
 )
 _CONTRADICTIONS_BODY = _amr_body(
     "contradictions-screen",
@@ -1222,6 +1272,9 @@ _CONTRADICTIONS_BODY = _amr_body(
     validation="test negation, entity identity, time, and conditions. "
     "Adjudicate the pairs by hand.",
     claims="candidate contradictions for human adjudication.",
+    difficulty="intermediate",
+    teaches="`contradiction_detection`, `vector_similarity`",
+    requires="method 23, hybrid retrieval with reranking (`search`), for comparable candidates",
 )
 _SENTIMENT_BODY = _amr_body(
     "sentiment-screen",
@@ -1236,6 +1289,8 @@ _SENTIMENT_BODY = _amr_body(
     validation="define the construct. Label and test each category, "
     "including neutral and uncertain cases. Check a sample by hand.",
     claims="screening flags for evaluative language under the defined construct.",
+    difficulty="novice for method 26; intermediate for method 27",
+    teaches="`sentiment_analysis`, `keyword_rules`",
 )
 _ACTIVE_LEARN_BODY = _amr_body(
     "active-learn-next",
@@ -1249,6 +1304,9 @@ _ACTIVE_LEARN_BODY = _amr_body(
     "guards against that bias.",
     validation="assess the improvement per annotation effort. Compare against random sampling.",
     claims="annotation-order recommendations with the strategy recorded.",
+    difficulty="advanced",
+    teaches="`active_learning`, `classification`",
+    requires="method 16, frozen embeddings with a linear classifier (`classification-build`)",
 )
 
 # -- Chunk-coding ops (issue #350): the six routes the plugin reached only

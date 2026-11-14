@@ -83,3 +83,42 @@ def test_routing_lines_evidence_uses_annotated_primary_source() -> None:
     method["sources"] = ["https://example.org/tfidf (Documentation)", "https://example.org/extra"]
     lines = gen._routing_lines(method)
     assert lines[-1] == "  - Evidence: https://example.org/tfidf (Documentation)"
+
+
+# ---------------------------------------------------------------------------
+# Progression bullets (novice-UX program, wave 1)
+# ---------------------------------------------------------------------------
+
+
+def test_progression_lines_skip_rows_without_fields() -> None:
+    assert gen._progression_lines(_full_method(), {"05": "TF-IDF keyphrase scan"}) == []
+
+
+def test_progression_lines_render_rung_and_concepts() -> None:
+    method = _full_method()
+    method["difficulty"] = "novice"
+    method["concepts"] = ["term_weighting", "classification"]
+    lines = gen._progression_lines(method, {})
+    assert lines[0] == "  - Difficulty: `novice`."
+    assert lines[1] == "  - Teaches: `term_weighting`, `classification`."
+    assert len(lines) == 2
+
+
+def test_progression_lines_name_linked_methods() -> None:
+    method = _full_method()
+    method["prerequisites"] = ["04"]
+    method["next"] = ["16", "17"]
+    lines = gen._progression_lines(method, {"04": "Dictionary rules", "16": "Frozen head"})
+    assert lines[0] == "  - Requires: `04` Dictionary rules."
+    assert lines[1] == "  - Next: `16` Frozen head, `17`."
+
+
+def test_progression_lines_ignore_empty_link_lists() -> None:
+    """An empty prerequisites/next list means none and renders no lines."""
+    method = _full_method()
+    method["difficulty"] = "novice"
+    method["concepts"] = ["term_weighting"]
+    method["prerequisites"] = []
+    method["next"] = []
+    lines = gen._progression_lines(method, {})
+    assert len(lines) == 2

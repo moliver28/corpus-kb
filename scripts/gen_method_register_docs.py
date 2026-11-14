@@ -74,6 +74,42 @@ _ROUTING_PROSE_FIELDS = (
     ("Limits", "scope_limits"),
 )
 
+_PROGRESSION_FIELDS = ("difficulty", "concepts", "prerequisites", "next")
+
+
+def _progression_lines(method: dict[str, Any], names: dict[str, str]) -> list[str]:
+    """The progression bullets for one method (novice-UX program, wave 1).
+
+    Renders nothing when the row carries no progression fields (all four
+    are optional), so old registers and test fixtures still generate
+    cleanly. Each present field renders one line; concepts and method-id
+    links backtick their tokens (the code-token convention).
+    """
+    present = [name for name in _PROGRESSION_FIELDS if method.get(name) not in (None, [])]
+    if not present:
+        return []
+    lines: list[str] = []
+    if method.get("difficulty"):
+        lines.append(f"  - Difficulty: {_code(method['difficulty'])}.")
+    concepts = method.get("concepts") or []
+    if concepts:
+        lines.append(f"  - Teaches: {', '.join(_code(concept) for concept in concepts)}.")
+    prereqs = method.get("prerequisites") or []
+    if prereqs:
+        needs = ", ".join(_link_text(link, names) for link in prereqs)
+        lines.append(f"  - Requires: {needs}.")
+    nxt = method.get("next") or []
+    if nxt:
+        steps = ", ".join(_link_text(link, names) for link in nxt)
+        lines.append(f"  - Next: {steps}.")
+    return lines
+
+
+def _link_text(link: str, names: dict[str, str]) -> str:
+    """One method-id link as `id` plus the registered name."""
+    name = names.get(link)
+    return f"{_code(link)} {name}" if name else _code(link)
+
 
 def _routing_lines(method: dict[str, Any]) -> list[str]:
     """The routing-axes bullets for one method (analysis-routing program).
@@ -120,23 +156,27 @@ def _routing_lines(method: dict[str, Any]) -> list[str]:
 def build_block(register: dict[str, Any]) -> str:
     """The generated markdown: the register table plus guidance bullets."""
     methods: list[dict[str, Any]] = register["methods"]
+    names = {method["id"]: method["name"] for method in methods}
     lines = [
         START_MARKER,
         f"Register version: {register['register_version']}. Source: the "
         "research document named in `config/analysis_methods.yaml`.",
         "",
         "| Id | Method | Output family | Inputs | Calibration | Autonomy | "
-        "Complexity | Status | Op |",
-        "|----|--------|---------------|--------|-------------|----------|------------|--------|----|",
+        "Complexity | Difficulty | Status | Op |",
+        "|----|--------|---------------|--------|-------------|----------|------------"
+        "|------------|--------|----|",
     ]
     for method in methods:
         op = method.get("op") or "(none)"
         op_cell = _code(op) if op != "(none)" else op
         inputs = ", ".join(_input_label(i) for i in method["inputs_required"])
+        difficulty = _code(method["difficulty"]) if method.get("difficulty") else "(none)"
         lines.append(
             f"| {method['id']} | {method['name']} | {_code(method['output_family'])} "
             f"| {inputs} | {_code(method['calibration_effort'])} "
             f"| {_code(method['autonomy'])} | {_code(method['complexity_tier'])} "
+            f"| {difficulty} "
             f"| {_STATUS_LABEL[method['implementation_status']]} | {op_cell} |"
         )
     lines += ["", "## Method guidance", ""]
@@ -153,6 +193,7 @@ def build_block(register: dict[str, Any]) -> str:
             f"  - Cautions: {_prose(method['robustness_caveat'])} "
             f"Bias: {_prose(method['bias_risk'])}"
         )
+        lines += _progression_lines(method, names)
         lines += _routing_lines(method)
     lines.append(END_MARKER)
     return "\n".join(lines)

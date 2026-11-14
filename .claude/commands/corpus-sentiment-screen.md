@@ -12,6 +12,11 @@ argument-hint: "[--chunk-id <id> ...] [--limit N]"
 4. Budget the calibration effort (moderate to high) and autonomy (automated_with_audit to human_in_loop).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `novice for method 26; intermediate for method 27`.
+- Teaches: `sentiment_analysis`, `keyword_rules`.
+
 ## Run
 
   ```

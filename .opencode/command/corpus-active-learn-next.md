@@ -11,6 +11,12 @@ description: "Next human-labeling batch ranked from stored predictions"
 4. Budget the calibration effort (high) and autonomy (human_in_loop).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `advanced`.
+- Teaches: `active_learning`, `classification`.
+- Run first: method 16, frozen embeddings with a linear classifier (`classification-build`).
+
 ## Run
 
   ```
