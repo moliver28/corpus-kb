@@ -318,10 +318,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
+      - name: Install uv (pinned for the audit gate)
+        # uv audit is a preview feature: the poe target passes
+        # --preview-features audit-command, and the flag's name and
+        # output can change between uv releases (the flag was renamed
+        # once already, astral-sh/uv#19645). The audit jobs therefore
+        # pin an exact uv version and move the pin deliberately;
+        # audit-command is still preview as of uv 0.13.8. The test legs
+        # stay on latest uv on purpose: uv sync --locked is
+        # version-robust.
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          version: "0.13.8"
 
       # setup-uv provisions .venv WITHOUT pip, so install poe as a uv tool
       # instead of `python -m pip install` (which fails here with "No
@@ -800,58 +809,12 @@ jobs:
         run: python -c "import duckdb; con = duckdb.connect(); [con.execute('INSTALL ' + name) for name in ('fts', 'vss', 'postgres')]; con.close()"
 
       - name: Bootstrap service database (extensions + schema)
-        # Workflow note: this job was single-owner (sp-gateway); the storage
-        # portability integrator touched it in Phase B to add this step.
-        #
-        # The service container starts EMPTY: initdb creates corpus_kb but
-        # nothing applies the schema, so every live-Postgres test would fail
-        # with "relation ... does not exist". Prepare it with the repo's own
-        # bootstrap (corpus_kb._setup.schema_apply — the same code the
-        # quickstart and tests/research_db.py use):
-        #   1. extensions the migrations need (pgvector/uuid-ossp) plus
-        #      age/pgml, which this bundled image ships;
-        #   2. the corpus_kb graph created with Apache AGE's LOAD +
-        #      search_path ritual (upstream apache/age#2504, pinned
-        #      1.7.0~rc0: create_graph resolves the graphid_ops operator
-        #      class through the caller's search_path, and fails with a
-        #      misleading "graphid_ops does not exist" without it);
-        #   3. storage/schema.sql + numbered migrations. The extension-gated
-        #      004/005 are skipped here by design; the durable effects above
-        #      make them re-apply as recorded no-ops when tests run the
-        #      migration runner.
-        # Idempotent throughout, so re-running a failed job is safe.
-        run: |
-          python - <<'PY'
-          import asyncio
-
-          import asyncpg
-
-          from corpus_kb._setup.schema_apply import apply_schema
-
-          DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-
-          async def main() -> None:
-              conn = await asyncpg.connect(DSN)
-              try:
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                  await conn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS pgml")
-                  await conn.execute("LOAD 'age'")
-                  await conn.execute('SET search_path = ag_catalog, "$user", public')
-                  has_graph = await conn.fetchval(
-                      "SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'corpus_kb'"
-                  )
-                  if not has_graph:
-                      await conn.execute("SELECT ag_catalog.create_graph('corpus_kb')")
-              finally:
-                  await conn.close()
-              result = await apply_schema(DSN)
-              print("schema bootstrap applied:", len(result.applied))
-              print("skipped (extension-gated):", result.skipped)
-
-          asyncio.run(main())
-          PY
+        # Single source: .github/actions/bootstrap-postgres (momus F12).
+        # The warning-ratchet leg runs the same action, so the extensions
+        # + AGE graph + schema ritual lives in exactly one place. The
+        # action needs checkout and the locked environment, which the
+        # steps above provide.
+        uses: ./.github/actions/bootstrap-postgres
 
       - name: Cache Ollama models
         # Path-gated: pointless to restore when nothing below pulls.
@@ -1232,41 +1195,12 @@ jobs:
         run: python -c "import duckdb; con = duckdb.connect(); [con.execute('INSTALL ' + name) for name in ('fts', 'vss', 'postgres')]; con.close()"
 
       - name: Bootstrap service database (extensions + schema)
-        # Same bootstrap as the ubuntu test leg: the service container
-        # starts empty, so the schema must exist before database-backed
-        # tests run (apply_schema is idempotent; re-running is safe).
-        run: |
-          python - <<'PY'
-          import asyncio
-
-          import asyncpg
-
-          from corpus_kb._setup.schema_apply import apply_schema
-
-          DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-
-          async def main() -> None:
-              conn = await asyncpg.connect(DSN)
-              try:
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                  await conn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
-                  await conn.execute("CREATE EXTENSION IF NOT EXISTS pgml")
-                  await conn.execute("LOAD 'age'")
-                  await conn.execute('SET search_path = ag_catalog, "$user", public')
-                  has_graph = await conn.fetchval(
-                      "SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'corpus_kb'"
-                  )
-                  if not has_graph:
-                      await conn.execute("SELECT ag_catalog.create_graph('corpus_kb')")
-              finally:
-                  await conn.close()
-              result = await apply_schema(DSN)
-              print("schema bootstrap applied:", len(result.applied))
-              print("skipped (extension-gated):", result.skipped)
-
-          asyncio.run(main())
-          PY
+        # Same bootstrap as the ubuntu test leg, now single-sourced as
+        # .github/actions/bootstrap-postgres (momus F12): the service
+        # container starts empty, so the schema must exist before
+        # database-backed tests run. The action needs checkout and the
+        # locked environment, which the steps above provide.
+        uses: ./.github/actions/bootstrap-postgres
 
       - name: Cache Ollama models
         uses: actions/cache@v4
