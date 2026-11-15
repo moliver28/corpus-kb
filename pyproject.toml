@@ -787,10 +787,12 @@ help = "Dependency CVE audit over uv.lock (ignore list: uv.toml [audit])"
 # counts against scripts/quality-baselines.json: ruff PLR0915
 # (too-many-statements) and src/ files over the 250-line soft limit.
 # Growth fails the build; shrink passes so in-flight dedup PRs land
-# without touching this gate. Baseline comments live in the JSON and
-# the script docstring.
+# without touching this gate. Also enforces the per-file max_file_lines
+# ceiling map (momus F11): every file already over the soft limit is
+# capped at its recorded size, so it cannot grow unnoticed. Baseline
+# comments live in the JSON and the script docstring.
 cmd = "python scripts/size_ratchet.py"
-help = "PLR0915 + 250-line file counts vs scripts/quality-baselines.json"
+help = "PLR0915 + 250-line counts + per-file ceilings vs scripts/quality-baselines.json"
 
 [tool.poe.tasks.cover-floor]
 # Overall coverage floor (PR-F, rule 10). Reads coverage.xml (from

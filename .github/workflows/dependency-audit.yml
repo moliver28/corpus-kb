@@ -27,10 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
+      - name: Install uv (pinned for the audit gate)
+        # Same pin as the audit-deps job in ci.yml: uv audit is a preview
+        # feature (--preview-features audit-command), so the audit jobs
+        # pin an exact uv version and move it deliberately. Still preview
+        # as of uv 0.13.8.
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
+          version: "0.13.8"
 
       - name: Install poethepoet
         run: uv tool install poethepoet
