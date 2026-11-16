@@ -911,7 +911,6 @@ def test_setup_start_compose_missing_build_local_file_errors(
 def test_stage_router_routes_write_and_flush_for_workers() -> None:
     """A registered worker thread's writes and flushes stay in its buffer."""
     import threading as _threading
-
     from io import StringIO as _StringIO
 
     from corpus_kb._setup.setup_pull_pair import _StageRouter
