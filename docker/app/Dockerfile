@@ -23,7 +23,9 @@ WORKDIR /build
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 
-RUN pip wheel --no-cache-dir --wheel-dir /wheels .
+# --no-deps: only this package's wheel is built here; the runtime stage
+# resolves the dependencies from PyPI when it installs the wheel.
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
 
 # Wheel self-check (zero-drift: the repo-committed ui_dist is the SSOT and
 # the packaged config must ride along; a bare wheel means a broken NAS deploy
