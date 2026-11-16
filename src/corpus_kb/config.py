@@ -89,6 +89,30 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
     return None
 
 
+#: One row per overridable config key: (config section, config key) ->
+#: variable name. The doctor's known-variable registry below derives from
+#: this map, so a new mapping can never miss the known set (the drift that
+#: shipped an unregistered CORPUS_KB_HOST once).
+_ENV_OVERRIDES: dict[tuple[str, str], str] = {
+    ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
+    ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
+    ("embedding", "base_url"): "CORPUS_KB_OLLAMA_HOST",
+    ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
+    ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
+    ("server", "host"): "CORPUS_KB_HOST",
+    ("server", "transport"): "CORPUS_KB_TRANSPORT",
+    ("server", "port"): "CORPUS_KB_PORT",
+    ("server", "socket_path"): "CORPUS_KB_SOCKET_PATH",
+    ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
+    ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
+    ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
+    ("llm", "timeout_s"): "CORPUS_KB_LLM_TIMEOUT_S",
+    ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
+    ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
+    ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
+}
+
+
 def apply_env_overrides(config: dict[str, Any]) -> None:
     """Apply CORPUS_KB_* environment variable overrides to ``config``.
 
@@ -97,29 +121,11 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
     any set-but-unmapped CORPUS_KB_* variable (see KNOWN_CORPUS_KB_ENV_VARS
     and _setup/doctor_env.py).
     """
-    env_overrides: dict[tuple[str, str], str] = {
-        ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
-        ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
-        ("embedding", "base_url"): "CORPUS_KB_OLLAMA_HOST",
-        ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
-        ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
-        ("server", "transport"): "CORPUS_KB_TRANSPORT",
-        ("server", "port"): "CORPUS_KB_PORT",
-        ("server", "socket_path"): "CORPUS_KB_SOCKET_PATH",
-        ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
-        ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
-        ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
-        ("llm", "timeout_s"): "CORPUS_KB_LLM_TIMEOUT_S",
-        ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
-        ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
-        ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
-    }
-
     bool_keys = {"verify_image_signature", "openai_compat"}
     int_keys = {"dimensions", "port"}
     float_keys = {"timeout_s"}
 
-    for (section, key), env_var in env_overrides.items():
+    for (section, key), env_var in _ENV_OVERRIDES.items():
         value = os.environ.get(env_var)
         if value is not None:
             section_dict = cast(dict[str, object], config[section])
@@ -338,32 +344,19 @@ def apply_extraction_backend_alias(config: dict[str, object]) -> None:
     graph["extractor"] = backend
 
 
-# Every CORPUS_KB_* variable the code reads: the load_config override map
-# above plus the direct readers (config discovery in this module, snapshot
-# interval in domain/application.py, the golden-bench dir override read by
-# eval/golden_fetch.py, and the browser auto-open guard read by
-# server_wiring.browser_open_enabled). doctor reports any set variable
-# outside this set as a warning (see _setup/doctor_env.py).
-KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
+# Every CORPUS_KB_* variable the code reads: every value of _ENV_OVERRIDES
+# (the load_config override map above) plus the direct readers (config
+# discovery in this module, snapshot interval in domain/application.py, the
+# golden-bench dir override read by eval/golden_fetch.py, and the browser
+# auto-open guard read by server_wiring.browser_open_enabled). doctor
+# reports any set variable outside this set as a warning (see
+# _setup/doctor_env.py).
+KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(_ENV_OVERRIDES.values()) | frozenset(
     {
+        # Direct readers: no row in _ENV_OVERRIDES.
         "CORPUS_KB_CONFIG",
-        "CORPUS_KB_DATABASE_URL",
-        "CORPUS_KB_DATABASE_BACKEND",
-        "CORPUS_KB_EMBEDDING_MODEL",
-        "CORPUS_KB_EMBEDDING_DIMENSIONS",
-        "CORPUS_KB_OLLAMA_HOST",
-        "CORPUS_KB_GRAPH_BACKEND",
-        "CORPUS_KB_TRANSPORT",
-        "CORPUS_KB_PORT",
-        "CORPUS_KB_SOCKET_PATH",
         "CORPUS_KB_CONFIG_OVERLAY",
         "CORPUS_KB_SUPERUSER_DSN",
-        "CORPUS_KB_OPENAI_COMPAT",
-        "CORPUS_KB_LLM_TIMEOUT_S",
-        "CORPUS_KB_OTLP_ENDPOINT",
-        "CORPUS_KB_INSTALL_DATA_DIR",
-        "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
-        "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
         "CORPUS_KB_SNAPSHOT_PERIOD",
         "CORPUS_KB_TEST_DB",
         "CORPUS_KB_TEXTBOOK_GOLDEN_DIR",

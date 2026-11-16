@@ -10,8 +10,9 @@
 #
 # Image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17 (extensions + grant init baked); local build fallback: compose.build-local.yaml.
 # FULL APP STACK (profile `app`): builds the Corpus-KB server image and runs
-# it against the same Postgres. The server binds 0.0.0.0:8010 on the host,
-# so a NAS serves the UI on the LAN at http://<nas-ip>:8010/app/.
+# it against the same Postgres. The API has no login, so compose publishes
+# port 8010 on host loopback only; a NAS sets CORPUS_KB_PUBLISH_BIND=0.0.0.0
+# (LAN opt-in, see docs/INSTALL.md) to serve http://<nas-ip>:8010/app/.
 #
 #   docker compose --profile app up -d --build
 #
@@ -68,9 +69,14 @@ services:
       # (localhost:11434), which degrades to zero vectors exactly like a
       # native setup without Ollama.
       CORPUS_KB_OLLAMA_HOST: ${CORPUS_KB_OLLAMA_HOST:-http://localhost:11434}
+      # HTTP bind inside the container. Unset keeps the entrypoint default
+      # (0.0.0.0); the publish bind below stays the host-side boundary.
+      CORPUS_KB_HOST: ${CORPUS_KB_HOST:-0.0.0.0}
     ports:
-      # 0.0.0.0 on purpose: NAS LAN access to the UI at /app/.
-      - "8010:8010"
+      # Host-side publish bind. Loopback by default: the API has no login,
+      # and anything that can reach the port can read and delete data.
+      # LAN opt-in: set CORPUS_KB_PUBLISH_BIND=0.0.0.0 (see docs/INSTALL.md).
+      - "${CORPUS_KB_PUBLISH_BIND:-127.0.0.1}:8010:8010"
     healthcheck:
       # GET /app/ — the SPA index route (corpus_kb/ui/spa.py). The wheel
       # self-check in docker/app/Dockerfile guarantees the dist exists.

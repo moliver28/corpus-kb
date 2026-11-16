@@ -37,13 +37,17 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
 
 # Wheel self-check (zero-drift: the built UI dist, the packaged config,
 # the base schema, and the migrations must all ride along; a bare wheel
-# means a broken NAS deploy with no UI and no schema). Plain python -c
-# keeps this working on any BuildKit frontend.
+# means a broken NAS deploy with no UI, no schema, and a silent no-op
+# `corpus-kb migrate`). 004/005 are pinned because they create the AGE
+# graph and the PostgresML bindings; the glob count catches a package-data
+# regression that drops every migration. Plain python -c keeps this
+# working on any BuildKit frontend.
 RUN python -c "import glob, sys, zipfile; \
 names = zipfile.ZipFile(glob.glob('/wheels/corpus_kb-*.whl')[0]).namelist(); \
-required = ('corpus_kb/ui_dist/index.html', 'corpus_kb/config.yaml', 'corpus_kb/storage/schema.sql'); \
-missing = [p for p in required if p not in names]; \
-sys.exit('wheel is missing: ' + ', '.join(missing)) if missing else print('wheel self-check ok: ui_dist + config.yaml + schema.sql present')"
+required = ('corpus_kb/ui_dist/index.html', 'corpus_kb/config.yaml', 'corpus_kb/storage/schema.sql', 'corpus_kb/migrations/004_enable_age.sql', 'corpus_kb/migrations/005_enable_pgml.sql'); \
+migrations = [n for n in names if n.startswith('corpus_kb/migrations/') and n.endswith('.sql')]; \
+missing = [p for p in required if p not in names] + ([] if migrations else ['corpus_kb/migrations/*.sql']); \
+sys.exit('wheel is missing: ' + ', '.join(missing)) if missing else print('wheel self-check ok: ui_dist + config.yaml + schema.sql + %d migration files' % len(migrations))"
 
 FROM python:3.11-slim-bookworm
 
