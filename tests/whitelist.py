@@ -631,3 +631,15 @@ DEMO_KEYS
 # report feeds the generated docs block and the syrupy snapshot; vulture
 # scans src only and sees no caller in either.
 difficulty_mismatches
+
+# Telemetry sink event fields (issue #442): Event is a frozen dataclass
+# whose fields are the whitelisted JSONL keys; emit constructs events by
+# keyword and the report script reads the written lines, so vulture (src
+# scan) sees no attribute use in src.
+duration
+session_ordinal
+
+# Telemetry suppression getter (issue #442, F5): sink.suppression_flag()
+# reads the in-process dropped-write flag; the reader is the telemetry
+# test, outside the vulture gate's src-only scan.
+suppression_flag

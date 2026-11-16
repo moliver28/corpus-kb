@@ -52,6 +52,9 @@ class MethodNotFoundError(Exception):
 
 
 # Hand arms: bespoke coercion and hand-built envelopes (_socket_arms).
+# Telemetry note (issue #442): the _nli_classify arm records its own
+# event (method 18) inside _socket_arms; the search and ingest_text
+# hand arms are the declared no-event paths (the report header says so).
 _HAND_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,

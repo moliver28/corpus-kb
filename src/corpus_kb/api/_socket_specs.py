@@ -21,6 +21,8 @@ from typing import Any, cast
 
 from corpus_kb.api._body import opt_bool, opt_float, opt_int, opt_str
 from corpus_kb.api.research_http import ToolRoute
+from corpus_kb.telemetry import emit as _emit_event
+from corpus_kb.telemetry.attribution import method_id_for_op as _method_id_for_op
 
 Arm = Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]]
 
@@ -45,6 +47,10 @@ class _Spec:
 
     ``pool_pos`` is the positional slot for the research pool; set
     ``pool_kw`` instead when the tool takes the pool by keyword.
+    ``method_id`` (issue #442) names the register method for the opt-in
+    telemetry event; rows without one fall back to the attribution
+    discriminator at call time (so ``keyphrases_extract`` resolves by
+    ``variant``), and ops outside the attribution map emit nothing.
     """
 
     module: str
@@ -53,6 +59,7 @@ class _Spec:
     pool_kw: str | None = None
     positional: tuple[_Opt, ...] = ()
     opts: tuple[_Opt, ...] = ()
+    method_id: str | None = None
 
 
 def _spec_arm(spec: _Spec) -> Arm:
@@ -91,7 +98,25 @@ def _spec_arm(spec: _Spec) -> Arm:
             kwargs[spec.pool_kw] = pool
         else:
             args.insert(spec.pool_pos, pool)
-        return await fn(*args, **kwargs)
+
+        # Opt-in telemetry (issue #442): a static row id wins; otherwise
+        # the discriminator resolves at call time. ``None`` (not a
+        # register op, or a shared op with no discriminator) writes
+        # nothing by the F6 skip rule — short-circuit before emit so the
+        # default-OFF path never loads the config for non-register ops.
+        if spec.method_id is not None:
+            method_id: str | None = spec.method_id
+        else:
+            method_id = _method_id_for_op(spec.fn, kwargs)
+        if method_id is None:
+            return await fn(*args, **kwargs)
+
+        async def call() -> dict[str, Any]:
+            return await fn(*args, **kwargs)
+
+        # config=None reads the process config inside emit (one YAML read
+        # per op call; the spec arm has no startup config of its own).
+        return await _emit_event(call, method_id=method_id)
 
     return arm
 

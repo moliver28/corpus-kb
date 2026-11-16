@@ -1,13 +1,10 @@
 """Analysis method routes (AMR program wave 2).
 
-Twelve thin adapters, one per catalogue row:
-POST /api/analysis/<kebab of the op name> — see
-``contracts.catalogue_analysis`` for the exact routes. Each route parses
-JSON, calls the shared handler, and returns JSONResponse through
-``@route_errors`` (api._body) — ONE error path. Handler imports stay
-inside the route bodies so tests can monkeypatch the tool-module
-functions. An honest ``unavailable`` guard answers 503; every other
-outcome (including the ``empty``/``disabled`` no-ops) answers 200.
+Twelve thin adapters, one per catalogue row: POST
+/api/analysis/<kebab of the op name>. Each route parses JSON, calls the
+shared handler, and returns JSONResponse through ``@route_errors``
+(api._body) — ONE error path. Handler imports stay in the route bodies
+so tests can monkeypatch them. ``unavailable`` answers 503.
 """
 
 from __future__ import annotations
@@ -22,26 +19,29 @@ from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
-async def _pool() -> Any:
-    from corpus_kb.api.research_http import research_pool
-
-    return await research_pool()
-
-
 async def _respond(
     handler: Callable[..., Awaitable[dict[str, Any]]],
     kwargs: dict[str, Any],
 ) -> JSONResponse:
     """One handler call + the shared status mapping (the family rule).
-
-    The startup config rides along on every call: a config.yaml knob
-    must behave the same on HTTP as on MCP and the CLI (issue #325).
-    Every catalogue handler accepts the house ``config`` parameter, so
-    the pass-through is uniform; handlers that read no config ignore it.
+    The startup config rides along (issue #325). Telemetry (issue #442):
+    the tool function's name IS the register op name, so the attribution
+    discriminator reads it per call; ops outside the map write nothing.
     """
+    from corpus_kb.api.research_http import research_pool
     from corpus_kb.config import load_config
+    from corpus_kb.telemetry import emit as _emit_event
+    from corpus_kb.telemetry.attribution import method_id_for_op
 
-    result = await handler(await _pool(), config=load_config(), **kwargs)
+    pool = await research_pool()
+    cfg = load_config()
+
+    async def call() -> dict[str, Any]:
+        return await handler(pool, config=cfg, **kwargs)
+
+    result = await _emit_event(
+        call, method_id=method_id_for_op(handler.__name__, kwargs), config=cfg
+    )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
 

@@ -278,6 +278,22 @@ This block is not the top-level `routing:` block. The top-level block
 drives query routing in retrieval and carries its own
 `confidence_threshold` (`0.35`). The two blocks never mix.
 
+### `telemetry`
+
+The opt-in, local event log (issue #442). Off by default: nothing is
+written while `enabled` is `false`. When on, the analysis-op adapters
+append one JSONL line per run to `events.jsonl` under `log_dir`. Events
+carry method id, outcome class, duration, and session counters only —
+no content, no queries, no network. `scripts/telemetry_report.py` reads
+the folder, confirms the derived ladder, and flags order or concept
+divergence for human review. The report never writes register rows,
+rungs, or order.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Opt-in flag. Every code path runs green while it is `false` |
+| `log_dir` | `telemetry_logs` | Folder for `events.jsonl`. A relative value resolves under `installer.data_dir` at load time, never against the working directory |
+
 ### Environment variables
 
 Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set variable is NOT in this table. That variable is dead for this version: remove it, or set the config key instead.
@@ -303,6 +319,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_INSTALL_DATA_DIR` | `installer.data_dir` | installer checkpoint state (`_setup.install_state`) |
 | `CORPUS_KB_INSTALL_POSTGRES_IMAGE` | `installer.postgres_image` | `corpus-kb setup` image pull/verify (`_setup.install`) |
 | `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |
+| `CORPUS_KB_TELEMETRY_ENABLED` | `telemetry.enabled` | `load_config` (the opt-in local event log, issue #442) |
 | `CORPUS_KB_SNAPSHOT_PERIOD` | (no config key; aggregate snapshot interval, default 100) | `domain.application` |
 | `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default is per-process `corpus_kb_t11_<pid>_test`) | `tests/research_db.py` |
 | `CORPUS_KB_TEXTBOOK_GOLDEN_DIR` | (no config key; overrides the golden-bench corpus directory, see `eval/golden_fetch.py`) | `eval/golden_fetch.py` |

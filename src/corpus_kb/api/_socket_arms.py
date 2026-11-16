@@ -79,17 +79,24 @@ async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, 
 
 async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
+    from corpus_kb.telemetry import emit as _emit_event
     from corpus_kb.tools.nli_tools import nli_classify
 
     labels = params.get("labels")
-    return await nli_classify(
-        await research_pool(),
-        tenant_id=tenant_id,
-        labels=[str(label) for label in labels] if labels is not None else [],
-        chunk_ids=params.get("chunk_ids"),
-        limit=opt_int(params.get("limit"), 50, name="limit"),
-        model=opt_str(params.get("model")),
-    )
+
+    # Opt-in telemetry (issue #442): this hand arm wraps itself with the
+    # emit seam and pins method 18 (the spec rows cannot say this arm).
+    async def call() -> dict[str, Any]:
+        return await nli_classify(
+            await research_pool(),
+            tenant_id=tenant_id,
+            labels=[str(label) for label in labels] if labels is not None else [],
+            chunk_ids=params.get("chunk_ids"),
+            limit=opt_int(params.get("limit"), 50, name="limit"),
+            model=opt_str(params.get("model")),
+        )
+
+    return await _emit_event(call, method_id="18")
 
 
 async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
