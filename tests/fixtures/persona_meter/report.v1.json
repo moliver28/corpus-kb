@@ -1,1 +1,263 @@
-{}
+{
+  "doctor_journey": {
+    "phase_0": "You have 120 chunks and 120 vectors. You can run 13 methods today. The easiest is Rapid Qualitative Analysis (RQA) matrix (method 02). You can start the novice, intermediate, and advanced levels today. Next: build labels with method 04. Run: corpus-kb labeling-build. It unlocks methods 11, 13, 14, 15, 16, 17, and 27.",
+    "phase_1": "You have 120 chunks and 120 vectors. You can run 20 methods today. The easiest is Rapid Qualitative Analysis (RQA) matrix (method 02). You can start the novice, intermediate, and advanced levels today. Next: build topics with method 09. Run: corpus-kb topics-build.",
+    "phase_2": "You have 120 chunks and 120 vectors. You can run 20 methods today. The easiest is Rapid Qualitative Analysis (RQA) matrix (method 02). You can start the novice, intermediate, and advanced levels today. Next: build predictions with method 16. Run: corpus-kb classification-build. It unlocks methods 19 and 20.",
+    "phase_3": "You have 120 chunks and 120 vectors. You can run 22 methods today. The easiest is Rapid Qualitative Analysis (RQA) matrix (method 02). You can start the novice, intermediate, and advanced levels today. You built every analysis artifact this version stores. Screen and query the corpus any time."
+  },
+  "meter": "persona-meter",
+  "methods": {
+    "01": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 69,
+      "success": true
+    },
+    "02": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 3,
+      "success": true
+    },
+    "03": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 36,
+      "success": true
+    },
+    "04": {
+      "doctor_next_step": 0,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 6,
+      "success": true
+    },
+    "05": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 9,
+      "success": true
+    },
+    "06": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 24,
+      "success": true
+    },
+    "07": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 12,
+      "success": true
+    },
+    "08": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 72,
+      "success": true
+    },
+    "09": {
+      "doctor_next_step": 1,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 27,
+      "success": true
+    },
+    "10": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 30,
+      "success": true
+    },
+    "11": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 42,
+      "success": true
+    },
+    "12": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 33,
+      "success": true
+    },
+    "13": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 45,
+      "success": true
+    },
+    "14": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 48,
+      "success": true
+    },
+    "15": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 51,
+      "success": true
+    },
+    "16": {
+      "doctor_next_step": 2,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 54,
+      "success": true
+    },
+    "17": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 60,
+      "success": true
+    },
+    "18": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 75,
+      "success": true
+    },
+    "19": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 63,
+      "success": true
+    },
+    "20": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 66,
+      "success": true
+    },
+    "21": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 78,
+      "success": true
+    },
+    "22": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 39,
+      "success": true
+    },
+    "23": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 81,
+      "success": true
+    },
+    "24": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 84,
+      "success": true
+    },
+    "25": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 87,
+      "success": true
+    },
+    "26": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 15,
+      "success": true
+    },
+    "27": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 57,
+      "success": true
+    },
+    "28": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 90,
+      "success": true
+    },
+    "29": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 18,
+      "success": true
+    },
+    "30": {
+      "doctor_next_step": null,
+      "failed_attempts": 2,
+      "override_needed": true,
+      "phrase_resolution_steps": 21,
+      "success": true
+    }
+  },
+  "novice_walk_order": [
+    "02",
+    "04",
+    "05",
+    "07",
+    "26",
+    "29",
+    "30",
+    "06",
+    "09",
+    "10",
+    "12",
+    "03",
+    "22",
+    "11",
+    "13",
+    "14",
+    "15",
+    "16",
+    "27",
+    "17",
+    "19",
+    "20",
+    "01",
+    "08",
+    "18",
+    "21",
+    "23",
+    "24",
+    "25",
+    "28"
+  ],
+  "recipe": "novice_default",
+  "rung_grades": {
+    "analyze": "A-",
+    "ask": "B+",
+    "explore": "B-",
+    "ingest": "B+",
+    "report": "A-",
+    "setup": "B+"
+  },
+  "schema_version": "1.0"
+}

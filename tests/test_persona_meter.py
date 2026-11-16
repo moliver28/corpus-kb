@@ -16,7 +16,7 @@ import pytest
 from corpus_kb.analysis.method_register_loader import load_method_register
 from scripts.persona_meter import HEALTHY_STATE, WALK_CONFIG, run_walk, visit_order, walk_phases
 from scripts.persona_ratchet import compare_reports, read_baselines
-from scripts.persona_report import build_report
+from scripts.persona_report import build_report, write_report
 
 FIXTURES = Path(__file__).resolve().parents[0] / "fixtures" / "persona_meter"
 
@@ -203,3 +203,13 @@ def test_baseline_reader_rejects_a_missing_block(tmp_path):
     baselines.write_text(json.dumps({"files_over_250": 1}), encoding="utf-8")
     with pytest.raises(SystemExit, match="persona_meter"):
         read_baselines(baselines)
+
+
+async def test_written_report_matches_built_report(tmp_path):
+    register = _register()
+    walk = await run_walk(register, WALK_CONFIG)
+    out = tmp_path / "report.v1.json"
+    write_report(out, build_report(register, walk, include_wall=False))
+    assert json.loads(out.read_text(encoding="utf-8")) == build_report(
+        register, walk, include_wall=False
+    )
