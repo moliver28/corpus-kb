@@ -234,7 +234,13 @@ async def test_override_envelope_carries_the_override_chain(
     """An analyst override hand-holds from the override row's chain."""
     register = _register(
         _record("01", "Codebook method", [_TIE_B], op="duplicates_screen", difficulty="novice"),
-        _record("02", "Next method", op="duplicates_screen", difficulty="intermediate", after=["01"]),
+        _record(
+            "02",
+            "Next method",
+            op="duplicates_screen",
+            difficulty="intermediate",
+            after=["01"],
+        ),
         _record("05", "Cluster method", [_TIE_A], op="clusters_inspect"),
         _record("04", "Led method", op="duplicates_screen", difficulty="novice"),
     )
