@@ -53,17 +53,17 @@ class DataflowRecord(Protocol):
 
 def validate_dataflow_fields(record: DataflowRecord) -> None:
     """Validate one row's dataflow fields. A ``None`` value always passes."""
-    _check_artifacts("produces", record.produces, 1)
-    _check_artifacts("consumes", record.consumes, 0)
+    _check_artifacts("produces", record.produces, 1, MAX_PRODUCES)
+    _check_artifacts("consumes", record.consumes, 0, MAX_CONSUMES)
     _check_after(record)
 
 
-def _check_artifacts(field_name: str, values: list[str] | None, floor: int) -> None:
-    """Artifact list: floor to 5 entries, known words, non-empty, unique."""
+def _check_artifacts(field_name: str, values: list[str] | None, floor: int, cap: int) -> None:
+    """Artifact list: floor to cap entries, known words, non-empty, unique."""
     if values is None:
         return
-    if not floor <= len(values) <= MAX_PRODUCES:
-        raise ValueError(f"{field_name}: {len(values)} found. List {floor} to {MAX_PRODUCES}.")
+    if not floor <= len(values) <= cap:
+        raise ValueError(f"{field_name}: {len(values)} found. List {floor} to {cap}.")
     unknown = [artifact for artifact in values if artifact not in ARTIFACT_TYPES]
     if unknown:
         raise ValueError(
