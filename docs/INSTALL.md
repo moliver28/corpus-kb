@@ -2,8 +2,29 @@
 
 This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **Postgres 17** with **pgvector** and **Apache AGE**, **Python 3.11.5 or newer**, and **Ollama** for local embeddings. This page installs the Postgres engine. The no-Docker DuckDB path is shorter; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
+## The fast path: pipx
+
+Skip the clone. You need [pipx](https://pipx.pypa.io/), [Ollama](https://ollama.com/download), and Docker. Then run three commands:
+
+```bash
+pipx install corpus-kb
+corpus-kb quickstart
+corpus-kb demo-kb
+```
+
+`quickstart` checks your machine, adopts a database, and pulls the
+models. It names the fix for any missing piece. `demo-kb` loads the
+sample library and proves search works.
+
+The default models are `qwen3-embedding:4b` for vectors and `qwen3:4b`
+for answers. Each one downloads about 2.5 GB through Ollama. No Docker?
+Run `corpus-kb setup --backend duckdb` first, then re-run quickstart.
+
+The rest of this page is the manual path from a clone.
+
 ## Contents
 
+- [The fast path: pipx](#the-fast-path-pipx)
 - [Two database paths: 5433 (compose) vs 5432 (native)](#two-database-paths-5433-compose-vs-5432-native)
 - [No Docker? The DuckDB path](#no-docker-the-duckdb-path)
 - [Prerequisites](#prerequisites)

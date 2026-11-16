@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from io import StringIO
 from pathlib import Path
@@ -19,6 +20,8 @@ if str(_REPO_SRC) not in sys.path:
     sys.path.insert(0, str(_REPO_SRC))
 
 from corpus_kb._setup import install as install_module  # noqa: E402
+from corpus_kb._setup import setup_assets as setup_assets_module  # noqa: E402
+from corpus_kb._setup import setup_stack as setup_stack_module  # noqa: E402
 
 
 def _minimal_config(data_dir: Path | None = None) -> dict:
@@ -280,15 +283,11 @@ async def test_setup_fresh_resets_state_and_runs_all_phases(tmp_path: Path) -> N
     assert install_module._install_state_path(config).exists()
     loaded = install_module.load_install_state(config)
     assert loaded["completed"] == list(install_module.INSTALL_PHASES)
-    assert calls == [
-        "compose",
-        "python",
-        "database",
-        "extensions",
-        "models",
-        "weights",
-        "config",
-    ]
+    # The pull pair records from two threads, so only membership plus the
+    # sequential tail order are asserted here.
+    assert set(calls) == set(install_module.INSTALL_PHASES)
+    tail = [c for c in calls if c not in ("pull", "models")]
+    assert tail == ["compose", "python", "database", "extensions", "weights", "config"]
 
 
 @pytest.mark.asyncio
@@ -296,17 +295,45 @@ async def test_setup_resume_skips_completed_phases(tmp_path: Path) -> None:
     """A normal run skips phases already recorded in the checkpoint."""
     config = _minimal_config(tmp_path)
     state = install_module.load_install_state(config)
-    state["completed"] = ["compose", "python", "database", "extensions"]
+    state["completed"] = ["pull", "compose", "python", "database", "extensions"]
     install_module.save_install_state(state, config)
 
     calls: list[str] = []
-    with _phase_mocks(calls):
+    with (
+        _phase_mocks(calls),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+    ):
         result = await install_module.setup_cmd(config, dry_run=False, fresh=False)
 
     assert result == 0
     assert calls == ["models", "weights", "config"]
     loaded = install_module.load_install_state(config)
-    assert loaded["completed"] == list(install_module.INSTALL_PHASES)
+    # A resumed run keeps the historical completion order; membership must
+    # still cover every phase.
+    assert set(loaded["completed"]) == set(install_module.INSTALL_PHASES)
+    assert loaded["completed"][:5] == ["pull", "compose", "python", "database", "extensions"]
+
+
+@pytest.mark.asyncio
+async def test_setup_resume_models_done_pulls_images(tmp_path: Path) -> None:
+    """A checkpoint with models done still pulls images, then the rest in order."""
+    config = _minimal_config(tmp_path)
+    state = install_module.load_install_state(config)
+    state["completed"] = ["models"]
+    install_module.save_install_state(state, config)
+
+    calls: list[str] = []
+    with (
+        _phase_mocks(calls),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=False)
+
+    assert result == 0
+    assert "pull" in calls
+    assert "models" not in calls
+    tail = [c for c in calls if c not in ("pull", "models")]
+    assert tail == ["compose", "python", "database", "extensions", "weights", "config"]
 
 
 @pytest.mark.asyncio
@@ -327,7 +354,7 @@ async def test_setup_dry_run_shows_resume_status(tmp_path: Path) -> None:
         assert result == 0
 
     output = stdout_capture.getvalue()
-    assert "Checkpoint: 2/7 phases completed" in output
+    assert "Checkpoint: 2/8 phases completed" in output
     assert "Completed: compose, python" in output
 
 
@@ -344,18 +371,27 @@ def _minimal_profile() -> dict:
 
 
 @contextlib.contextmanager
-def _phase_mocks(calls: list[str], *, patch_verify: bool = True) -> Iterator[None]:
+def _phase_mocks(
+    calls: list[str], *, patch_verify: bool = True, pull_rc: int = 0
+) -> Iterator[None]:
     """Patch every setup phase so tests run without Docker/Ollama/Postgres.
 
     By default the image-signature verification helper is also patched out so
     tests do not require cosign. Set patch_verify=False to exercise the real
-    verification logic.
+    verification logic. pull_rc sets the compose-pull phase's exit code.
     """
     with contextlib.ExitStack() as stack:
         if patch_verify:
             stack.enter_context(
                 patch.object(install_module, "_verify_postgres_image", return_value=None)
             )
+        stack.enter_context(
+            patch.object(
+                install_module,
+                "setup_compose_pull",
+                side_effect=lambda *_args, **_kw: (_record(calls, "pull"), pull_rc)[1],
+            )
+        )
         stack.enter_context(
             patch.object(
                 install_module,
@@ -413,6 +449,146 @@ def _phase_mocks(calls: list[str], *, patch_verify: bool = True) -> Iterator[Non
 def _record(calls: list[str], phase: str) -> None:
     """Record that a phase was executed."""
     calls.append(phase)
+
+
+@pytest.mark.asyncio
+async def test_setup_runs_compose_pull_and_ollama_pulls(tmp_path: Path) -> None:
+    """The pull phase runs docker compose pull plus each required ollama pull."""
+    config = _minimal_config(tmp_path)
+    # The installer resolves compose.yaml through the setup-asset resolver
+    # (package data first, checkout fallback) — same seam as compose up.
+    compose_fixture = tmp_path / "compose.yaml"
+    compose_fixture.write_text("services: {}\n", encoding="utf-8")
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: Any) -> int:
+        cmds.append(cmd)
+        return 0
+
+    with (
+        patch.object(install_module, "_verify_postgres_image", return_value=None),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+        patch.object(install_module, "confirm", return_value=True),
+        patch.object(install_module, "print_next_steps"),
+        patch.object(install_module, "install_python_deps", return_value=0),
+        patch.object(install_module, "install_database", return_value=0),
+        patch.object(install_module, "setup_verify_extensions", return_value=0),
+        patch.object(install_module, "setup_pull_weights", return_value=0),
+        patch.object(install_module, "setup_update_config", return_value=0),
+        patch.object(setup_assets_module, "resolve_setup_asset", return_value=compose_fixture),
+        patch.object(setup_stack_module, "_run_cmd", side_effect=fake_run),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result == 0
+    assert any(cmd[:2] == ["docker", "compose"] and cmd[-1] == "pull" for cmd in cmds)
+    ollama = [cmd[2] for cmd in cmds if cmd[:2] == ["ollama", "pull"]]
+    assert ollama == list(install_module.SETUP_REQUIRED_MODELS)
+    loaded = install_module.load_install_state(config)
+    assert loaded["completed"] == list(install_module.INSTALL_PHASES)
+
+
+@pytest.mark.asyncio
+async def test_setup_pull_section_reports_before_models(tmp_path: Path) -> None:
+    """The pull section prints before the models section even when models end first."""
+    config = _minimal_config(tmp_path)
+
+    def slow_pull(*_args: Any, **_kwargs: Any) -> int:
+        time.sleep(0.2)
+        print("PULL SECTION MARKER")
+        return 0
+
+    def fast_models(*_args: Any, **_kwargs: Any) -> int:
+        print("MODELS SECTION MARKER")
+        return 0
+
+    stdout_capture = StringIO()
+    with (
+        patch.object(sys, "stdout", stdout_capture),
+        patch.object(install_module, "_verify_postgres_image", return_value=None),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+        patch.object(install_module, "confirm", return_value=True),
+        patch.object(install_module, "print_next_steps"),
+        patch.object(install_module, "install_python_deps", return_value=0),
+        patch.object(install_module, "install_database", return_value=0),
+        patch.object(install_module, "setup_verify_extensions", return_value=0),
+        patch.object(install_module, "setup_pull_weights", return_value=0),
+        patch.object(install_module, "setup_update_config", return_value=0),
+        patch.object(install_module, "setup_start_compose", return_value=0),
+        patch.object(install_module, "setup_compose_pull", side_effect=slow_pull),
+        patch.object(install_module, "setup_pull_models", side_effect=fast_models),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result == 0
+    output = stdout_capture.getvalue()
+    assert output.index("PULL SECTION MARKER") < output.index("MODELS SECTION MARKER")
+
+
+@pytest.mark.asyncio
+async def test_setup_without_docker_suggests_duckdb_backend(tmp_path: Path) -> None:
+    """When Docker is missing, setup names the no-Docker duckdb path."""
+    config = _minimal_config(tmp_path)
+    stdout_capture = StringIO()
+    with (
+        patch.object(sys, "stdout", stdout_capture),
+        patch.object(install_module, "_find_compose_command", return_value=None),
+        patch.object(install_module, "confirm", return_value=True),
+        patch.object(install_module, "print_next_steps"),
+        patch.object(install_module, "install_python_deps", return_value=0),
+        patch.object(install_module, "install_database", return_value=0),
+        patch.object(install_module, "setup_verify_extensions", return_value=0),
+        patch.object(install_module, "setup_pull_weights", return_value=0),
+        patch.object(install_module, "setup_update_config", return_value=0),
+        patch.object(install_module, "setup_pull_models", return_value=0),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result == 0
+    output = stdout_capture.getvalue()
+    assert "Install Docker, then re-run setup." in output
+    assert "corpus-kb setup --backend duckdb" in output
+    loaded = install_module.load_install_state(config)
+    assert "pull" not in loaded["completed"]
+    assert "models" in loaded["completed"]
+
+
+@pytest.mark.asyncio
+async def test_setup_build_local_skips_image_pull(tmp_path: Path) -> None:
+    """--build-local never runs the registry pull (the image builds locally)."""
+    config = _minimal_config(tmp_path)
+    calls: list[str] = []
+    stdout_capture = StringIO()
+    with (
+        patch.object(sys, "stdout", stdout_capture),
+        _phase_mocks(calls),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True, build_local=True)
+
+    assert result == 0
+    assert "pull" not in calls
+    assert "models" in calls
+    loaded = install_module.load_install_state(config)
+    assert "pull" not in loaded["completed"]
+    assert "builds at compose up" in stdout_capture.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_setup_pull_failure_is_not_fatal(tmp_path: Path) -> None:
+    """A failed image pull keeps the run going and stays out of the checkpoint."""
+    config = _minimal_config(tmp_path)
+    calls: list[str] = []
+    with (
+        _phase_mocks(calls, pull_rc=1),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result != 0
+    assert "compose" in calls
+    assert "models" in calls
+    loaded = install_module.load_install_state(config)
+    assert "pull" not in loaded["completed"]
 
 
 def _cosign_run_stub(calls: list[list[str]]) -> type:
@@ -554,3 +730,195 @@ async def test_check_postgres_dead_port_reports_a_reason() -> None:
     # Credentials from the DSN never leak into the message.
     assert "corpus_user" not in msg
     assert "secret" not in msg
+
+
+# --- Pull-flow branch tests (close-out diff-coverage gate) -----------------
+
+
+def _plan(**overrides: Any) -> Any:
+    """A _SetupPlan whose fields each branch test can override."""
+    from corpus_kb._setup.install import _SetupPlan
+
+    defaults: dict[str, Any] = {
+        "state": {"completed": []},
+        "completed": [],
+        "conn_str": "postgresql://u:p@localhost:5433/db",
+        "profile": "mid",
+        "recommended_model": "m",
+        "compose_cmd": None,
+        "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+        "skip_image_verify": False,
+    }
+    defaults.update(overrides)
+    return _SetupPlan(**defaults)
+
+
+def test_stage_router_passthrough_write_and_flush() -> None:
+    """Routes cover worker threads only: the main thread passes through."""
+    from io import StringIO as _StringIO
+
+    from corpus_kb._setup.setup_pull_pair import _StageRouter
+
+    passthrough = _StringIO()
+    router = _StageRouter({}, passthrough)
+    written = router.write("main line\n")
+    router.flush()
+    assert written == len("main line\n")
+    assert passthrough.getvalue() == "main line\n"
+
+
+def test_verify_image_before_pulls_stops_on_cosign_failure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A failed signature check stops setup before any download starts."""
+    plan = _plan(compose_cmd="docker compose")
+    with patch.object(
+        install_module, "_verify_postgres_image", side_effect=RuntimeError("cosign missing")
+    ):
+        ok = install_module._verify_image_before_pulls(plan, build_local=False)
+    assert ok is False
+    assert "[Step 1/6] ERROR: cosign missing" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_run_setup_phases_reports_a_fatal_image_verify_failure() -> None:
+    """The fatal flag stops the phase loop after a failed signature check."""
+    plan = _plan(compose_cmd="docker compose")
+    config: dict[str, Any] = {"installer": {}}
+    with patch.object(
+        install_module, "_verify_postgres_image", side_effect=RuntimeError("no cosign")
+    ):
+        exit_code, fatal = await install_module._run_setup_phases(plan, config, build_local=False)
+    assert (exit_code, fatal) == (1, True)
+
+
+def test_run_pull_pair_reports_a_failing_stage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A stage that raises still joins the report and returns nonzero."""
+    plan = _plan()
+    config: dict[str, Any] = {"installer": {}}
+    with (
+        patch.object(install_module, "collect_model_consents", return_value=[("m", True)]),
+        patch.object(install_module, "setup_pull_models", side_effect=RuntimeError("boom")),
+    ):
+        exit_code = install_module._run_pull_pair(plan, config, build_local=True)
+    assert exit_code == 1
+    assert "the model pull failed: boom" in capsys.readouterr().out
+
+
+def test_setup_compose_pull_missing_compose_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without the compose file in any layout, the pull reports the miss."""
+    with patch.object(setup_assets_module, "resolve_setup_asset", return_value=None):
+        rc = install_module.setup_compose_pull("docker compose", True)
+    assert rc == 1
+    assert "compose.yaml not found" in capsys.readouterr().out
+
+
+def test_setup_compose_pull_dry_run_returns_zero() -> None:
+    """apply=False keeps the pull a no-op even with the file found."""
+    rc = install_module.setup_compose_pull("docker compose", apply=False)
+    assert rc == 0
+
+
+def test_setup_compose_pull_asks_when_consent_is_none() -> None:
+    """agreed=None asks on the calling thread, then runs the pull."""
+    from corpus_kb._setup import setup_stack
+
+    with (
+        patch.object(setup_stack, "_confirm_fn", return_value=lambda _prompt: True),
+        patch.object(setup_stack, "_run_cmd", return_value=0) as run,
+    ):
+        rc = install_module.setup_compose_pull("docker compose", True, agreed=None)
+    assert rc == 0
+    run.assert_called_once()
+
+
+def test_setup_compose_pull_declined_prints_skip(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A declined pull prints its skip line and returns zero."""
+    rc = install_module.setup_compose_pull("docker compose", True, agreed=False)
+    assert rc == 0
+    assert "Skipped." in capsys.readouterr().out
+
+
+def test_collect_model_consents_asks_per_model() -> None:
+    """Consents arrive in declared order, one prompt per required model."""
+    from corpus_kb._setup import setup_stack
+
+    asks: list[str] = []
+
+    def fake_ask(prompt: str) -> bool:
+        asks.append(prompt)
+        return True
+
+    with patch.object(setup_stack, "_confirm_fn", return_value=fake_ask):
+        consents = install_module.collect_model_consents()
+    assert consents == [(m, True) for m in install_module.SETUP_REQUIRED_MODELS]
+    assert len(asks) == len(install_module.SETUP_REQUIRED_MODELS)
+
+
+def test_pull_models_consents_skips_declined_models(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A declined model prints its skip line and pulls nothing."""
+    from corpus_kb._setup.setup_pulls import pull_models_consents
+
+    rc = pull_models_consents([("model-x", False)])
+    assert rc == 0
+    assert "Skipped model-x." in capsys.readouterr().out
+
+
+def test_pull_models_consents_pulls_agreed_models() -> None:
+    """An agreed model runs one bounded ollama pull."""
+    from corpus_kb._setup import setup_stack
+    from corpus_kb._setup.setup_pulls import pull_models_consents
+
+    with patch.object(setup_stack, "_run_cmd", return_value=0) as run:
+        rc = pull_models_consents([("model-x", True)])
+    assert rc == 0
+    run.assert_called_once_with(["ollama", "pull", "model-x"], timeout=600)
+
+
+def test_setup_start_compose_missing_compose_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without the compose file in any layout, stack start reports it."""
+    with patch.object(setup_assets_module, "resolve_setup_asset", return_value=None):
+        rc = install_module.setup_start_compose("docker compose", apply=True)
+    assert rc == 1
+    assert "compose.yaml not found" in capsys.readouterr().out
+
+
+def test_setup_start_compose_missing_build_local_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing build-local overlay stops stack start with the miss."""
+    compose = Path("compose.yaml")
+
+    def fake_resolve(name: str) -> Path | None:
+        return compose if name == setup_assets_module.COMPOSE_FILE else None
+
+    with patch.object(setup_assets_module, "resolve_setup_asset", side_effect=fake_resolve):
+        rc = install_module.setup_start_compose("docker compose", apply=True, build_local=True)
+    assert rc == 1
+    assert "compose.build-local.yaml not found" in capsys.readouterr().out
+
+
+def test_stage_router_routes_write_and_flush_for_workers() -> None:
+    """A registered worker thread's writes and flushes stay in its buffer."""
+    import threading as _threading
+    from io import StringIO as _StringIO
+
+    from corpus_kb._setup.setup_pull_pair import _StageRouter
+
+    sink = _StringIO()
+    passthrough = _StringIO()
+    router = _StageRouter({_threading.get_ident(): sink}, passthrough)
+    router.write("worker line\n")
+    router.flush()
+    assert sink.getvalue() == "worker line\n"
+    assert passthrough.getvalue() == ""

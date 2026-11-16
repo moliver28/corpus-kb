@@ -1,0 +1,17 @@
+# Compose override for building the Postgres image locally.
+#
+# Use this file together with compose.yaml when you want to build the custom
+# PostgreSQL image from docker/postgres/Dockerfile instead of using the pinned
+# pre-built image from GHCR.
+#
+#   docker compose -f compose.yaml -f compose.build-local.yaml up -d --build
+#
+# The Corpus-KB installer applies this override automatically when invoked with
+# ``corpus-kb setup --build-local``.
+
+services:
+  postgres:
+    build:
+      context: docker/postgres
+      dockerfile: Dockerfile
+    image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17

@@ -10,9 +10,33 @@ Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coder
 
 Pick the path that fits you. Both end at the same working system.
 
-### The novice path: the browser
+### The novice path: three commands
 
-No terminal work beyond a few commands. First install the package:
+Install [pipx](https://pipx.pypa.io/) first if you do not have it. Then:
+
+```bash
+pipx install corpus-kb
+corpus-kb quickstart
+corpus-kb demo-kb
+```
+
+No repo clone is needed. `quickstart` checks your machine and names any
+missing piece. `demo-kb` loads a small sample library, so search works
+right away.
+
+Two downloads come first:
+
+- [Ollama](https://ollama.com/download) serves the local models.
+- Docker runs the Postgres database. No Docker? Use the DuckDB path
+  ([Storage backends](docs/STORAGE-BACKENDS.md)).
+
+The default models are `qwen3-embedding:4b` for vectors and `qwen3:4b`
+for answers. Each one downloads about 2.5 GB through Ollama. The setup
+pulls both for you.
+
+### The browser path: from a clone
+
+The browser UI needs the repo. First install the package:
 
 ```bash
 pip install -e .

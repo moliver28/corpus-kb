@@ -1,9 +1,10 @@
 """Docker-stack and model setup steps (zero-drift split of _setup/install.py).
 
 Compose-stack start, Postgres image signature verification, the bounded
-subprocess runner, extension verification, and the required-model pulls.
-``install.py`` re-exports these so its orchestrators (and the
-``install_module.*`` test patches) keep working.
+subprocess runner, and extension verification. The model pulls moved to
+``setup_pulls.py`` (the concurrent pull pair). ``install.py`` re-exports
+these so its orchestrators (and the ``install_module.*`` test patches)
+keep working.
 
 Patch seam: the tests patch ``corpus_kb._setup.install.confirm`` /
 ``install.check_extensions`` and then call some of these functions
@@ -18,10 +19,10 @@ import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from corpus_kb._setup import setup_assets
 from corpus_kb._setup.setup_steps import (
     EXTENSION_REMEDIATION,
     EXTENSIONS,
-    SETUP_REQUIRED_MODELS,
     ExtensionMap,
 )
 
@@ -113,19 +114,18 @@ def _run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 300) -> 
 
 def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False) -> int:
     """Bring the docker-compose stack up if available and confirmed."""
-    repo_root = REPO_ROOT
-    compose_file = repo_root.parent / "compose.yaml"
-    if not compose_file.exists():
-        print("  ERROR: compose.yaml not found at repo root.")
-        print(f"  Looked for: {compose_file}")
+    compose_file = setup_assets.resolve_setup_asset(setup_assets.COMPOSE_FILE)
+    if compose_file is None:
+        print("  ERROR: compose.yaml not found.")
+        print("  Looked inside the installed package and at the checkout root.")
         return 1
 
-    compose_files = [repo_root.parent / "compose.yaml"]
+    compose_files = [compose_file]
     if build_local:
-        build_local_file = repo_root.parent / "compose.build-local.yaml"
-        if not build_local_file.exists():
-            print("  ERROR: compose.build-local.yaml not found at repo root.")
-            print(f"  Looked for: {build_local_file}")
+        build_local_file = setup_assets.resolve_setup_asset(setup_assets.COMPOSE_BUILD_LOCAL_FILE)
+        if build_local_file is None:
+            print("  ERROR: compose.build-local.yaml not found.")
+            print("  Looked inside the installed package and at the checkout root.")
             return 1
         compose_files.append(build_local_file)
 
@@ -147,7 +147,7 @@ def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False
     cmd = [*parts, *file_args, "up", "-d"]
     if build_local:
         cmd.append("--build")
-    return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
+    return _run_cmd(cmd, cwd=compose_file.parent, timeout=600)
 
 
 async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
@@ -173,20 +173,6 @@ async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
         else:
             print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
     return 0
-
-
-def setup_pull_models(apply: bool) -> int:
-    """Pull the models required by the default configuration."""
-    exit_code = 0
-    for model in SETUP_REQUIRED_MODELS:
-        if not apply:
-            print(f"  (dry run) ollama pull {model}")
-            continue
-        if not _confirm_fn()(f"Pull Ollama model '{model}'."):
-            print(f"  Skipped {model}.")
-            continue
-        exit_code |= _run_cmd(["ollama", "pull", model], timeout=600)
-    return exit_code
 
 
 def setup_pull_weights(apply: bool) -> int:

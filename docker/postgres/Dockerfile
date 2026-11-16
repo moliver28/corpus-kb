@@ -1,4 +1,9 @@
-# Custom PostgreSQL 17 image for Corpus-KB.
+# Custom PostgreSQL 17 image for Corpus-KB: pgvector + Apache AGE + pgml.
+# Route trade-off (web-grounded 2026-11-14): no maintained base ships all
+# three — apache/age ships AGE only, postgresml/postgresml is the full app
+# stack (not an extension-only PG base), and pgml always needs its Python
+# runtime baked in. So: postgres:17 base, pgvector + AGE from the signed
+# PGDG apt repo (version-pinned), pgml compiled from source.
 # Base is pinned to postgres:17-bookworm (Debian 12 Bookworm) so the PGDG
 # apt repo resolves to the pgdg12 suite; the unpinned postgres:17 tag now
 # points at Trixie which uses different package versions.
@@ -128,5 +133,21 @@ RUN ldconfig
 # pgml + AGE must be preloaded.
 RUN sed -i "s/#shared_preload_libraries = ''/shared_preload_libraries = 'pgml,age'/" \
         /usr/share/postgresql/postgresql.conf.sample
+
+# OCI provenance labels (present on ghcr builds and local builds alike).
+LABEL org.opencontainers.image.title="corpus-kb-postgres" \
+      org.opencontainers.image.description="PostgreSQL 17 + pgvector + Apache AGE + PostgresML for Corpus-KB" \
+      org.opencontainers.image.source="https://github.com/moliver28/corpus-kb" \
+      org.opencontainers.image.licenses="MIT"
+
+# Bake first-boot init: the stock entrypoint runs /docker-entrypoint-initdb.d/
+# once per fresh data dir, as the bootstrap superuser. The script pre-creates
+# the extensions (pgvector is untrusted -> superuser pre-create) and grants
+# USAGE on schema public to the app role. Idempotent; a compose re-up with an
+# existing data volume skips the dir entirely.
+COPY initdb/01-extensions-and-grants.sh /docker-entrypoint-initdb.d/
+# Strip any CRLF (Windows working-copy checkouts) and make it executable.
+RUN sed -i 's/\r$//' /docker-entrypoint-initdb.d/01-extensions-and-grants.sh \
+ && chmod 0755 /docker-entrypoint-initdb.d/01-extensions-and-grants.sh
 
 # Default postgres entrypoint remains; see compose.yaml for env vars.

@@ -25,28 +25,54 @@ def _step(
         print(f"  (dry run) {action}")
 
 
-def setup_print_dry_run_steps(
-    compose_cmd: str | None,
-    conn_str: str,
-    profile: str,
-    build_local: bool = False,
-    state: dict[str, Any] | None = None,
+def _print_pull_steps(
+    total: int,
+    completed: list[str],
+    compose_pull_cmd: str | None,
+    build_local: bool,
 ) -> None:
-    """Print the exact steps the setup command would execute."""
-    if state is None:
-        state = {"completed": []}
-    total = len(INSTALL_PHASES)
-    completed = state.get("completed", [])
-
-    compose_files = ["compose.yaml"]
-    if build_local:
-        compose_files.append("compose.build-local.yaml")
-    file_flags = " ".join(f"-f {name}" for name in compose_files)
-    build_flag = " --build" if build_local else ""
-    compose_up_cmd = f"{compose_cmd} {file_flags} up -d{build_flag}" if compose_cmd else None
-
+    """Steps 1-2: the concurrent image and model pull plan lines."""
     _step(
         1,
+        total,
+        "Pull the Docker stack images",
+        False,
+        f"run: {compose_pull_cmd}" if compose_pull_cmd else None,
+    )
+    if "pull" in completed:
+        print("  status: already completed; will be skipped")
+    elif build_local:
+        print("  skipped with --build-local: the image builds at compose up")
+    elif compose_pull_cmd:
+        print(f"  command: {compose_pull_cmd}")
+        print("  concurrent: runs together with step 2")
+    else:
+        print("  command: not found; install Docker to proceed")
+        print("  Or run: corpus-kb setup --backend duckdb for a no-Docker setup.")
+
+    _step(
+        2,
+        total,
+        "Pull required Ollama models",
+        False,
+        f"run: ollama pull {', '.join(SETUP_REQUIRED_MODELS)}",
+    )
+    if "models" in completed:
+        print("  status: already completed; will be skipped")
+    else:
+        print("  concurrent: runs together with step 1")
+
+
+def _print_stack_step(
+    total: int,
+    completed: list[str],
+    compose_up_cmd: str | None,
+    conn_str: str,
+    build_local: bool,
+) -> None:
+    """Step 3: the compose stack start plan lines."""
+    _step(
+        3,
         total,
         "Start the Docker compose stack",
         False,
@@ -64,12 +90,15 @@ def setup_print_dry_run_steps(
         print("  command: not found; install Docker to proceed")
     print(f"  services: postgres ({conn_str})")
 
-    _step(2, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
+
+def _print_phase_steps(total: int, completed: list[str], conn_str: str, profile: str) -> None:
+    """Steps 4-8: deps, migrations, extensions, weights, config."""
+    _step(4, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
     if "python" in completed:
         print("  status: already completed; will be skipped")
 
     _step(
-        3,
+        5,
         total,
         "Create database/user and apply migrations",
         False,
@@ -79,7 +108,7 @@ def setup_print_dry_run_steps(
         print("  status: already completed; will be skipped")
 
     _step(
-        4,
+        6,
         total,
         "Verify AGE + pgml extensions are installed",
         False,
@@ -89,17 +118,17 @@ def setup_print_dry_run_steps(
         print("  status: already completed; will be skipped")
 
     _step(
-        5,
+        7,
         total,
-        "Pull required Ollama models",
+        "Pre-pull extraction model weights",
         False,
-        f"run: ollama pull {', '.join(SETUP_REQUIRED_MODELS)}",
+        "run: huggingface snapshot download (GLiNER2 + Relex)",
     )
-    if "models" in completed:
+    if "weights" in completed:
         print("  status: already completed; will be skipped")
 
     _step(
-        6,
+        8,
         total,
         "Write/update user config file",
         False,
@@ -107,6 +136,36 @@ def setup_print_dry_run_steps(
     )
     if "config" in completed:
         print("  status: already completed; will be skipped")
+
+
+def setup_print_dry_run_steps(
+    compose_cmd: str | None,
+    conn_str: str,
+    profile: str,
+    build_local: bool = False,
+    state: dict[str, Any] | None = None,
+) -> None:
+    """Print the exact steps the setup command would execute.
+
+    The plan mirrors the real run order: the image pull (step 1) and the
+    model pulls (step 2) run concurrently before compose up.
+    """
+    if state is None:
+        state = {"completed": []}
+    total = len(INSTALL_PHASES)
+    completed = state.get("completed", [])
+
+    compose_files = ["compose.yaml"]
+    if build_local:
+        compose_files.append("compose.build-local.yaml")
+    file_flags = " ".join(f"-f {name}" for name in compose_files)
+    build_flag = " --build" if build_local else ""
+    compose_pull_cmd = f"{compose_cmd} {file_flags} pull" if compose_cmd else None
+    compose_up_cmd = f"{compose_cmd} {file_flags} up -d{build_flag}" if compose_cmd else None
+
+    _print_pull_steps(total, completed, compose_pull_cmd, build_local)
+    _print_stack_step(total, completed, compose_up_cmd, conn_str, build_local)
+    _print_phase_steps(total, completed, conn_str, profile)
 
     print("\nThis was a dry run. Re-run without --dry-run to make changes.")
     print("========================\n")

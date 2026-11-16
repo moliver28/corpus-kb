@@ -7,16 +7,18 @@ Sub-commands:
 
 All mutating actions require explicit user confirmation via input().
 
-Zero-drift split (Wave 3): this module keeps the doctor, the setup/install
-orchestrators, the dry-run plan printer, and the argparse entry point. The
-moved pieces live in sibling modules and are RE-EXPORTED below so the
+Zero-drift split (Wave 3): this module keeps the doctor command, the
+setup/install orchestrators, and the argparse entry point. The moved
+pieces live in sibling modules and are RE-EXPORTED below so the
 historical ``install.<name>`` surface (CLI wiring, tests that patch
 ``install_module.<name>``) keeps working byte-for-byte:
 
-  install_state.py  checkpoint state (load/save/reset + constants)
-  profiles.py       hardware/GPU detection + installer profiles
-  setup_steps.py    confirm, service probes, deps/db/model steps, config write
-  setup_stack.py    docker stack, image verification, extension/model steps
+  install_state.py    checkpoint state (load/save/reset + constants)
+  profiles.py         hardware/GPU detection + installer profiles
+  setup_steps.py      confirm, service probes, deps/db/model steps, config write
+  setup_stack.py      docker stack, image verification, extension/model steps
+  doctor_report.py    doctor text report + doctor --json report
+  setup_pull_pair.py  stdout router + the concurrent pull pair stages
 """
 
 from __future__ import annotations
@@ -34,11 +36,11 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import unquote, urlsplit
 
 import psutil
 
 from corpus_kb._setup.doctor_engine import resolved_backend
+from corpus_kb._setup.doctor_report import doctor_json_report, print_doctor_report
 
 # NOTE: platform/shutil/subprocess/psutil are imported (not used directly) because the
 # installer tests patch them as attributes of THIS module
@@ -55,19 +57,23 @@ from corpus_kb._setup.install_state import (
     reset_install_state,
     save_install_state,
 )
-from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb._setup.profiles import (
     _detect_gpu_vram_gb,
     load_installer_profiles,
 )
 from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+from corpus_kb._setup.setup_pull_pair import _run_pull_pair, _verify_image_before_pulls
+from corpus_kb._setup.setup_pulls import (
+    collect_model_consents,
+    setup_compose_pull,
+    setup_pull_models,
+)
 from corpus_kb._setup.setup_stack import (
     DEFAULT_POSTGRES_IMAGE,
     REPO_ROOT,
     _find_compose_command,
     _run_cmd,
     _verify_postgres_image,
-    setup_pull_models,
     setup_pull_weights,
     setup_start_compose,
     setup_verify_extensions,
@@ -97,167 +103,6 @@ def detect_profile() -> dict[str, Any]:
     from corpus_kb._setup.profiles import detect_profile as _detect_profile
 
     return _detect_profile(_detect_gpu_vram_gb)
-
-
-def print_doctor_report(
-    info: dict[str, Any],
-    research: list[Any] | None = None,
-    env_check: Any | None = None,
-    storage: list[Any] | None = None,
-    journey: list[Any] | None = None,
-) -> None:
-    """Print read-only diagnostic report."""
-    print("\n=== Corpus-KB Doctor ===")
-    print(f"OS:           {info['os']}")
-    print(f"Python:       {info['python']}")
-    print(f"CPU cores:    {info['cpu_cores']}")
-    print(f"RAM:          {info['ram_gb']} GB")
-    if info.get("vram_detected"):
-        print(f"GPU VRAM:     {info['vram_gb']} GB")
-    else:
-        print("GPU VRAM:     unknown (no NVIDIA VRAM detection available)")
-    print(f"Profile:      {info['profile']}")
-    print(
-        f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})"
-    )
-    print(f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})")
-    print("Extensions:")
-    extensions = info.get("extensions")
-    for name, label in EXTENSIONS:
-        if extensions is None:
-            print(f"  {label} ({name}): UNKNOWN (Postgres unreachable; cannot verify)")
-        else:
-            installed, version = extensions[name]
-            if installed:
-                print(f"  {label} ({name}): OK v{version}")
-            else:
-                print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
-    if env_check is not None:
-        print("\nConfiguration:")
-        print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
-        if env_check.fix:
-            print(f"    fix: {env_check.fix}")
-        if env_check.doc:
-            print(f"    docs: {env_check.doc}")
-        # Issue #348: report the config file and the overlay paths, so a
-        # client never has to parse config.yaml to know what is in force.
-        print(f"  Config file: {info.get('config_file', 'packaged default')}")
-        overlays = info.get("overlay_paths") or []
-        print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
-    if research is None:
-        print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
-    else:
-        from corpus_kb._setup.doctor_research import print_research_checks
-
-        print_research_checks(research)
-    if storage:
-        from corpus_kb._setup.doctor_storage import print_storage_checks
-
-        print_storage_checks(storage)
-    if journey:
-        from corpus_kb._setup.doctor_journey import print_journey_checks
-
-        print_journey_checks(journey)
-    print("\nRecommended commands (drop --dry-run to execute setup):")
-    print("  1. pip install -e .[dev]")
-    print("  2. corpus-kb setup")
-    print(f"  3. ollama pull {info['recommended_model']}")
-    print("========================\n")
-
-
-# ResearchCheck statuses (lowercase) to the doctor --json levels (issue #348).
-_LEVEL_BY_STATUS = {"ok": "OK", "warn": "WARN", "fail": "FAIL", "info": "INFO", "skipped": "INFO"}
-
-
-def _check_entry(check: Any) -> dict[str, str]:
-    """One JSON check entry: name, level, detail, plus fix and doc when set."""
-    status = str(getattr(check, "status", ""))
-    entry = {
-        "name": str(getattr(check, "name", "")),
-        "level": _LEVEL_BY_STATUS.get(status.lower(), status.upper()),
-        "detail": str(getattr(check, "detail", "")),
-    }
-    fix = getattr(check, "fix", "")
-    if fix:
-        entry["fix"] = str(fix)
-    doc = getattr(check, "doc", "")
-    if doc:
-        entry["doc"] = str(doc)
-    return entry
-
-
-def _database_display_name(backend: str, conn_str: str) -> str:
-    """The database name (Postgres) or file path (DuckDB) for the JSON report."""
-    if backend == "duckdb":
-        if conn_str.startswith(DUCKDB_DSN_PREFIX):
-            return conn_str[len(DUCKDB_DSN_PREFIX) :]
-        return conn_str
-    try:
-        path = urlsplit(conn_str).path
-    except ValueError:
-        return ""
-    return unquote(path.lstrip("/"))
-
-
-def _resolved_config_summary(config: dict[str, Any], conn_str: str) -> dict[str, Any]:
-    """The resolved config values a client needs (issue #348): backend,
-    database name, embedding model, chat model, overlay paths."""
-    from corpus_kb.config import config_overlay_paths
-
-    backend = resolved_backend(config)
-    emb_cfg = config.get("embedding") or {}
-    llm_cfg = config.get("llm") or {}
-    return {
-        "backend": backend,
-        "database": _database_display_name(backend, conn_str),
-        "embedding_model": str(emb_cfg.get("model", "")) if isinstance(emb_cfg, dict) else "",
-        "chat_model": str(llm_cfg.get("model", "")) if isinstance(llm_cfg, dict) else "",
-        "config_overlays": [str(overlay) for overlay in config_overlay_paths()],
-    }
-
-
-def doctor_json_report(
-    info: dict[str, Any],
-    env_check: Any | None,
-    research: list[Any] | None,
-    storage: list[Any] | None,
-    config: dict[str, Any],
-    conn_str: str,
-    journey: list[Any] | None = None,
-) -> dict[str, Any]:
-    """The machine-readable doctor report (issue #348).
-
-    Every check carries its name, level (OK, INFO, WARN, FAIL) and fix
-    text; the config block carries the resolved values a client needs, so
-    clients stop parsing config.yaml or the text output.
-    """
-    checks: list[dict[str, str]] = [
-        {
-            "name": "Postgres",
-            "level": "OK" if info["postgres_ok"] else "FAIL",
-            "detail": str(info["postgres_msg"]),
-        }
-    ]
-    if not info["postgres_ok"]:
-        checks[0]["fix"] = "run: corpus-kb setup"
-    checks.append(
-        {
-            "name": "Ollama",
-            "level": "OK" if info["ollama_ok"] else "WARN",
-            "detail": str(info["ollama_msg"]),
-        }
-    )
-    if not info["ollama_ok"]:
-        checks[-1]["fix"] = "install Ollama, then run: ollama serve"
-    if env_check is not None:
-        checks.append(_check_entry(env_check))
-    for group in (research, storage, journey):
-        for check in group or []:
-            checks.append(_check_entry(check))
-    return {
-        "checks": checks,
-        "config": _resolved_config_summary(config, conn_str),
-    }
 
 
 async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
@@ -292,9 +137,16 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     conn_str = os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
         db_cfg.get("connection_string", "")
     )
-    info["postgres_ok"], info["postgres_msg"] = (
-        await check_postgres(conn_str) if conn_str else (False, "no connection string")
-    )
+    backend = resolved_backend(config)
+    info["backend"] = backend
+    if backend == "duckdb":
+        # The deployment does not run Postgres: report that honestly and
+        # probe the DuckDB file through the storage checks below instead.
+        info["postgres_ok"], info["postgres_msg"] = False, "not used (database.backend: duckdb)"
+    else:
+        info["postgres_ok"], info["postgres_msg"] = (
+            await check_postgres(conn_str) if conn_str else (False, "no connection string")
+        )
     info["extensions"] = await check_extensions(conn_str) if info["postgres_ok"] else None
 
     emb_cfg = config.get("embedding", {})
@@ -319,7 +171,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
 
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
 
-    reachable = database_reachable(resolved_backend(config), bool(info["postgres_ok"]), storage)
+    reachable = database_reachable(backend, bool(info["postgres_ok"]), storage)
 
     # Novice journey section (novice-UX program W3): the same probe the SPA
     # snapshot composes, so the CLI and the UI cannot disagree. Read-only;
@@ -376,34 +228,28 @@ async def _phase_compose(
     completed: list[str],
     *,
     compose_cmd: str | None,
-    postgres_image: str,
-    skip_image_verify: bool,
     build_local: bool,
-) -> tuple[int, bool]:
-    """Phase 1: docker compose stack (checkpointed).
+) -> int:
+    """Phase: docker compose stack start (checkpointed).
 
-    Returns (exit_code, fatal); fatal means the image-verify step failed and
-    setup must stop (a compose START failure is not fatal — the later phases
-    still run, matching the historical behavior).
+    The image-signature check moved ahead of the concurrent pull pair
+    (`_verify_image_before_pulls`), so setup never downloads an image it
+    would refuse to start. A compose START failure is not fatal — the
+    later phases still run, matching the historical behavior.
     """
     if "compose" in completed:
         print("\n[Step 1/6] Docker compose stack already started; skipping.")
-        return 0, False
-    if compose_cmd:
-        if not build_local:
-            try:
-                _verify_postgres_image(postgres_image, skip_image_verify)
-            except RuntimeError as exc:
-                print(f"\n[Step 1/6] ERROR: {exc}")
-                return 1, True
-        exit_code = setup_start_compose(compose_cmd, apply=True, build_local=build_local)
-        if not exit_code:
-            completed.append("compose")
-            save_install_state(state, config)
-        return exit_code, False
-    print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
-    print("  Install Docker, then re-run setup.")
-    return 0, False
+        return 0
+    if not compose_cmd:
+        print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
+        print("  Install Docker, then re-run setup.")
+        print("  Or run: corpus-kb setup --backend duckdb for a no-Docker setup.")
+        return 0
+    exit_code = setup_start_compose(compose_cmd, apply=True, build_local=build_local)
+    if not exit_code:
+        completed.append("compose")
+        save_install_state(state, config)
+    return exit_code
 
 
 async def _run_database_phase(conn_str: str) -> int:
@@ -517,8 +363,8 @@ def _setup_phase_steps(
 ) -> list[tuple[str, str, Callable[[], Awaitable[int] | int]]]:
     """The checkpointed step table: (name, skip banner, runner) in run order.
 
-    Phase 1 (compose) is absent on purpose: its image-verify failure is
-    fatal, so _run_setup_phases runs it before this table.
+    The pull pair (images + models) and the compose phase are absent on
+    purpose: _run_setup_phases handles them before this table.
     """
     return [
         (
@@ -537,11 +383,6 @@ def _setup_phase_steps(
             lambda: setup_verify_extensions(conn_str, apply=True),
         ),
         (
-            "models",
-            "\n[Step 5/6] Ollama models already pulled; skipping.",
-            lambda: setup_pull_models(apply=True),
-        ),
-        (
             "weights",
             "\n[Step 5b/6] Extraction weights already present; skipping.",
             lambda: setup_pull_weights(apply=True),
@@ -557,24 +398,22 @@ def _setup_phase_steps(
 async def _run_setup_phases(
     plan: _SetupPlan, config: dict[str, Any], *, build_local: bool
 ) -> tuple[int, bool]:
-    """Run the compose phase, then every step-table phase in order.
+    """Run the pull pair, the compose phase, then every step-table phase.
 
-    Returns (exit_code, fatal); fatal means the image-verify step failed and
-    setup must stop (a compose START failure is not fatal — the later phases
-    still run, matching the historical behavior).
+    Returns (exit_code, fatal); fatal means the image-verify step failed
+    and setup must stop (a compose START failure is not fatal — the later
+    phases still run, matching the historical behavior).
     """
-    phase_exit, fatal = await _phase_compose(
+    if not _verify_image_before_pulls(plan, build_local):
+        return 1, True
+    exit_code = _run_pull_pair(plan, config, build_local=build_local)
+    exit_code |= await _phase_compose(
         plan.state,
         config,
         plan.completed,
         compose_cmd=plan.compose_cmd,
-        postgres_image=plan.postgres_image,
-        skip_image_verify=plan.skip_image_verify,
         build_local=build_local,
     )
-    if fatal:
-        return phase_exit, True
-    exit_code = phase_exit
     for name, skip_banner, step in _setup_phase_steps(config, plan.conn_str, plan.profile):
         exit_code |= await _run_phase(plan.state, config, plan.completed, name, skip_banner, step)
     return exit_code, False
@@ -592,13 +431,13 @@ async def setup_cmd(
     """One-flow guided setup for the docker-compose stack.
 
     Steps:
-      1. verify Postgres image signature (cosign)
-      2. docker compose up -d
-      3. pip install -e .[dev]
-      4. create database/user and run migrations
-      5. verify AGE + pgml extensions
-      6. pull required Ollama models
-      7. write/update user config
+      1. verify the Postgres image signature (cosign)
+      2. pull Docker images and Ollama models concurrently
+      3. docker compose up -d
+      4. pip install -e .[dev]
+      5. create database/user and run migrations
+      6. verify AGE + pgml extensions
+      7. pull extraction weights, then write the user config
 
     Completed phases are persisted so interrupted runs can resume with
     ``corpus-kb setup``. Use ``--fresh`` to reset the checkpoint.
@@ -784,6 +623,7 @@ __all__ = [
     "check_extensions",
     "check_ollama",
     "check_postgres",
+    "collect_model_consents",
     "confirm",
     "detect_profile",
     "install_database",
@@ -798,6 +638,7 @@ __all__ = [
     "psutil",
     "reset_install_state",
     "save_install_state",
+    "setup_compose_pull",
     "setup_print_dry_run_steps",
     "setup_pull_models",
     "setup_start_compose",
