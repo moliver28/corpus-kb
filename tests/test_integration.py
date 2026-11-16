@@ -123,7 +123,7 @@ def no_ollama():
 @pytest.fixture
 def store(tmp_path):
     uri = str(tmp_path / "corpus.db")
-    return LanceDBStore(uri, dimensions=768)
+    return DuckDBStore(uri, dimensions=768)
 
 
 @pytest.fixture
@@ -183,8 +183,8 @@ class TestFullPipeline:
         doc_list = store.list_documents()
         assert len(doc_list) == 2
 
-        first_doc_chunks = store.list_chunks("", limit=100) if False else []  # single-store: chunk listing API
-        assert len(first_doc_chunks) >= result_code["chunk_count"] + result_md["chunk_count"]
+        stats = store.get_stats()  # single-store: total across documents
+        assert stats.total_chunks >= result_code["chunk_count"] + result_md["chunk_count"]
 
         searcher = HybridSearcher(store, embedder)
         results = searcher.search("hello", k=5)

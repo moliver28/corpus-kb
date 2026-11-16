@@ -13,10 +13,35 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+
+def _normalize(value):
+    """Legacy Lance writers stored list fields as flattened bracket strings
+    ('[Corpus-KB, What you get]'), new ones store JSON. Accept both."""
+    if not isinstance(value, str):
+        return value
+    for loader in (json.loads, ast.literal_eval):
+        try:
+            parsed = loader(value)
+            if not isinstance(parsed, str):
+                return parsed
+        except (ValueError, SyntaxError):
+            continue
+    if value == "None":
+        return None
+    s = value.strip()
+    if len(s) > 1 and s[0] in ("[", "(") and s[-1] in ("]", ")"):
+        inner = s[1:-1].strip()
+        if not inner:
+            return []
+        return [item.strip() for item in inner.split(",") if item.strip()]
+    return value
 
 
 def main() -> int:
@@ -42,7 +67,7 @@ def main() -> int:
             doc_id=doc["doc_id"],
             source=doc.get("source", ""),
             source_type=doc.get("source_type", "text"),
-            metadata={},
+            metadata=_normalize(doc.get("metadata")) or {},
             chunk_count=int(doc.get("chunk_count", 0)),
             created_at=str(doc.get("created_at", "")),
         ))
@@ -52,7 +77,10 @@ def main() -> int:
     batch: list[Chunk] = []
     n_chunks = 0
     for c in chunks:
-        batch.append(Chunk.from_row({k: v for k, v in c.items() if k not in ("_distance", "_relevance")}))
+        c = dict(c)
+        for field in ("metadata", "heading_path", "scope_chain"):
+            c[field] = _normalize(c.get(field))
+        batch.append(Chunk.from_row(c))
         if len(batch) >= 500:
             store.insert_chunks(batch)
             n_chunks += len(batch)

@@ -64,16 +64,16 @@ class TestOllamaEmbedder:
 
 
 # ============================================================================
-# HybridSearcher (requires LanceDBStore mock or real store)
+# HybridSearcher (requires DuckDBStore mock or real store)
 # ============================================================================
 
-# These tests need a running LanceDBStore. We use a tmp path for isolation.
+# These tests need a running DuckDBStore. We use a tmp path for isolation.
 
 @pytest.fixture
 def tmp_store(tmp_path):
     from storage.duckdb_store import DuckDBStore
     db_path = tmp_path / "lancedb"
-    yield LanceDBStore(str(db_path))
+    yield DuckDBStore(str(db_path))
 
 @pytest.fixture
 def embedder():
@@ -117,7 +117,7 @@ class TestHybridSearcher:
             SearchResult(chunk_id="a", text="a", score=0.9, source="test"),
             SearchResult(chunk_id="b", text="b", score=0.8, source="test"),
         ]
-        merged = LanceDBStore._rrf_fuse(results, [], k=60.0)
+        merged = DuckDBStore._rrf_fuse(results, [], k=60.0)
         assert len(merged) == 2
         assert merged[0].chunk_id == "a"
 
@@ -132,7 +132,7 @@ class TestHybridSearcher:
             SearchResult(chunk_id="b", text="b", score=0.7, source="test"),
             SearchResult(chunk_id="c", text="c", score=0.6, source="test"),
         ]
-        merged = LanceDBStore._rrf_fuse(list_a, list_b, k=60.0)
+        merged = DuckDBStore._rrf_fuse(list_a, list_b, k=60.0)
         # "b" appears in both lists -> highest RRF score
         assert merged[0].chunk_id == "b"
 
@@ -179,7 +179,7 @@ class TestHybridSearcher:
         # Call RRF fusion with default params
         # BEFORE FIX: TOC chunk will be included in results
         # AFTER FIX: TOC chunk will be filtered out
-        merged = LanceDBStore._rrf_fuse(vector_results, fts_results, k=60.0)
+        merged = DuckDBStore._rrf_fuse(vector_results, fts_results, k=60.0)
 
         # Verify TOC chunks are excluded
         chunk_ids = [r.chunk_id for r in merged]

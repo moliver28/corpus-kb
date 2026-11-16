@@ -278,11 +278,21 @@ class DuckDBStore:
 
     def _insert_chunk_rows(self, rows_payload: list[dict]):
         sql = (
-            "INSERT OR REPLACE INTO chunks (chunk_id, doc_id, text, vector, chunk_index, "
+            "INSERT INTO chunks (chunk_id, doc_id, text, vector, chunk_index, "
             "source, source_type, metadata, heading_path, parent_chunk_id, sibling_order, "
             "sibling_count, scope_chain, chunk_type, entity_name, file_path, start_line, "
             "end_line, created_at) VALUES ("
             f"?, ?, ?, {_VEC_DIM % self.dimensions}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT (chunk_id) DO UPDATE SET "
+            "doc_id = excluded.doc_id, text = excluded.text, vector = excluded.vector, "
+            "chunk_index = excluded.chunk_index, source = excluded.source, "
+            "source_type = excluded.source_type, metadata = excluded.metadata, "
+            "heading_path = excluded.heading_path, parent_chunk_id = excluded.parent_chunk_id, "
+            "sibling_order = excluded.sibling_order, sibling_count = excluded.sibling_count, "
+            "scope_chain = excluded.scope_chain, chunk_type = excluded.chunk_type, "
+            "entity_name = excluded.entity_name, file_path = excluded.file_path, "
+            "start_line = excluded.start_line, end_line = excluded.end_line, "
+            "created_at = excluded.created_at"
         )
         for row in rows_payload:
             self.conn.execute(sql, [
