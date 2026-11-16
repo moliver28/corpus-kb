@@ -6,9 +6,11 @@
 # corpus_kb.analysis.method_register_routing. Progression axes
 # (novice-UX program, wave 1) - difficulty, concepts, prerequisites,
 # and next - validate against the vocabularies in
-# corpus_kb.analysis.method_register_progression. Table contracts
-# (novice-UX program, wave 2) validate against the schema in
-# corpus_kb.analysis.method_register_tables. This file and
+# corpus_kb.analysis.method_register_progression. Dataflow axes
+# (issue 439) - produces, consumes, and after - validate against the
+# artifact vocabulary in corpus_kb.analysis.method_register_dataflow.
+# Table contracts (novice-UX program, wave 2) validate against the
+# schema in corpus_kb.analysis.method_register_tables. This file and
 # src/corpus_kb/config/analysis_methods.yaml must stay byte-identical.
 register_version: "3.3.0"
 source_document:
@@ -69,6 +71,9 @@ methods:
     concepts: ["qualitative_coding"]
     prerequisites: []
     next: []
+    produces: ["codes"]
+    consumes: []
+    after: []
   - id: "02"
     name: "Rapid Qualitative Analysis (RQA) matrix"
     summary: "Analysts place short summaries in a structured template, then compare cases in a matrix."
@@ -117,6 +122,9 @@ methods:
     concepts: ["qualitative_coding"]
     prerequisites: []
     next: ["03"]
+    produces: ["matrices"]
+    consumes: []
+    after: []
   - id: "03"
     name: "Framework Method"
     summary: "Analysts chart coded evidence in a case-by-category matrix to compare within and across cases."
@@ -165,6 +173,9 @@ methods:
     concepts: ["qualitative_coding"]
     prerequisites: []
     next: []
+    produces: ["matrices"]
+    consumes: []
+    after: ["02"]
   - id: "04"
     name: "Dictionary or rule-based classification"
     summary: "Match defined words, phrases, or patterns to categories. Rules can assign a category or abstain."
@@ -213,6 +224,9 @@ methods:
     concepts: ["keyword_rules"]
     prerequisites: []
     next: ["13", "14", "15"]
+    produces: ["labels"]
+    consumes: []
+    after: ["12", "18"]
   - id: "05"
     name: "TF-IDF keyphrase scan"
     summary: "Rank words and word sequences by document frequency and corpus rarity to find distinctive wording."
@@ -261,6 +275,9 @@ methods:
     concepts: ["term_weighting"]
     prerequisites: []
     next: []
+    produces: ["keyphrases"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "phrase"
@@ -323,6 +340,9 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["keyphrases"]
+    consumes: []
+    after: ["07"]
     output_table:
       columns:
         - name: "phrase"
@@ -386,6 +406,9 @@ methods:
     concepts: ["term_weighting"]
     prerequisites: []
     next: ["06"]
+    produces: ["keyphrases"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "phrase"
@@ -448,6 +471,9 @@ methods:
     concepts: ["topic_modeling", "term_weighting"]
     prerequisites: []
     next: []
+    produces: ["topics"]
+    consumes: []
+    after: []
   - id: "09"
     name: "Unsupervised BERTopic"
     summary: "Embed text, group similar representations, and describe each group with class-based TF-IDF terms."
@@ -497,6 +523,9 @@ methods:
     concepts: ["topic_modeling", "clustering", "vector_similarity"]
     prerequisites: []
     next: ["10", "11"]
+    produces: ["topics"]
+    consumes: []
+    after: []
   - id: "10"
     name: "Guided BERTopic"
     summary: "Seed words steer topic formation toward topics of interest. Records are not forced onto a label list."
@@ -545,6 +574,9 @@ methods:
     concepts: ["topic_modeling", "clustering", "weak_supervision"]
     prerequisites: []
     next: []
+    produces: ["topics"]
+    consumes: []
+    after: ["09"]
   - id: "11"
     name: "Zero-shot BERTopic"
     summary: "Match records to supplied topic descriptions by similarity, then discover topics in the remaining records."
@@ -593,6 +625,9 @@ methods:
     concepts: ["topic_modeling", "clustering", "vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["topics"]
+    consumes: ["labels"]
+    after: ["09"]
   - id: "12"
     name: "Embedding clustering (including interactive clustering)"
     summary: "Group similar text representations. Human feedback can refine the groups or the representation."
@@ -641,6 +676,9 @@ methods:
     concepts: ["clustering", "vector_similarity"]
     prerequisites: []
     next: ["04"]
+    produces: ["clusters"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "cluster_id"
@@ -705,6 +743,9 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: ["04"]
     next: ["14"]
+    produces: ["scores"]
+    consumes: ["labels"]
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -773,6 +814,9 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: ["04"]
     next: []
+    produces: ["scores"]
+    consumes: ["labels"]
+    after: ["13"]
     output_table:
       columns:
         - name: "chunk_id"
@@ -839,6 +883,9 @@ methods:
     concepts: ["classification", "term_weighting"]
     prerequisites: ["04"]
     next: ["16", "17"]
+    produces: ["scores"]
+    consumes: ["labels"]
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -904,6 +951,9 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: []
     next: ["17", "20"]
+    produces: ["predictions"]
+    consumes: ["labels", "weak_labels"]
+    after: ["15"]
   - id: "17"
     name: "SetFit few-shot classification"
     summary: "Adapt a sentence encoder with labeled text pairs, then fit a classifier on the new representation."
@@ -952,6 +1002,9 @@ methods:
     concepts: ["classification", "vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["predictions"]
+    consumes: ["labels"]
+    after: ["15", "16"]
   - id: "18"
     name: "Zero-shot NLI classification"
     summary: "Turn each label into a statement and score whether the text supports it. No task training is needed."
@@ -1000,6 +1053,9 @@ methods:
     concepts: ["classification"]
     prerequisites: []
     next: ["04"]
+    produces: ["proposals"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -1069,6 +1125,9 @@ methods:
     concepts: ["weak_supervision", "keyword_rules"]
     prerequisites: []
     next: ["16"]
+    produces: ["weak_labels"]
+    consumes: []
+    after: []
   - id: "20"
     name: "Active learning loop"
     summary: "A classifier picks records for human labeling, then retrains. This allocates annotation work."
@@ -1117,6 +1176,9 @@ methods:
     concepts: ["active_learning", "classification"]
     prerequisites: ["16"]
     next: []
+    produces: ["recommendations"]
+    consumes: ["predictions"]
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -1192,6 +1254,9 @@ methods:
     concepts: ["qualitative_coding"]
     prerequisites: []
     next: []
+    produces: ["codes"]
+    consumes: []
+    after: []
   - id: "22"
     name: "Extract, embed, cluster, summarize (EECS)"
     summary: "Extract source spans, cluster their embeddings, then summarize with representative passages or human summaries."
@@ -1240,6 +1305,9 @@ methods:
     concepts: ["clustering", "vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["summaries"]
+    consumes: []
+    after: []
   - id: "23"
     name: "Hybrid retrieval with reranking"
     summary: "Combine lexical and embedding retrieval, then reorder candidates with a second model. Return evidence."
@@ -1288,6 +1356,9 @@ methods:
     concepts: ["information_retrieval", "vector_similarity"]
     prerequisites: []
     next: ["28"]
+    produces: ["evidence"]
+    consumes: []
+    after: []
   - id: "24"
     name: "Extractive question answering"
     summary: "Select an answer span from supplied passages. The passage must state the answer."
@@ -1336,6 +1407,9 @@ methods:
     concepts: ["information_retrieval"]
     prerequisites: []
     next: []
+    produces: ["answers"]
+    consumes: []
+    after: []
   - id: "25"
     name: "Named entity recognition (including GLiNER)"
     summary: "Find spans such as product names, organizations, or locations. Supplied type descriptions are supported."
@@ -1385,6 +1459,9 @@ methods:
     concepts: ["entity_extraction"]
     prerequisites: []
     next: []
+    produces: ["entities"]
+    consumes: []
+    after: []
   - id: "26"
     name: "Sentiment or emotion classification"
     summary: "Assign defined affect categories to text. Rules, classifiers, or the methods above can implement it."
@@ -1433,6 +1510,9 @@ methods:
     concepts: ["sentiment_analysis", "keyword_rules"]
     prerequisites: []
     next: []
+    produces: ["scores"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -1502,6 +1582,9 @@ methods:
     concepts: ["sentiment_analysis", "classification"]
     prerequisites: []
     next: []
+    produces: ["scores"]
+    consumes: ["labels"]
+    after: []
     output_table:
       columns:
         - name: "chunk_id"
@@ -1571,6 +1654,9 @@ methods:
     concepts: ["contradiction_detection", "vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["flags"]
+    consumes: ["evidence"]
+    after: []
     output_table:
       columns:
         - name: "chunk_id_i"
@@ -1634,6 +1720,9 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["flags"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "similarity"
@@ -1699,6 +1788,9 @@ methods:
     concepts: ["vector_similarity"]
     prerequisites: []
     next: []
+    produces: ["flags"]
+    consumes: []
+    after: []
     output_table:
       columns:
         - name: "chunk_id"

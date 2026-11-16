@@ -227,3 +227,25 @@ def test_route_next_methods_matches_v1_on_golden_fixture() -> None:
             assert derived == expected[row.id], row.id
         else:
             assert derived == list(GOLDEN_NEXT[row.id]), row.id
+
+
+def test_derived_ladder_equals_v1_except_the_reviewed_delta() -> None:
+    """The authored register derives the reviewed acceptance columns."""
+    register = load_method_register({})
+    methods = register.methods
+    for row in methods:
+        assert ladder_prerequisites(methods, row.id) == list(EXPECTED_DERIVED_PREREQS[row.id]), (
+            row.id
+        )
+        assert ladder_next(methods, row.id) == list(EXPECTED_DERIVED_NEXT[row.id]), row.id
+
+
+def test_every_v1_edge_is_expressed() -> None:
+    """Every hand-authored v1 edge survives as a derived ladder edge."""
+    register = load_method_register({})
+    methods = register.methods
+    for row in methods:
+        for target in row.next or []:
+            assert row.id in ladder_prerequisites(methods, target), (row.id, target)
+        for prereq in row.prerequisites or []:
+            assert row.id in ladder_next(methods, prereq), (row.id, prereq)
