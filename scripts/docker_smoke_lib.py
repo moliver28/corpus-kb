@@ -44,7 +44,7 @@ def compose_args(profile_arg: list[str], *rest: str) -> list[str]:
     return ["docker", "compose", "-p", PROJECT, *profile_arg, *rest]
 
 
-def run_capture(args: list[str], timeout: float) -> tuple[int, str]:
+def run_capture(args: list[str], timeout: float, tail_lines: int = 60) -> tuple[int, str]:
     """One subprocess; (exit code, combined output tail-truncated)."""
     try:
         proc = subprocess.run(
@@ -60,7 +60,7 @@ def run_capture(args: list[str], timeout: float) -> tuple[int, str]:
     except subprocess.TimeoutExpired:
         return 124, "timed out"
     out = (proc.stdout or "") + (proc.stderr or "")
-    return proc.returncode, "\n".join(out.strip().splitlines()[-60:])
+    return proc.returncode, "\n".join(out.strip().splitlines()[-tail_lines:])
 
 
 def dump_diagnostics() -> None:
@@ -74,10 +74,38 @@ def dump_diagnostics() -> None:
             "{{json .State.Health}}",
             "corpus-kb-app",
         ],
-        "app logs": compose_args(["--profile", "app"], "logs", "--tail", "60", "app"),
+        "app logs (first 40)": compose_args(["--profile", "app"], "logs", "--tail", "220", "app"),
+        "postgres logs (last 30)": compose_args(
+            ["--profile", "app"], "logs", "--tail", "30", "postgres"
+        ),
+        "db state": [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "--profile",
+            "app",
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "corpus_user",
+            "-d",
+            "corpus_kb",
+            "-c",
+            "SELECT filename FROM corpus.schema_migrations ORDER BY filename",
+            "-c",
+            "SELECT table_name FROM information_schema.tables"
+            " WHERE table_schema IN ('corpus','public') ORDER BY table_name",
+            "-c",
+            "SELECT extname FROM pg_extension ORDER BY extname",
+        ],
     }
     for label, args in probes.items():
         _, tail = run_capture(args, 90)
+        if label == "app logs (first 40)":
+            tail = "\n".join(tail.splitlines()[:40])
         print(f"[docker-smoke] diagnostics {label}:\n{tail}")
 
 
