@@ -390,6 +390,7 @@ corpus_kb = [
     "eval/*.json",
     "migrations/*.sql",
     "migrations_duckdb/*.sql",
+    "storage/*.sql",
     "ui_dist/**/*",
 ]
 

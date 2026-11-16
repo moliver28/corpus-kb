@@ -35,13 +35,15 @@ COPY src/ ./src/
 # resolves the dependencies from PyPI when it installs the wheel.
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
 
-# Wheel self-check (zero-drift: the repo-committed ui_dist is the SSOT and
-# the packaged config must ride along; a bare wheel means a broken NAS deploy
-# with no UI). Plain python -c keeps this working on any BuildKit frontend.
+# Wheel self-check (zero-drift: the built UI dist, the packaged config,
+# the base schema, and the migrations must all ride along; a bare wheel
+# means a broken NAS deploy with no UI and no schema). Plain python -c
+# keeps this working on any BuildKit frontend.
 RUN python -c "import glob, sys, zipfile; \
 names = zipfile.ZipFile(glob.glob('/wheels/corpus_kb-*.whl')[0]).namelist(); \
-missing = [p for p in ('corpus_kb/ui_dist/index.html', 'corpus_kb/config.yaml') if p not in names]; \
-sys.exit('wheel is missing: ' + ', '.join(missing)) if missing else print('wheel self-check ok: ui_dist + config.yaml present')"
+required = ('corpus_kb/ui_dist/index.html', 'corpus_kb/config.yaml', 'corpus_kb/storage/schema.sql'); \
+missing = [p for p in required if p not in names]; \
+sys.exit('wheel is missing: ' + ', '.join(missing)) if missing else print('wheel self-check ok: ui_dist + config.yaml + schema.sql present')"
 
 FROM python:3.11-slim-bookworm
 
