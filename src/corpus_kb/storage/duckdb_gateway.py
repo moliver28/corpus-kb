@@ -3,7 +3,9 @@
 One ``DuckDBPyConnection`` per gateway. Every sync call runs in a thread
 under a ``threading.Lock``; an ``asyncio.Lock`` is held across a whole
 transaction scope, so concurrent scopes never interleave and outside
-statements queue behind the open scope.
+statements queue behind the open scope. Read calls ride a small pool of
+duplicated cursors (``duckdb_read_pool.py``, issue #471); the pool sees
+committed state only and never touches the write lock.
 
 DuckDB semantics encoded here (W0-verified, findings/storage-ops.md):
 
@@ -19,23 +21,21 @@ DuckDB semantics encoded here (W0-verified, findings/storage-ops.md):
 
 Shaping helpers (DSN conversion, status tags, append-only guard,
 ``corpus.``-qualification guard, connect error mapping) live in
-``duckdb_support.py``.
+``duckdb_support.py``; the transaction vocabulary lives in
+``duckdb_tx.py``.
 """
 
 from __future__ import annotations
 
 import asyncio
-import random
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from corpus_kb.storage.duckdb_params import bind_params, map_pg_casts
+from corpus_kb.storage.duckdb_read_pool import DEFAULT_READ_POOL_SIZE, DuckDbReadPool
 from corpus_kb.storage.duckdb_support import (
-    _BACKOFF_SECONDS,
     _MAX_PLACEHOLDERS,
-    MAX_TRANSACTION_ATTEMPTS,
     Row,
     _check_append_only,
     _is_count_result,
@@ -45,6 +45,7 @@ from corpus_kb.storage.duckdb_support import (
     duckdb_conn_string_to_path,
     map_connect_error,
 )
+from corpus_kb.storage.duckdb_tx import DuckDbTxMixin
 
 if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
     import duckdb
@@ -52,11 +53,17 @@ if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
 T = TypeVar("T")
 
 
-class DuckDbGateway:
+class DuckDbGateway(DuckDbTxMixin):
     """SqlGateway driver over one DuckDB file (or ``:memory:``)."""
 
-    def __init__(self, conn: duckdb.DuckDBPyConnection) -> None:
+    def __init__(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        read_pool: DuckDbReadPool | None = None,
+    ) -> None:
         self._conn = conn
+        self.read_pool = read_pool
         self._thread_lock = threading.Lock()
         self._tx_lock = asyncio.Lock()
         self._tx_owner: asyncio.Task[Any] | None = None
@@ -68,11 +75,15 @@ class DuckDbGateway:
         *,
         config: Mapping[str, Any] | None = None,
         read_only: bool = False,
+        read_pool_size: int = DEFAULT_READ_POOL_SIZE,
     ) -> DuckDbGateway:
         """Open the file with PG null placement; never hand duckdb a URL.
 
         ``enable_progress_bar`` is session-scope only (rejected at connect),
         so it is SET right after connect — it defaults ON without a tty.
+        ``read_pool_size`` builds the issue #471 read-cursor pool; pass 0
+        to disable it. ``:memory:`` databases never build a pool (a cursor
+        there buys nothing).
         """
         import duckdb
 
@@ -86,9 +97,14 @@ class DuckDbGateway:
         except Exception as exc:
             raise map_connect_error(exc) from exc
         conn.execute("SET enable_progress_bar = false")
-        return cls(conn)
+        pool: DuckDbReadPool | None = None
+        if read_pool_size > 0 and duckdb_conn_string_to_path(dsn) != ":memory:":
+            pool = DuckDbReadPool(conn.cursor, read_pool_size)
+        return cls(conn, read_pool=pool)
 
     async def close(self) -> None:
+        if self.read_pool is not None:
+            await self.read_pool.close()
         await self._run_sync(lambda conn: conn.close())
 
     def duplicate_connection(self) -> duckdb.DuckDBPyConnection:
@@ -109,8 +125,14 @@ class DuckDbGateway:
         _reject_corpus_qualified(sql)
         sql = map_pg_casts(sql)
         params = bind_params(args)
-        async with self._statement_gate():
-            rows = await self._run_sync(lambda conn: self._rows(conn, sql, params))
+        if self.read_pool is not None and asyncio.current_task() is not self._tx_owner:
+            # Pool reads see the last COMMITTED state (issue #471). Scope
+            # owners keep the primary connection, so a read-back inside a
+            # transaction still sees its own uncommitted writes (W0).
+            rows = await self.read_pool.run(lambda conn: self._rows(conn, sql, params))
+        else:
+            async with self._statement_gate():
+                rows = await self._run_sync(lambda conn: self._rows(conn, sql, params))
         return cast("list[Row]", rows)
 
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:
@@ -171,63 +193,7 @@ class DuckDbGateway:
                 params = bind_params(params)
                 await self._run_sync(lambda conn, s=sql, p=params: conn.execute(s, p))
 
-    def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[DuckDbGateway]:
-        return self._transaction_scope()
-
-    async def run_transaction(
-        self, tenant_id: str, body: Callable[[DuckDbGateway], Awaitable[T]]
-    ) -> T:
-        """Run ``body`` in a transaction, replaying the whole unit on conflict."""
-        import duckdb
-
-        conflict: Exception | None = None
-        for attempt in range(MAX_TRANSACTION_ATTEMPTS):
-            try:
-                async with self.transaction(tenant_id):
-                    return await body(self)
-            except duckdb.TransactionException as exc:
-                if "Conflict" not in str(exc):
-                    raise
-                conflict = exc
-                if attempt + 1 < MAX_TRANSACTION_ATTEMPTS:
-                    await asyncio.sleep(
-                        _BACKOFF_SECONDS * 2**attempt * random.SystemRandom().uniform(0.8, 1.2)
-                    )
-        assert conflict is not None
-        raise conflict
-
     # -- internals ---------------------------------------------------------
-
-    @asynccontextmanager
-    async def _transaction_scope(self) -> AsyncIterator[DuckDbGateway]:
-        if asyncio.current_task() is self._tx_owner:
-            # Nested scope: depth-counter no-op — DuckDB has no SAVEPOINT and
-            # parser/catalog failures leave the transaction usable, so the
-            # fail-open degraded-probe contracts port unchanged.
-            yield self
-            return
-        async with self._tx_lock:
-            self._tx_owner = asyncio.current_task()
-            try:
-                await self._run_sync(lambda conn: conn.execute("BEGIN TRANSACTION"))
-                try:
-                    yield self
-                except BaseException:
-                    with suppress(Exception):
-                        await self._run_sync(lambda conn: conn.execute("ROLLBACK"))
-                    raise
-                await self._run_sync(lambda conn: conn.execute("COMMIT"))
-            finally:
-                self._tx_owner = None
-
-    @asynccontextmanager
-    async def _statement_gate(self) -> AsyncIterator[None]:
-        """Owner-task statements ride the open scope; others wait on the lock."""
-        if asyncio.current_task() is self._tx_owner:
-            yield
-            return
-        async with self._tx_lock:
-            yield
 
     async def _run_sync(self, fn: Callable[[duckdb.DuckDBPyConnection], T]) -> T:
         def _locked() -> T:
