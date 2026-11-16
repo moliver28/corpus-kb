@@ -1,7 +1,7 @@
 """Pydantic data models for Corpus-KB.
 
 Chunk, Document, SearchResult, Entity, Relation, Version, Branch, Stats.
-Pure dataclasses with serialization methods for LanceDB round-tripping.
+Pure dataclasses with serialization methods for storage round-trips.
 """
 
 from __future__ import annotations

@@ -369,3 +369,4 @@ if the config default and the catalogue default drift apart.
 - [API.md](API.md) — HTTP routes and examples
 - [research.md](research.md) — cycle postures, gates, and resume rules
 - [ROLLBACK_DRILL.md](ROLLBACK_DRILL.md) — the practiced backup drill
+- [deployment.md](deployment.md) — the daemon runbook and updater

@@ -215,3 +215,7 @@ Fleiss
 DSNs
 journaled
 userConfig
+launchd
+launchctl
+LaunchAgent
+plist

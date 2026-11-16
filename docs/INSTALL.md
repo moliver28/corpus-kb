@@ -396,3 +396,4 @@ Change `--port` or set `CORPUS_KB_PORT`. The JSON-RPC socket uses port `8011` on
 - Learn how to operate the system in [Admin](ADMIN.md)
 - Ports, exit codes, vocabularies, tenancy: [Operations](OPERATIONS.md)
 - The novice path in the browser: [UI.md](UI.md)
+- The daemon runbook and updater: [deployment.md](deployment.md)
