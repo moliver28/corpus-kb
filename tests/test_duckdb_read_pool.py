@@ -1,11 +1,13 @@
 """Read-pool tests (issue #471).
 
-Five contracts, per the wave plan: overlap latch (pool-size cursors run
-concurrently), bounded exhaustion (surplus readers wait, then proceed),
-transaction serialization preserved (scope reads see uncommitted rows on
-the primary; pool reads see committed state only), poisoned-cursor
-recovery (a failed read retires its cursor; the pool regrows), and the
-fetch-shape regression (fetchrow/fetchval/count parity unchanged).
+Contract under test: reads run in parallel only while NO transaction is
+open; during a transaction they queue behind it and observe post-commit
+state (the pinned W0 test
+``test_statement_from_another_task_waits_for_the_tx_scope`` stays the
+authority). Further contracts: bounded overlap latch, exhaustion
+backpressure, poisoned-cursor recovery, factory-failure honesty,
+cancellation safety, close-wakes-parked-readers, and one unified
+post-close error surface for both gateway shapes.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from corpus_kb.storage.duckdb_read_pool import DuckDbReadPool
+from corpus_kb.storage.duckdb_read_pool import POST_CLOSE_MESSAGE, DuckDbReadPool
 from corpus_kb.storage.gateway import DuckDbGateway
 
 if TYPE_CHECKING:
@@ -38,9 +40,15 @@ async def _wait_event(event: threading.Event, timeout: float = 5.0) -> None:
 
 
 async def test_overlap_latch_concurrency_and_bound() -> None:
-    """Pool-size readers latch together; readers past the bound wait."""
-    pool = DuckDbReadPool(_FakeCursor, size=3)
-    barrier = threading.Barrier(3, timeout=2)
+    """Five readers against pool size 4: the latch group stays capped.
+
+    parties=5 makes an unbounded pool pass (all five meet the barrier);
+    a bounded pool can never seat five at once, so at least one reader
+    must starve and break. Which four latch is scheduler-dependent, so
+    the assertions pin the invariant, not one interleaving.
+    """
+    pool: DuckDbReadPool[_FakeCursor] = DuckDbReadPool(_FakeCursor, size=4)
+    barrier = threading.Barrier(5, timeout=3)
     outcomes: list[str] = []
 
     async def reader() -> None:
@@ -51,14 +59,17 @@ async def test_overlap_latch_concurrency_and_bound() -> None:
         else:
             outcomes.append("ok")
 
-    await asyncio.gather(*(reader() for _ in range(5)))
-    assert outcomes.count("ok") == 3, outcomes
-    assert outcomes.count("broken") == 2, outcomes
+    tasks = [asyncio.create_task(reader()) for _ in range(5)]
+    await asyncio.sleep(0.2)  # every growth decision has happened by now
+    assert pool.live <= 4, "pool width is a hard bound"
+    await asyncio.gather(*tasks)
+    assert outcomes.count("ok") <= 4, outcomes
+    assert outcomes.count("broken") >= 1, outcomes
 
 
 async def test_pool_exhaustion_backpressure() -> None:
     """With width 1 a second reader waits for the first cursor's return."""
-    pool = DuckDbReadPool(_FakeCursor, size=1)
+    pool: DuckDbReadPool[_FakeCursor] = DuckDbReadPool(_FakeCursor, size=1)
     release = threading.Event()
     started = threading.Event()
 
@@ -99,40 +110,131 @@ async def test_poisoned_cursor_recovery(duckdb_path: Path) -> None:
         await gateway.close()
 
 
-async def test_transaction_snapshot_and_scope_readback(duckdb_path: Path) -> None:
-    """Scope reads see uncommitted rows; pool reads see committed only."""
-    tenant = "00000000-0000-0000-0000-000000000001"
+async def test_factory_failure_does_not_inflate_live() -> None:
+    """A factory error leaves the count honest; the pool still recovers."""
+    calls = 0
+
+    def flaky_factory() -> _FakeCursor:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("driver hiccup")
+        return _FakeCursor()
+
+    pool: DuckDbReadPool[_FakeCursor] = DuckDbReadPool(flaky_factory, size=2)
+    with pytest.raises(RuntimeError, match="driver hiccup"):
+        await pool.run(lambda _conn: "unused")
+    assert pool.live == 0, "phantom live count would park later readers"
+    result = await pool.run(lambda _conn: "second")
+    assert result == "second"
+    assert pool.live == 1
+    assert calls == 2
+
+
+async def test_transaction_queues_foreign_reads_and_keeps_scope_readback(
+    duckdb_path: Path,
+) -> None:
+    """Foreign reads during an open tx WAIT and see post-commit state.
+
+    The scope owner's own read-back still sees its uncommitted row (W0).
+    This mirrors the pinned
+    ``test_statement_from_another_task_waits_for_the_tx_scope`` contract
+    at the pool-routing layer.
+    """
     gateway = await DuckDbGateway.connect(str(duckdb_path), read_pool_size=2)
     try:
         await gateway.execute("CREATE TABLE s (a INTEGER)")
         scope_entered = asyncio.Event()
         release_scope = threading.Event()
+        reader_result: list[int] = []
 
         async def writer() -> None:
-            async with gateway.transaction(tenant):
+            async with gateway.transaction("00000000-0000-0000-0000-000000000001"):
                 await gateway.execute("INSERT INTO s VALUES (7)")
+                # Owner read-back: the scope sees its own uncommitted row.
                 inside = await gateway.fetch("SELECT a FROM s")
                 assert [row["a"] for row in inside] == [7]
                 scope_entered.set()
                 await _wait_event(release_scope)
 
-        async def reader(entered: asyncio.Event, done: asyncio.Event) -> None:
-            await entered.wait()
-            outside = await gateway.fetch("SELECT a FROM s")
-            assert outside == [], "pool read must not see the open scope"
-            done.set()
+        async def reader() -> None:
+            await scope_entered.wait()
+            rows = await gateway.fetch("SELECT a FROM s")
+            reader_result.extend(row["a"] for row in rows)
 
-        reader_done = asyncio.Event()
         writer_task = asyncio.create_task(writer())
-        reader_task = asyncio.create_task(reader(scope_entered, reader_done))
-        await asyncio.wait_for(reader_done.wait(), timeout=5)
+        reader_task = asyncio.create_task(reader())
+        await scope_entered.wait()
+        await asyncio.sleep(0.1)
+        assert not reader_task.done(), "foreign read must queue behind the scope"
         release_scope.set()
         await writer_task
-        await reader_task
-        committed = await gateway.fetch("SELECT a FROM s")
-        assert [row["a"] for row in committed] == [7]
+        await asyncio.wait_for(reader_task, timeout=5)
+        assert reader_result == [7], "queued read observes post-commit state"
     finally:
         await gateway.close()
+
+
+async def test_cancelled_read_never_closes_a_running_cursor() -> None:
+    """Cancelling a reader leaves the cursor whole and the pool healthy."""
+    pool: DuckDbReadPool[_FakeCursor] = DuckDbReadPool(_FakeCursor, size=1)
+    release = threading.Event()
+    started = threading.Event()
+
+    def work(_conn: _FakeCursor) -> str:
+        started.set()
+        release.wait(timeout=5)
+        return "late"
+
+    task = asyncio.create_task(pool.run(work))
+    await _wait_event(started)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert pool.closed_count == 0, "cursor must outlive the cancelled caller"
+    release.set()
+    # The done-callback returns the cursor once the orphan thread ends; the
+    # next read parks until that happens, so this await IS the sync point.
+    assert await pool.run(lambda _conn: "next") == "next"
+    assert pool.closed_count == 0
+    assert pool.live == 1
+
+
+async def test_close_wakes_parked_readers() -> None:
+    """close() releases a parked reader with the post-close error, fast."""
+    pool: DuckDbReadPool[_FakeCursor] = DuckDbReadPool(_FakeCursor, size=1)
+    release = threading.Event()
+    started = threading.Event()
+
+    def work(_conn: _FakeCursor) -> str:
+        started.set()
+        release.wait(timeout=5)
+        return "holder"
+
+    holder = asyncio.create_task(pool.run(work))
+    await _wait_event(started)
+    parked = asyncio.create_task(pool.run(lambda _conn: "parked"))
+    await asyncio.sleep(0.05)
+    assert not parked.done()
+    await pool.close()
+    with pytest.raises(RuntimeError, match=POST_CLOSE_MESSAGE):
+        await asyncio.wait_for(parked, timeout=5)
+    release.set()
+    assert await holder == "holder"
+    assert pool.closed_count == 1, "post-close release closes the held cursor"
+
+
+async def test_close_surface_unified_across_shapes(duckdb_path: Path) -> None:
+    """Both gateway shapes raise the same post-close error on reads."""
+    file_gateway = await DuckDbGateway.connect(str(duckdb_path), read_pool_size=1)
+    await file_gateway.close()
+    with pytest.raises(RuntimeError, match=POST_CLOSE_MESSAGE):
+        await file_gateway.fetch("SELECT 1")
+
+    memory_gateway = await DuckDbGateway.connect(":memory:", read_pool_size=1)
+    await memory_gateway.close()
+    with pytest.raises(RuntimeError, match=POST_CLOSE_MESSAGE):
+        await memory_gateway.fetch("SELECT 1")
 
 
 async def test_fetch_shapes_unchanged(duckdb_path: Path) -> None:

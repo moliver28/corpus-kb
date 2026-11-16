@@ -33,7 +33,11 @@ from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from corpus_kb.storage.duckdb_params import bind_params, map_pg_casts
-from corpus_kb.storage.duckdb_read_pool import DEFAULT_READ_POOL_SIZE, DuckDbReadPool
+from corpus_kb.storage.duckdb_read_pool import (
+    DEFAULT_READ_POOL_SIZE,
+    POST_CLOSE_MESSAGE,
+    DuckDbReadPool,
+)
 from corpus_kb.storage.duckdb_support import (
     _MAX_PLACEHOLDERS,
     Row,
@@ -60,10 +64,11 @@ class DuckDbGateway(DuckDbTxMixin):
         self,
         conn: duckdb.DuckDBPyConnection,
         *,
-        read_pool: DuckDbReadPool | None = None,
+        read_pool: DuckDbReadPool[duckdb.DuckDBPyConnection] | None = None,
     ) -> None:
         self._conn = conn
         self.read_pool = read_pool
+        self._closed = False
         self._thread_lock = threading.Lock()
         self._tx_lock = asyncio.Lock()
         self._tx_owner: asyncio.Task[Any] | None = None
@@ -103,6 +108,7 @@ class DuckDbGateway(DuckDbTxMixin):
         return cls(conn, read_pool=pool)
 
     async def close(self) -> None:
+        self._closed = True
         if self.read_pool is not None:
             await self.read_pool.close()
         await self._run_sync(lambda conn: conn.close())
@@ -125,10 +131,15 @@ class DuckDbGateway(DuckDbTxMixin):
         _reject_corpus_qualified(sql)
         sql = map_pg_casts(sql)
         params = bind_params(args)
-        if self.read_pool is not None and asyncio.current_task() is not self._tx_owner:
-            # Pool reads see the last COMMITTED state (issue #471). Scope
-            # owners keep the primary connection, so a read-back inside a
-            # transaction still sees its own uncommitted writes (W0).
+        if self._closed:
+            # One unified post-close surface for both shapes (pool and
+            # no-pool); see duckdb_read_pool.POST_CLOSE_MESSAGE.
+            raise RuntimeError(POST_CLOSE_MESSAGE)
+        if self.read_pool is not None and self._tx_owner is None:
+            # Issue #471 contract: reads run in parallel ONLY while no
+            # transaction is open anywhere. During a transaction, reads
+            # queue behind the scope on the primary connection and observe
+            # post-commit state; the scope owner keeps its read-back (W0).
             rows = await self.read_pool.run(lambda conn: self._rows(conn, sql, params))
         else:
             async with self._statement_gate():
