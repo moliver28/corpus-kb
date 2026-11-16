@@ -2,7 +2,8 @@
 
 Render-only helpers for ``gen_method_register_docs.py`` (one module per
 file so both stay under the 250-line cap). ``build_block`` emits the
-register table, the guidance bullets, and the Backend proof section.
+register table, the guidance bullets, the Backend proof section, and
+the advisory difficulty report.
 """
 
 from __future__ import annotations
@@ -55,14 +56,12 @@ _BACKEND_PROOF = [
     "",
     "## Backend proof",
     "",
-    "The analysis ops behind these methods run on Postgres and on DuckDB. "
-    "The parity gate proves it on a migrated DuckDB file "
-    "(`tests/test_backend_operation_parity.py`). The screens, classifiers, "
-    "cluster report, keyphrase ranks, sentiment screen, active-learning "
-    "rank, and NLI pair run on both engines. "
-    "The deep surface gate pins the same envelope keys on every "
-    "surface. The six graph reads run on Postgres (the AGE or PG store) "
-    "and on DuckDB (the graph store).",
+    "The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate "
+    "proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). "
+    "The screens, classifiers, cluster report, keyphrase ranks, sentiment screen, "
+    "active-learning rank, and NLI pair run on both engines. The deep surface gate pins the "
+    "same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG "
+    "store) and on DuckDB (the graph store).",
     "",
     "One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored "
     "value can differ from Postgres in far decimals.",
@@ -77,9 +76,8 @@ def _progression_lines(
 ) -> list[str]:
     """The progression bullets for one method (novice-UX program, wave 1).
 
-    The rung and the taught concepts come from the row; the Requires and
-    Next bullets come from the derived ladder views, keyed by method id.
-    Links backtick their tokens (the code-token convention).
+    The rung and concepts come from the row; Requires and Next come from
+    the derived ladder views. Links backtick their tokens.
     """
     lines: list[str] = []
     if method.get("difficulty"):
@@ -120,9 +118,8 @@ def _link_bullets(label: str, links: list[str], names: dict[str, str]) -> list[s
 def _routing_lines(method: dict[str, Any]) -> list[str]:
     """The routing-axes bullets for one method (analysis-routing program).
 
-    Renders nothing when the row carries no routing axes. A row with
-    SOME axes but not all six names the method id and stops, instead of
-    rendering a half-filled block.
+    Renders nothing without routing axes. A row with SOME axes but not
+    all six names the method id and stops.
     """
     present = [name for name in _ROUTING_AXES_FIELDS if method.get(name)]
     if not present:
@@ -161,8 +158,8 @@ def _routing_lines(method: dict[str, Any]) -> list[str]:
 def _table_lines(method: dict[str, Any]) -> list[str]:
     """The table-contract bullets for one method (novice-UX program, wave 2).
 
-    Renders nothing when the row declares no table. The reserved
-    ``model_rank`` order entry keeps the producing model's reply order.
+    Renders nothing without a table. ``model_rank`` order keeps the
+    producing model's reply order.
     """
     table = method.get("output_table")
     if not table:
@@ -200,8 +197,9 @@ def build_block(
     register: dict[str, Any],
     prereqs_by_id: dict[str, list[str]],
     next_by_id: dict[str, list[str]],
+    report_lines: list[str],
 ) -> str:
-    """The generated markdown: the register table plus guidance bullets."""
+    """The generated markdown: table, guidance bullets, difficulty report."""
     methods: list[dict[str, Any]] = register["methods"]
     names = {method["id"]: method["name"] for method in methods}
     lines = [
@@ -244,5 +242,7 @@ def build_block(
         lines += _routing_lines(method)
         lines += _table_lines(method)
     lines += _BACKEND_PROOF
+    lines += ["", "## Difficulty seed", "", "Stored rungs win. The report is advisory.", ""]
+    lines += report_lines
     lines.append(END_MARKER)
     return "\n".join(lines)

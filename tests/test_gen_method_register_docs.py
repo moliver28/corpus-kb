@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+
+from corpus_kb.analysis.method_register_difficulty import difficulty_mismatches
+from corpus_kb.analysis.method_register_loader import load_method_register
 
 ROOT = Path(__file__).resolve().parents[1]
 GEN_PATH = ROOT / "scripts" / "gen_method_register_docs.py"
@@ -241,9 +245,20 @@ def _register_payload() -> dict[str, Any]:
 
 
 def test_build_block_ends_with_the_backend_proof() -> None:
-    generated = block.build_block(_register_payload(), {}, {})
+    generated = block.build_block(_register_payload(), {}, {}, [])
     proof_at = generated.index("## Backend proof")
     end_at = generated.index(block.END_MARKER)
     assert proof_at < end_at
     assert "run on Postgres and on DuckDB" in generated[proof_at:end_at]
     assert "coding confidences as `DOUBLE`" in generated[proof_at:end_at]
+
+
+def test_difficulty_report_block_present() -> None:
+    """The generated block carries the advisory difficulty report (issue 440)."""
+    raw = yaml.safe_load((ROOT / "config" / "analysis_methods.yaml").read_text(encoding="utf-8"))
+    register = load_method_register({})
+    block_text = block.build_block(raw, {}, {}, difficulty_mismatches(register))
+    assert "## Difficulty seed" in block_text
+    assert "Method 03 computes intermediate; the register pins advanced." in block_text
+    assert block_text.count("the register pins") == 6
+    assert block_text.index("## Difficulty seed") < block_text.index(block.END_MARKER)
