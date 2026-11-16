@@ -82,7 +82,9 @@ def _record(
     *,
     op: str | None = None,
     difficulty: str | None = None,
-    next_: list[str] | None = None,
+    produces: list[str] | None = None,
+    consumes: list[str] | None = None,
+    after: list[str] | None = None,
 ) -> dict[str, object]:
     """One minimal valid method row; ``None`` drops the routing field."""
     status = "implemented_existing" if op is not None else "not_planned"
@@ -117,8 +119,12 @@ def _record(
         row["suggests"] = suggests
     if difficulty is not None:
         row["difficulty"] = difficulty
-    if next_ is not None:
-        row["next"] = next_
+    if produces is not None:
+        row["produces"] = produces
+    if consumes is not None:
+        row["consumes"] = consumes
+    if after is not None:
+        row["after"] = after
     return row
 
 

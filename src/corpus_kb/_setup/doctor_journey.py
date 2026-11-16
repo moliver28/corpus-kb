@@ -71,8 +71,9 @@ def _missing(
     missing: list[str] = []
     by_id = {row.id: row for row in register.methods}
     for pid in journey_prerequisites(register, record.id):
-        key = BUILD_PRODUCTS[by_id[pid].op][0]
-        if getattr(state, key) == 0:
+        op = by_id[pid].op
+        key = BUILD_PRODUCTS[op][0] if op in BUILD_PRODUCTS else None
+        if key is not None and getattr(state, key) == 0:
             missing.append(key)
     for kind in record.inputs_required:
         if kind == "llm":

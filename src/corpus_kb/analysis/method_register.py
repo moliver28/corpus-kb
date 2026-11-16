@@ -13,11 +13,11 @@ from typing import Self
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from corpus_kb.analysis.method_register_dataflow import validate_dataflow_fields
-from corpus_kb.analysis.method_register_progression import (
-    validate_progression_fields,
-    validate_progression_graph,
+from corpus_kb.analysis.method_register_dataflow import (
+    validate_dataflow_fields,
+    validate_dataflow_graph,
 )
+from corpus_kb.analysis.method_register_progression import validate_progression_fields
 from corpus_kb.analysis.method_register_routing import validate_routing_axes
 from corpus_kb.analysis.method_register_tables import OutputTable, validate_table_fields
 
@@ -95,11 +95,9 @@ class MethodRecord(BaseModel):
     suggests: list[str] | None = None
 
     # Progression axes (novice-UX program, wave 1). All optional; the
-    # rungs, concepts, and graph checks live in ``method_register_progression``.
+    # rungs and the concept checks live in ``method_register_progression``.
     difficulty: str | None = None
     concepts: list[str] | None = None
-    prerequisites: list[str] | None = None
-    next: list[str] | None = None
 
     # Dataflow axes (issue 439); checks live in ``method_register_dataflow``.
     produces: list[str] | None = None
@@ -236,9 +234,9 @@ class MethodRegister(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _progression_graph(self) -> Self:
-        """Register-level progression checks: known link ids, no cycles."""
-        validate_progression_graph(self.methods)
+    def _dataflow_graph(self) -> Self:
+        """Register-level dataflow checks: after targets exist, no cycles."""
+        validate_dataflow_graph(self.methods)
         return self
 
 

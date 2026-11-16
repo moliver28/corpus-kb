@@ -95,15 +95,6 @@ def test_golden_tables_cover_all_30_ids() -> None:
         assert list(table) == ALL_IDS
 
 
-def test_golden_tables_match_the_live_v1_register() -> None:
-    """The freeze captures v1, so this passes on master before any edit."""
-    register = load_method_register({})
-    by_id = {row.id: row for row in register.methods}
-    for mid, row in by_id.items():
-        assert list(row.prerequisites or []) == list(GOLDEN_PREREQS[mid])
-        assert list(row.next or []) == list(GOLDEN_NEXT[mid])
-
-
 # ---------------------------------------------------------------------------
 # Derivation engine (consumes ∩ produces, merged with after) — issue 439
 # ---------------------------------------------------------------------------
@@ -238,14 +229,3 @@ def test_derived_ladder_equals_v1_except_the_reviewed_delta() -> None:
             row.id
         )
         assert ladder_next(methods, row.id) == list(EXPECTED_DERIVED_NEXT[row.id]), row.id
-
-
-def test_every_v1_edge_is_expressed() -> None:
-    """Every hand-authored v1 edge survives as a derived ladder edge."""
-    register = load_method_register({})
-    methods = register.methods
-    for row in methods:
-        for target in row.next or []:
-            assert row.id in ladder_prerequisites(methods, target), (row.id, target)
-        for prereq in row.prerequisites or []:
-            assert row.id in ladder_next(methods, prereq), (row.id, prereq)

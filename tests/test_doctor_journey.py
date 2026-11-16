@@ -44,7 +44,6 @@ def _record(
     op: str | None = None,
     difficulty: str | None = None,
     inputs: tuple[str, ...] = ("raw_text",),
-    prerequisites: tuple[str, ...] = (),
     produces: tuple[str, ...] = (),
     consumes: tuple[str, ...] = (),
     after: tuple[str, ...] = (),
@@ -75,7 +74,6 @@ def _record(
         op=op,
         sources=["https://example.com/a"],
         difficulty=difficulty,
-        prerequisites=list(prerequisites),
         produces=list(produces) or None,
         consumes=list(consumes) or None,
         after=list(after) or None,
@@ -231,7 +229,6 @@ def test_journey_ignores_nonbuild_prereqs() -> None:
             op="contradictions_screen",
             difficulty="intermediate",
             inputs=("raw_text", "llm", "timestamps"),
-            prerequisites=("23",),
             consumes=("evidence",),
         ),
     )
@@ -460,15 +457,17 @@ def test_command_table_agrees_with_the_surface_registry() -> None:
             assert cli_path == declared, f"{op}: table says {cli_path}, registry says {declared}"
 
 
-def test_prerequisite_rows_have_build_products() -> None:
+def test_journey_gates_only_on_build_products() -> None:
+    """The journey's gating view maps every producer to a build product."""
     from corpus_kb.analysis.method_register_loader import load_method_register
 
     register = load_method_register({})
-    prereq_ids = sorted({pid for row in register.methods for pid in row.prerequisites or []})
     by_id = {row.id: row for row in register.methods}
-    for pid in prereq_ids:
-        row = by_id[pid]
-        assert row.op in djm.BUILD_PRODUCTS, f"method {pid}: map its op to a build product"
+    for row in register.methods:
+        for pid in djm.journey_prerequisites(register, row.id):
+            assert by_id[pid].op in djm.BUILD_PRODUCTS, (
+                f"method {pid}: gates the journey; map its op to a build product"
+            )
 
 
 def test_every_input_kind_is_mapped() -> None:

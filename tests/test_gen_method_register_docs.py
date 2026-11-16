@@ -213,7 +213,7 @@ def _register_payload() -> dict[str, Any]:
     method["implementation_status"] = "implemented_new"
     method["op"] = "keyphrases_extract"
     return {
-        "register_version": "3.2.0",
+        "register_version": "3.3.0",
         "methods": [method],
     }
 
