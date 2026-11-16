@@ -3,25 +3,16 @@
 This script measures the analysis register at the novice-default recipe.
 It never runs a database, Ollama, or a CLI subprocess. The walk derives
 its phases from the doctor journey seams, visits every register method
-once in that derived order, and routes each row's own seeded phrases
-through the shared handler in pinned phrase mode. Phrase mode means
-``embedding.provider`` is not ``ollama``, so the router never builds an
-embedder and never touches the network.
-
-The walk records, per method: phrase-resolution steps, failed attempts,
-and wall time. Phrase-resolution steps count how many attempts the
-row's own seeded phrases need to resolve that row. This is a phrase
-specificity proxy. It is not a measure of novice difficulty or
-pedagogy; the #440 human review is the only consumer.
-
-``scripts/persona_ratchet.py`` compares the gated fields with the
-committed baseline in ``tests/fixtures/persona_meter/``. Determinism
-rule: the same tree produces the same report bytes. Wall time is
-measured but never committed or compared.
+once, and routes each row's own seeded phrases through the shared
+handler in pinned phrase mode (no embedder, no network). Per method it
+records phrase-resolution steps (the gated metric), failed attempts,
+and wall time (report-only, never committed). The gate lives in
+``scripts/persona_ratchet.py``; the baseline in ``tests/fixtures/``.
 """
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
@@ -251,3 +242,9 @@ async def run_walk(register: MethodRegister, config: dict[str, object]) -> WalkR
         running = row_metrics.phrase_resolution_steps
         metrics[method_id] = row_metrics
     return WalkReport(phases=phases, order=order, metrics=metrics)
+
+
+if __name__ == "__main__":  # pragma: no cover - local diagnosis entry point
+    from scripts.persona_report import cli
+
+    raise SystemExit(cli(sys.argv[1:]))

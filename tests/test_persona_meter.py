@@ -7,10 +7,16 @@ order, the counting rules, the report schema, and the gated comparison.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
+from pathlib import Path
 
 from corpus_kb.analysis.method_register_loader import load_method_register
 from scripts.persona_meter import HEALTHY_STATE, WALK_CONFIG, run_walk, visit_order, walk_phases
+from scripts.persona_ratchet import compare_reports
+from scripts.persona_report import build_report
+
+FIXTURES = Path(__file__).resolve().parents[0] / "fixtures" / "persona_meter"
 
 
 def _register():
@@ -110,3 +116,64 @@ async def test_steps_count_every_call_before_success():
         if running:
             assert metrics.phrase_resolution_steps > running
         running = metrics.phrase_resolution_steps
+
+
+async def test_report_is_byte_deterministic_without_wall():
+    register = _register()
+    walk_a = await run_walk(register, WALK_CONFIG)
+    walk_b = await run_walk(register, WALK_CONFIG)
+    report_a = json.dumps(build_report(register, walk_a, include_wall=False), sort_keys=True)
+    report_b = json.dumps(build_report(register, walk_b, include_wall=False), sort_keys=True)
+    assert report_a == report_b
+
+
+async def test_committed_report_has_no_wall_fields():
+    data = json.loads((FIXTURES / "report.v1.json").read_text(encoding="utf-8"))
+    # `.get` keeps this green on the Task 4 `{}` placeholder (F2); Task 6's
+    # real fixture is the strict per-method check.
+    for method in data.get("methods", {}).values():
+        assert "wall_ms" not in method
+
+
+def _methods_record(steps: int, failed: int) -> dict[str, object]:
+    record = {"phrase_resolution_steps": steps, "failed_attempts": failed, "success": True}
+    return {"methods": {"02": record}}
+
+
+def test_compare_passes_on_equal_and_improved_steps():
+    schema = json.loads((FIXTURES / "schema.v1.json").read_text(encoding="utf-8"))
+    base = _methods_record(3, 2)
+    assert compare_reports(base, base, schema) == []
+    better = _methods_record(2, 1)
+    assert compare_reports(base, better, schema) == []
+
+
+def test_compare_fails_on_a_steps_regression():
+    schema = json.loads((FIXTURES / "schema.v1.json").read_text(encoding="utf-8"))
+    base = _methods_record(3, 2)
+    worse = _methods_record(4, 3)
+    failures = compare_reports(base, worse, schema)
+    assert len(failures) == 1 and "02" in failures[0] and "4" in failures[0]
+
+
+def test_compare_ignores_wall_time_drift():
+    schema = json.loads((FIXTURES / "schema.v1.json").read_text(encoding="utf-8"))
+    base = {"methods": {"02": {"phrase_resolution_steps": 3, "wall_ms": 1, "success": True}}}
+    live = {"methods": {"02": {"phrase_resolution_steps": 3, "wall_ms": 999, "success": True}}}
+    assert compare_reports(base, live, schema) == []
+
+
+def test_compare_fails_when_the_walk_order_changes():
+    schema = json.loads((FIXTURES / "schema.v1.json").read_text(encoding="utf-8"))
+    base = {"methods": {}, "novice_walk_order": ["24", "25"]}
+    live = {"methods": {}, "novice_walk_order": ["25", "24"]}
+    failures = compare_reports(base, live, schema)
+    assert len(failures) == 1 and "novice_walk_order" in failures[0]
+
+
+def test_compare_fails_on_an_undeclared_report_field():
+    schema = json.loads((FIXTURES / "schema.v1.json").read_text(encoding="utf-8"))
+    base = {"methods": {"02": {"phrase_resolution_steps": 3}}}
+    live = {"methods": {"02": {"phrase_resolution_steps": 3, "bogus_field": 7}}}
+    failures = compare_reports(base, live, schema)
+    assert len(failures) == 1 and "02" in failures[0] and "bogus_field" in failures[0]
