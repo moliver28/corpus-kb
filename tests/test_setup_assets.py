@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from corpus_kb._setup import setup_assets
+from corpus_kb._setup import setup_assets, setup_stack
 from corpus_kb._setup.setup_assets import (
     COMPOSE_BUILD_LOCAL_FILE,
     COMPOSE_FILE,
@@ -117,3 +117,40 @@ def test_wiring_setup_start_compose_uses_the_resolver(
     assert exit_code == 0
     assert commands and commands[0][:2] == ["docker", "compose"]
     assert str(compose_file) in commands[0]
+
+
+def test_wiring_setup_start_compose_missing_compose_file_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing compose.yaml stops setup_start_compose with an error."""
+    monkeypatch.setattr(setup_assets, "resolve_setup_asset", lambda _name: None)
+
+    exit_code = setup_stack.setup_start_compose("docker compose", apply=True)
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "ERROR: compose.yaml not found." in out
+    assert "Looked inside the installed package and at the checkout root." in out
+
+
+def test_wiring_setup_start_compose_missing_build_local_file_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing build-local override stops the build-local start."""
+    compose = tmp_path / COMPOSE_FILE
+    compose.write_text("services: {}\n", encoding="utf-8")
+
+    def resolve(name: str) -> Path | None:
+        return compose if name == COMPOSE_FILE else None
+
+    monkeypatch.setattr(setup_assets, "resolve_setup_asset", resolve)
+
+    exit_code = setup_stack.setup_start_compose("docker compose", apply=True, build_local=True)
+
+    assert exit_code == 1
+    assert "ERROR: compose.build-local.yaml not found." in capsys.readouterr().out
+
+
+def test_resolve_setup_asset_returns_none_when_absent_everywhere() -> None:
+    """Neither layout holds the file: the resolver reports None honestly."""
+    assert resolve_setup_asset("no-such-setup-file.yaml") is None

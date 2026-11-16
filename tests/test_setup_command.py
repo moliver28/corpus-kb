@@ -168,3 +168,30 @@ async def test_setup_dry_run_lists_pull_step_and_concurrency() -> None:
     assert "concurrent" in output.lower()
     assert "Pre-pull extraction model weights" in output
     assert "docker compose -f compose.yaml up -d" in output
+
+
+def test_setup_dry_run_reports_completed_phases() -> None:
+    """A checkpointed dry run names every phase it will skip."""
+    from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+
+    stdout_capture = StringIO()
+    with patch.object(sys, "stdout", stdout_capture):
+        setup_print_dry_run_steps(
+            "docker compose",
+            "postgresql://u:p@localhost:5433/db",
+            "mid",
+            state={"completed": ["pull", "models"]},
+        )
+    out = stdout_capture.getvalue()
+    assert out.count("already completed; will be skipped") == 2
+
+
+def test_setup_dry_run_defaults_the_checkpoint_state() -> None:
+    """Omitting the state starts the plan from an empty checkpoint."""
+    from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+
+    stdout_capture = StringIO()
+    with patch.object(sys, "stdout", stdout_capture):
+        setup_print_dry_run_steps("docker compose", "postgresql://u:p@localhost:5433/db", "mid")
+    out = stdout_capture.getvalue()
+    assert "concurrent" in out.lower()

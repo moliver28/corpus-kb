@@ -264,3 +264,20 @@ def test_demo_kb_command_missing_corpus_exits_one(
         cli_demo_kb.demo_kb(json_output=False)
     assert excinfo.value.exit_code == 1
     assert "docs/demo-kb" in capsys.readouterr().out
+
+
+def test_packaged_corpus_root_is_none_without_the_package_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wheel layout without demo_corpus inside resolves to None."""
+    import importlib.resources
+
+    class _NoCorpus:
+        def __truediv__(self, _name: str) -> _NoCorpus:
+            return self
+
+        def is_dir(self) -> bool:
+            return False
+
+    monkeypatch.setattr(importlib.resources, "files", lambda _pkg: _NoCorpus())
+    assert demo_kb._packaged_corpus_root() is None

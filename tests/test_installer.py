@@ -730,3 +730,196 @@ async def test_check_postgres_dead_port_reports_a_reason() -> None:
     # Credentials from the DSN never leak into the message.
     assert "corpus_user" not in msg
     assert "secret" not in msg
+
+
+# --- Pull-flow branch tests (close-out diff-coverage gate) -----------------
+
+
+def _plan(**overrides: Any) -> Any:
+    """A _SetupPlan whose fields each branch test can override."""
+    from corpus_kb._setup.install import _SetupPlan
+
+    defaults: dict[str, Any] = {
+        "state": {"completed": []},
+        "completed": [],
+        "conn_str": "postgresql://u:p@localhost:5433/db",
+        "profile": "mid",
+        "recommended_model": "m",
+        "compose_cmd": None,
+        "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+        "skip_image_verify": False,
+    }
+    defaults.update(overrides)
+    return _SetupPlan(**defaults)
+
+
+def test_stage_router_passthrough_write_and_flush() -> None:
+    """Routes cover worker threads only: the main thread passes through."""
+    from io import StringIO as _StringIO
+
+    from corpus_kb._setup.setup_pull_pair import _StageRouter
+
+    passthrough = _StringIO()
+    router = _StageRouter({}, passthrough)
+    written = router.write("main line\n")
+    router.flush()
+    assert written == len("main line\n")
+    assert passthrough.getvalue() == "main line\n"
+
+
+def test_verify_image_before_pulls_stops_on_cosign_failure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A failed signature check stops setup before any download starts."""
+    plan = _plan(compose_cmd="docker compose")
+    with patch.object(
+        install_module, "_verify_postgres_image", side_effect=RuntimeError("cosign missing")
+    ):
+        ok = install_module._verify_image_before_pulls(plan, build_local=False)
+    assert ok is False
+    assert "[Step 1/6] ERROR: cosign missing" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_run_setup_phases_reports_a_fatal_image_verify_failure() -> None:
+    """The fatal flag stops the phase loop after a failed signature check."""
+    plan = _plan(compose_cmd="docker compose")
+    config: dict[str, Any] = {"installer": {}}
+    with patch.object(
+        install_module, "_verify_postgres_image", side_effect=RuntimeError("no cosign")
+    ):
+        exit_code, fatal = await install_module._run_setup_phases(plan, config, build_local=False)
+    assert (exit_code, fatal) == (1, True)
+
+
+def test_run_pull_pair_reports_a_failing_stage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A stage that raises still joins the report and returns nonzero."""
+    plan = _plan()
+    config: dict[str, Any] = {"installer": {}}
+    with (
+        patch.object(install_module, "collect_model_consents", return_value=[("m", True)]),
+        patch.object(install_module, "setup_pull_models", side_effect=RuntimeError("boom")),
+    ):
+        exit_code = install_module._run_pull_pair(plan, config, build_local=True)
+    assert exit_code == 1
+    assert "the model pull failed: boom" in capsys.readouterr().out
+
+
+def test_setup_compose_pull_missing_compose_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without the compose file in any layout, the pull reports the miss."""
+    with patch.object(setup_assets_module, "resolve_setup_asset", return_value=None):
+        rc = install_module.setup_compose_pull("docker compose", True)
+    assert rc == 1
+    assert "compose.yaml not found" in capsys.readouterr().out
+
+
+def test_setup_compose_pull_dry_run_returns_zero() -> None:
+    """apply=False keeps the pull a no-op even with the file found."""
+    rc = install_module.setup_compose_pull("docker compose", apply=False)
+    assert rc == 0
+
+
+def test_setup_compose_pull_asks_when_consent_is_none() -> None:
+    """agreed=None asks on the calling thread, then runs the pull."""
+    from corpus_kb._setup import setup_stack
+
+    with (
+        patch.object(setup_stack, "_confirm_fn", return_value=lambda _prompt: True),
+        patch.object(setup_stack, "_run_cmd", return_value=0) as run,
+    ):
+        rc = install_module.setup_compose_pull("docker compose", True, agreed=None)
+    assert rc == 0
+    run.assert_called_once()
+
+
+def test_setup_compose_pull_declined_prints_skip(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A declined pull prints its skip line and returns zero."""
+    rc = install_module.setup_compose_pull("docker compose", True, agreed=False)
+    assert rc == 0
+    assert "Skipped." in capsys.readouterr().out
+
+
+def test_collect_model_consents_asks_per_model() -> None:
+    """Consents arrive in declared order, one prompt per required model."""
+    from corpus_kb._setup import setup_stack
+
+    asks: list[str] = []
+
+    def fake_ask(prompt: str) -> bool:
+        asks.append(prompt)
+        return True
+
+    with patch.object(setup_stack, "_confirm_fn", return_value=fake_ask):
+        consents = install_module.collect_model_consents()
+    assert consents == [(m, True) for m in install_module.SETUP_REQUIRED_MODELS]
+    assert len(asks) == len(install_module.SETUP_REQUIRED_MODELS)
+
+
+def test_pull_models_consents_skips_declined_models(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A declined model prints its skip line and pulls nothing."""
+    from corpus_kb._setup.setup_pulls import pull_models_consents
+
+    rc = pull_models_consents([("model-x", False)])
+    assert rc == 0
+    assert "Skipped model-x." in capsys.readouterr().out
+
+
+def test_pull_models_consents_pulls_agreed_models() -> None:
+    """An agreed model runs one bounded ollama pull."""
+    from corpus_kb._setup import setup_stack
+    from corpus_kb._setup.setup_pulls import pull_models_consents
+
+    with patch.object(setup_stack, "_run_cmd", return_value=0) as run:
+        rc = pull_models_consents([("model-x", True)])
+    assert rc == 0
+    run.assert_called_once_with(["ollama", "pull", "model-x"], timeout=600)
+
+
+def test_setup_start_compose_missing_compose_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without the compose file in any layout, stack start reports it."""
+    with patch.object(setup_assets_module, "resolve_setup_asset", return_value=None):
+        rc = install_module.setup_start_compose("docker compose", apply=True)
+    assert rc == 1
+    assert "compose.yaml not found" in capsys.readouterr().out
+
+
+def test_setup_start_compose_missing_build_local_file_errors(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing build-local overlay stops stack start with the miss."""
+    compose = Path("compose.yaml")
+
+    def fake_resolve(name: str) -> Path | None:
+        return compose if name == setup_assets_module.COMPOSE_FILE else None
+
+    with patch.object(setup_assets_module, "resolve_setup_asset", side_effect=fake_resolve):
+        rc = install_module.setup_start_compose("docker compose", apply=True, build_local=True)
+    assert rc == 1
+    assert "compose.build-local.yaml not found" in capsys.readouterr().out
+
+
+def test_stage_router_routes_write_and_flush_for_workers() -> None:
+    """A registered worker thread's writes and flushes stay in its buffer."""
+    import threading as _threading
+
+    from io import StringIO as _StringIO
+
+    from corpus_kb._setup.setup_pull_pair import _StageRouter
+
+    sink = _StringIO()
+    passthrough = _StringIO()
+    router = _StageRouter({_threading.get_ident(): sink}, passthrough)
+    router.write("worker line\n")
+    router.flush()
+    assert sink.getvalue() == "worker line\n"
+    assert passthrough.getvalue() == ""
