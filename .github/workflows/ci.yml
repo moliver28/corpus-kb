@@ -67,6 +67,7 @@ jobs:
       pull-requests: read
     outputs:
       ollama_code: ${{ steps.filter.outputs.ollama_code }}
+      docker_code: ${{ steps.filter.outputs.docker_code }}
     steps:
       # Full history: paths-filter resolves push-event diffs against the
       # before commit locally; pull-request events go through the API.
@@ -133,6 +134,17 @@ jobs:
               - 'src/corpus_kb/tools/ingest_*.py'
               - 'src/corpus_kb/demo_kb.py'
               - 'scripts/ui_e2e.py'
+            docker_code:
+              # The docker compose app-stack gate (zero-drift rule 10):
+              # image files, the compose stacks, the smoke script, the poe
+              # target surface (pyproject), or the gate wiring itself must
+              # re-run the build + boot + round-trip smoke.
+              - 'docker/**'
+              - 'compose.yaml'
+              - 'compose.build-local.yaml'
+              - 'scripts/docker_smoke*'
+              - '.github/workflows/ci.yml'
+              - 'pyproject.toml'
 
   # ─────────────────────────────────────────────────────────────────────
   # Lint: ruff check + format check (fast, ~10s, no deps needed)
@@ -499,6 +511,44 @@ jobs:
       - name: Stop and remove Postgres container
         if: always()
         run: docker rm -f corpus-kb-postgres
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Docker compose app-stack smoke (zero-drift rule 10: poe target
+  # `docker-smoke` + this job + the enforcement-map row). Builds the app
+  # image from the repo-root context, boots the `app` profile stack with
+  # healthchecks, polls the host-mapped UI route (the LAN path a NAS
+  # user takes), runs `corpus-kb doctor` inside the container, and does
+  # one degraded-mode ingest/search round trip. Path-gated: the changes
+  # job arms docker_code on docker/**, compose stacks, the smoke script,
+  # pyproject, or this workflow. Only poethepoet is installed — the
+  # wheel and its dependencies build INSIDE the image, not here.
+  # ─────────────────────────────────────────────────────────────────────
+  docker:
+    name: "docker (compose app-stack smoke)"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.docker_code == 'true'
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet
+        run: python -m pip install poethepoet
+
+      - name: Compose app-stack smoke
+        run: poe docker-smoke
+
+      - name: No leftover smoke containers or volumes
+        if: always()
+        run: |
+          docker ps -a --filter name=corpus_kb_smoke --format '{{.Names}}'
+          docker volume ls --filter name=corpus_kb_smoke --format '{{.Name}}'
 
   # ─────────────────────────────────────────────────────────────────────
   # UI: the lifecycle SPA (ui_src/) — React 19 + Vite, Node build-time

@@ -685,6 +685,18 @@ help = "Degraded local loop: full suite minus Ollama-dependent tests (local conv
 cmd = "python -m scripts.warning_ratchet"
 help = "Fail when live pytest warnings exceed the pytest_warnings ceiling (quality-baselines.json)"
 
+[tool.poe.tasks.docker-smoke]
+# Docker compose app-stack smoke (zero-drift rule 10: poe target +
+# ci.yml `docker` job + enforcement-map row). Builds the app image from
+# the repo-root context, boots the `app` profile stack, and exercises
+# doctor + a degraded ingest/search round trip inside the container.
+# The script prints one honest SKIP line and exits 0 when the docker
+# CLI is absent (Windows dev boxes, Windows CI) — the ubuntu CI leg
+# enforces the gate. The build pulls the pinned python base and
+# installs the wheel deps, so give the CI step a generous timeout.
+cmd = "python scripts/docker_smoke.py"
+help = "Docker compose app-stack smoke: default-stack contract, build, boot, doctor, ingest/search, clean teardown"
+
 # Plain-language gate (zero-drift Wave 5A, program standard 6). The full
 # suite already includes it; this target runs the gate alone.
 [tool.poe.tasks.ste]
