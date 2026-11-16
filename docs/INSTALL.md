@@ -36,6 +36,7 @@ The rest of this page is the manual path from a clone.
 - [Step 6: Configure Corpus-KB](#step-6-configure-corpus-kb)
 - [Step 7: Start the server](#step-7-start-the-server)
 - [Step 8: Ingest and search](#step-8-ingest-and-search)
+- [Run the whole app in Docker](#run-the-whole-app-in-docker)
 - [Troubleshooting](#troubleshooting)
 - [Next steps](#next-steps)
 
@@ -370,6 +371,62 @@ curl -X POST http://localhost:8010/api/query/sql \
   -H "Content-Type: application/json" \
   -d '{"sql": "SELECT source_type, COUNT(*) FROM documents GROUP BY source_type"}'
 ```
+
+---
+
+## Run the whole app in Docker
+
+This path runs the server and Postgres from one compose file. It fits an
+amd64 NAS (Synology Container Manager, DSM 7.2+) or any Docker host. You
+need the repo checked out on the build machine. The build compiles the
+app image from source, so no Python install is needed on the host.
+
+The default stack does not change. `docker compose up -d` starts Postgres
+only. This matches what `corpus-kb setup` does today.
+
+### Start the full app
+
+```bash
+docker compose --profile app up -d --build
+```
+
+This builds the app image, starts Postgres, waits for the health checks,
+and starts the server. The first build takes several minutes. Then open:
+
+```
+http://<nas-ip>:8010/app/
+```
+
+The server binds `0.0.0.0:8010` inside the container. The UI and the API
+serve on your LAN. Keep the port off the public internet.
+
+### Search without Ollama (degraded mode)
+
+The container starts and serves without Ollama. Search then uses the
+full-text arm only. Vectors stay zero until an Ollama serves the
+embedder. The app stays usable, but semantic recall is weaker.
+
+### Add Ollama to the stack
+
+```bash
+export CORPUS_KB_OLLAMA_HOST=http://ollama:11434
+docker compose --profile app --profile ollama up -d --build
+docker compose exec ollama ollama pull qwen3-embedding:4b
+```
+
+The model pull is large (over 2 GB). It runs once; the `ollama_data`
+volume keeps the model across restarts. On Synology, set
+`CORPUS_KB_OLLAMA_HOST` in the Container Manager project environment
+instead of `export`. The app reads it as `embedding.base_url`.
+
+### Stop and delete data
+
+```bash
+docker compose --profile app --profile ollama down -v
+```
+
+`down` stops the containers. `-v` deletes the `postgres_data` and
+`ollama_data` volumes. Data deleted this way cannot be recovered.
 
 ---
 
