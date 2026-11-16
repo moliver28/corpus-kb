@@ -11,6 +11,9 @@ one row here plus the register row — the tests name the gap.
 
 from __future__ import annotations
 
+from corpus_kb.analysis.method_register import MethodRegister
+from corpus_kb.analysis.method_register_dataflow import artifact_prerequisites
+
 OP_CLI: dict[str, str] = {
     # Method op -> CLI command path. Verified against the ``app.command``
     # registrations under ``src/corpus_kb/cli/``. The one entry without a
@@ -56,4 +59,19 @@ INPUT_STATE: dict[str, str] = {
     "timestamps": "dated_documents",
 }
 
-__all__ = ["BUILD_PRODUCTS", "INPUT_STATE", "OP_CLI", "UNPROBED_INPUTS"]
+
+def journey_prerequisites(register: MethodRegister, method_id: str) -> list[str]:
+    """The journey's gating view: artifact prereqs that fill a build product.
+
+    Artifact prerequisites whose producer op is in ``BUILD_PRODUCTS``;
+    every other producer (search, ask, screens) never gates the journey.
+    """
+    by_id = {row.id: row for row in register.methods}
+    return [
+        pid
+        for pid in artifact_prerequisites(register.methods, method_id)
+        if by_id[pid].op in BUILD_PRODUCTS
+    ]
+
+
+__all__ = ["BUILD_PRODUCTS", "INPUT_STATE", "OP_CLI", "UNPROBED_INPUTS", "journey_prerequisites"]

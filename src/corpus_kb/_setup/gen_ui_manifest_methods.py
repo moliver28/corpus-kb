@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from corpus_kb.analysis.method_register_dataflow import ladder_next, ladder_prerequisites
 from corpus_kb.analysis.method_register_loader import load_method_register
 
 REGISTER_REL = Path("config") / "analysis_methods.yaml"
 
-# The row keys the generated TypeScript table carries. The link lists
-# normalize to ``[]`` (the register's ``None`` means "no links");
+# The row keys the generated TypeScript table carries. The ladder lists
+# come from the derived dataflow views and normalize to ``[]``;
 # ``difficulty`` and ``op`` stay ``None``-capable so the SPA can stay
 # honest about methods without them (human-led rows have no op).
 
@@ -28,8 +29,9 @@ def build_method_entries(project_root: Path) -> list[dict[str, object]]:
     """One guidance row per register method, sorted by method id."""
     register_path = project_root / REGISTER_REL
     register = load_method_register({"analysis": {"method_register_path": str(register_path)}})
+    methods = register.methods
     entries: list[dict[str, object]] = []
-    for record in register.methods:
+    for record in methods:
         entries.append(
             {
                 "id": record.id,
@@ -38,8 +40,8 @@ def build_method_entries(project_root: Path) -> list[dict[str, object]]:
                 "op": record.op,
                 "difficulty": record.difficulty,
                 "concepts": list(record.concepts or []),
-                "prerequisites": list(record.prerequisites or []),
-                "next": list(record.next or []),
+                "prerequisites": ladder_prerequisites(methods, record.id),
+                "next": ladder_next(methods, record.id),
             }
         )
     entries.sort(key=lambda entry: str(entry["id"]))

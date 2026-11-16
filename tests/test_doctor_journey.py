@@ -45,6 +45,9 @@ def _record(
     difficulty: str | None = None,
     inputs: tuple[str, ...] = ("raw_text",),
     prerequisites: tuple[str, ...] = (),
+    produces: tuple[str, ...] = (),
+    consumes: tuple[str, ...] = (),
+    after: tuple[str, ...] = (),
 ) -> MethodRecord:
     """One minimal valid register row (subsets stay valid per the model)."""
     return MethodRecord(
@@ -73,6 +76,9 @@ def _record(
         sources=["https://example.com/a"],
         difficulty=difficulty,
         prerequisites=list(prerequisites),
+        produces=list(produces) or None,
+        consumes=list(consumes) or None,
+        after=list(after) or None,
     )
 
 
@@ -88,31 +94,35 @@ def _register(*rows: MethodRecord) -> MethodRegister:
 
 REG = _register(
     _record("02", op="analyze_run", difficulty="novice"),
-    _record("04", op="labeling_build", difficulty="novice"),
+    _record("04", op="labeling_build", difficulty="novice", produces=("labels",)),
     _record("09", op="topics_build", difficulty="intermediate", inputs=("raw_text", "embeddings")),
     _record(
         "13",
         op="centroids_classify",
         difficulty="intermediate",
         inputs=("embeddings", "labels"),
-        prerequisites=("04",),
+        consumes=("labels",),
     ),
     _record(
         "15",
         op="lexical_classify",
         difficulty="intermediate",
         inputs=("raw_text", "labels"),
-        prerequisites=("04",),
+        consumes=("labels",),
     ),
     _record(
-        "16", op="classification_build", difficulty="intermediate", inputs=("embeddings", "labels")
+        "16",
+        op="classification_build",
+        difficulty="intermediate",
+        inputs=("embeddings", "labels"),
+        produces=("predictions",),
     ),
     _record(
         "20",
         op="active_learn_next",
         difficulty="advanced",
         inputs=("labels", "predictions"),
-        prerequisites=("16",),
+        consumes=("predictions",),
     ),
     _record("23", op="search", difficulty="novice", inputs=("raw_text", "embeddings", "llm")),
     _record("24", op="ask", difficulty="novice", inputs=("raw_text", "llm")),
@@ -205,6 +215,31 @@ def test_next_picks_lowest_difficulty_not_lowest_id() -> None:
     nxt = found["journey_next"]
     assert "Next: build topics with method 09." in nxt.detail
     assert nxt.fix == "corpus-kb topics-build"
+
+
+def test_journey_ignores_nonbuild_prereqs() -> None:
+    """A prerequisite whose op is not a build product never gates the journey.
+
+    Synthetic: 28 consumes evidence (producer 23, op search) and needs
+    raw_text + llm + timestamps. The old hand-link gating read the same
+    requirement as a permanent ``method 23`` gap and locked 28 forever.
+    """
+    reg = _register(
+        _record("23", op="search", difficulty="novice", produces=("evidence",)),
+        _record(
+            "28",
+            op="contradictions_screen",
+            difficulty="intermediate",
+            inputs=("raw_text", "llm", "timestamps"),
+            prerequisites=("23",),
+            consumes=("evidence",),
+        ),
+    )
+    healthy = JourneyState(
+        chunks=120, vectors=120, labels=0, predictions=0, topics=0, dated_documents=6
+    )
+    found = _by_name(build_journey_checks(reg, healthy, ollama_ok=True))
+    assert "You can run 2 methods today." in found["journey_state"].detail
 
 
 def test_all_products_built_is_terminal() -> None:

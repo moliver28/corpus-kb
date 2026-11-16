@@ -28,6 +28,7 @@ from corpus_kb._setup.doctor_journey_maps import (
     INPUT_STATE,
     OP_CLI,
     UNPROBED_INPUTS,
+    journey_prerequisites,
 )
 from corpus_kb._setup.doctor_journey_state import JourneyState, read_build_state
 from corpus_kb._setup.doctor_research import (
@@ -69,11 +70,10 @@ def _missing(
     """The state keys (or 'llm') this method still needs, in order."""
     missing: list[str] = []
     by_id = {row.id: row for row in register.methods}
-    for pid in record.prerequisites or []:
-        prereq = by_id.get(pid)
-        key = BUILD_PRODUCTS.get(prereq.op, (None, ""))[0] if prereq and prereq.op else None
-        if key is None or getattr(state, key) == 0:
-            missing.append(key or f"method {pid}")
+    for pid in journey_prerequisites(register, record.id):
+        key = BUILD_PRODUCTS[by_id[pid].op][0]
+        if getattr(state, key) == 0:
+            missing.append(key)
     for kind in record.inputs_required:
         if kind == "llm":
             if not ollama_ok:
