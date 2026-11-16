@@ -192,11 +192,13 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     """
     config = get_default_config()
 
-    # embedding.preset ("levers") resolution: only keys ABSENT from the
-    # user's file are filled from the preset, so explicit model /
-    # dimensions / batch_size always win. Set before env overrides so
-    # CORPUS_KB_EMBEDDING_* keeps highest precedence.
-    file_embedding_keys: set[str] = set()
+    # embedding.preset ("levers") resolution: the file (or overlay) that
+    # DECLARED the preset owns the override scope. Set before env overrides
+    # so CORPUS_KB_EMBEDDING_* keeps the highest precedence of all.
+    file_embedding_keys: set[str] = set()          # keys of the main file
+    overlay_embedding_keys: set[str] = set()       # merged embedding keys of overlays
+    last_declarer = "none"                         # "file" | "overlay"
+
 
     config_path: Path | None = None
     if path:
@@ -246,13 +248,32 @@ def load_config(path: str | None = None) -> dict[str, Any]:
             raise ConfigError(
                 f"Config overlay {overlay_path} must hold a YAML mapping of settings."
             )
+        overlay_embedding_keys.update(
+            (overlay_config.get("embedding") or {}).keys()  # type: ignore[arg-type]
+        )
         _deep_update(config, overlay_config)
+        if (overlay_config.get("embedding") or {}).get("preset"):  # type: ignore[union-attr]
+            last_declarer = "overlay"
 
     # embedding.preset resolution (named levers, see dimensions.EMBEDDING_PRESETS).
-    # Fills only keys the user did NOT set, then removes the control key so no
-    # downstream reader sees an unknown "preset" field.
+    # The FILE THAT DECLARED the preset owns the override scope: keys that
+    # same file set explicitly win over the preset; keys the declared file
+    # left silent are filled from the preset, even when another (earlier or
+    # shipped-default) file carries explicit values. This is what lets a
+    # tiny overlay flip the lever over a shipped YAML's full block.
     emb_cfg = cast(dict[str, object], config.get("embedding"))
     preset_name = emb_cfg.pop("preset", None)
+    if preset_name and last_declarer == "none":
+        # main file (or cwd/shipped file) declared the preset
+        last_declarer = "file"
+    if preset_name and last_declarer == "file":
+        # explicit keys of the declaring file are honored
+        if "preset" not in file_embedding_keys:
+            # declaring file is packaged/loaded-from-code; treat all shipped
+            # embedding keys as silent (packaged defaults never block levers)
+            file_embedding_keys.clear()
+    if preset_name and last_declarer == "overlay":
+        file_embedding_keys = set(overlay_embedding_keys)
     if preset_name:
         from corpus_kb.dimensions import EMBEDDING_PRESETS
 
