@@ -32,16 +32,13 @@ bounded and snapshot-friendly: one line per step, tails only on failure.
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from docker_smoke_lib import PROJECT, compose_args, dump_diagnostics, run_capture, run_step
 
 MARKER = "docker-smoke-nas-canary"
 
@@ -57,63 +54,6 @@ UP_TIMEOUT_S = 480.0
 EXEC_TIMEOUT_S = 180.0
 HEALTH_TRIES = 45
 HEALTH_DELAY_S = 2.0
-
-
-def compose_env() -> dict[str, str]:
-    """A scrubbed env: compose input is fully deterministic.
-
-    A developer's COMPOSE_PROFILES / COMPOSE_FILE / COMPOSE_PROJECT_NAME
-    must not flip what this gate builds or asserts. Host CORPUS_KB_* vars
-    are also dropped: the container config comes from compose.yaml alone.
-    """
-    scrub = {
-        "COMPOSE_PROFILES",
-        "COMPOSE_FILE",
-        "COMPOSE_PROJECT_NAME",
-        "COMPOSE_PATH_SEPARATOR",
-    }
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CORPUS_KB_")}
-    for key in scrub:
-        env.pop(key, None)
-    return env
-
-
-def run_step(
-    label: str,
-    args: list[str],
-    timeout: float,
-    check: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """One compose/docker subprocess; one result line; tail on failure."""
-    print(f"[docker-smoke] {label} ...", flush=True)
-    try:
-        proc = subprocess.run(
-            args,
-            cwd=ROOT,
-            env=compose_env(),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except subprocess.TimeoutExpired:
-        print(f"[docker-smoke] {label}: FAIL (timed out after {timeout:.0f}s)")
-        sys.exit(1)
-    if check and proc.returncode != 0:
-        print(f"[docker-smoke] {label}: FAIL (exit {proc.returncode})")
-        for name in ("stdout", "stderr"):
-            out = getattr(proc, name) or ""
-            tail = "\n".join(out.strip().splitlines()[-25:])
-            if tail:
-                print(f"[docker-smoke] {label} {name} tail:\n{tail}")
-        sys.exit(1)
-    print(f"[docker-smoke] {label}: ok")
-    return proc
-
-
-def compose_args(profile_arg: list[str], *rest: str) -> list[str]:
-    return ["docker", "compose", "-p", "corpus_kb_smoke", *profile_arg, *rest]
 
 
 def poll_health() -> None:
@@ -139,7 +79,7 @@ def exec_app(
     timeout: float = EXEC_TIMEOUT_S,
     label: str | None = None,
     check: bool = True,
-) -> subprocess.CompletedProcess[str]:
+) -> tuple[int, str, str]:
     """One `docker compose exec -T app <argv>` call."""
     return run_step(
         label or f"exec app: {argv[0]}",
@@ -159,7 +99,7 @@ def round_trip() -> None:
     and the failure is the embedding arm. Anything else (``error``,
     zero chunks) fails the gate.
     """
-    proc = exec_app(
+    _code, ingest_stdout, _err = exec_app(
         "corpus-kb",
         "ingest-text",
         MARKER_TEXT,
@@ -171,14 +111,14 @@ def round_trip() -> None:
     )
     envelope: dict[str, object] | None = None
     try:
-        parsed = json.loads(proc.stdout)
+        parsed = json.loads(ingest_stdout)
         if isinstance(parsed, dict):
             envelope = parsed
     except json.JSONDecodeError:
         pass
     if envelope is None:
         print("[docker-smoke] ingest: FAIL (no JSON envelope on stdout)")
-        print(f"[docker-smoke] ingest stdout tail:\n{proc.stdout[-2000:]}")
+        print(f"[docker-smoke] ingest stdout tail:\n{ingest_stdout[-2000:]}")
         sys.exit(1)
     status = str(envelope.get("status"))
     raw_count = envelope.get("pg_chunk_count")
@@ -194,12 +134,12 @@ def round_trip() -> None:
         print(f"[docker-smoke] ingest: FAIL (status={status}, chunks={chunk_count})")
         print(f"[docker-smoke] envelope: {json.dumps(envelope)[:1000]}")
         sys.exit(1)
-    proc = exec_app("corpus-kb", "search", MARKER, "--json")
+    _code, search_stdout, _err = exec_app("corpus-kb", "search", MARKER, "--json")
     try:
-        payload = json.loads(proc.stdout)
+        payload = json.loads(search_stdout)
     except json.JSONDecodeError as exc:
         print(f"[docker-smoke] search json: FAIL ({exc})")
-        print(f"[docker-smoke] search stdout tail:\n{proc.stdout[-2000:]}")
+        print(f"[docker-smoke] search stdout tail:\n{search_stdout[-2000:]}")
         sys.exit(1)
     hits = payload.get("result")
     if not isinstance(hits, list) or not hits:
@@ -223,12 +163,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # 1. Default-stack contract: no profile -> exactly {postgres}.
-    proc = run_step(
+    _code, contract_stdout, _err = run_step(
         "default stack contract",
-        ["docker", "compose", "-p", "corpus_kb_smoke", "config", "--services"],
+        ["docker", "compose", "-p", PROJECT, "config", "--services"],
         EXEC_TIMEOUT_S,
     )
-    services = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    services = {line.strip() for line in contract_stdout.splitlines() if line.strip()}
     if services != {"postgres"}:
         print(f"[docker-smoke] default stack contract: FAIL (services = {sorted(services)})")
         return 1
@@ -249,12 +189,17 @@ def main(argv: list[str] | None = None) -> int:
         BUILD_TIMEOUT_S,
     )
 
-    # 4. Boot with healthchecks as the gate.
-    run_step(
-        "up --wait",
+    # 4. Boot with healthchecks as the gate. A failure dumps diagnostics.
+    up_code, up_tail = run_capture(
         compose_args(["--profile", "app"], "up", "-d", "--wait", "--wait-timeout", "420"),
         UP_TIMEOUT_S,
     )
+    if up_code != 0:
+        print(f"[docker-smoke] up --wait: FAIL (exit {up_code})")
+        print(f"[docker-smoke] up --wait tail:\n{up_tail}")
+        dump_diagnostics()
+        sys.exit(1)
+    print("[docker-smoke] up --wait: ok")
 
     # 5. Host-side health poll (the LAN path).
     poll_health()
