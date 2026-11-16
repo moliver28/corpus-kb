@@ -491,10 +491,26 @@ jobs:
         run: docker logs corpus-kb-postgres || true
 
       - name: Verify extensions load
+        # The image's initdb script (01-extensions-and-grants.sh) creates
+        # these extensions at first boot inside a temp init server, and
+        # pg_isready answers before the init scripts finish — so this
+        # re-check can race the script on the catalog (duplicate-key on
+        # pg_namespace). Retry until the real server is up and the
+        # no-op CREATE EXTENSION passes.
         run: |
-          docker exec corpus-kb-postgres \
-            psql -U corpus_user -d corpus_kb -v ON_ERROR_STOP=1 -c \
-            "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS age; CREATE EXTENSION IF NOT EXISTS pgml;"
+          for i in 1 2 3 4 5 6; do
+            if docker exec corpus-kb-postgres \
+              psql -U corpus_user -d corpus_kb -v ON_ERROR_STOP=1 -c \
+              "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS age; CREATE EXTENSION IF NOT EXISTS pgml;"
+            then
+              echo "Extensions verified (attempt $i/6)"
+              exit 0
+            fi
+            echo "Attempt $i/6 failed; the init scripts may still be running. Retrying..."
+            sleep 5
+          done
+          echo "Extensions did not verify"
+          exit 1
 
       - name: Stop and remove Postgres container
         if: always()
