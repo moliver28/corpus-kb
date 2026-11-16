@@ -44,7 +44,25 @@ while True:
 PYEOF
 
 echo "corpus-kb entrypoint: Postgres is up. Applying migrations."
-corpus-kb migrate
+# Migrate is idempotent, and the first connects can land on the image's
+# short-lived init server while the first-boot scripts finish — so the
+# FIRST attempts can fail with honest errors. Retry with a deadline;
+# give up with the database-unavailable exit code.
+ATTEMPT=1
+MAX_ATTEMPTS=24
+while true; do
+    if corpus-kb migrate; then
+        echo "corpus-kb entrypoint: migrations applied (attempt ${ATTEMPT})."
+        break
+    fi
+    if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+        echo "corpus-kb entrypoint: migrate failed after ${MAX_ATTEMPTS} attempts." >&2
+        exit 3
+    fi
+    echo "corpus-kb entrypoint: migrate attempt ${ATTEMPT} failed. Retrying in 5 s."
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 5
+done
 
 echo "corpus-kb entrypoint: starting the server on ${APP_HOST}:${APP_PORT}."
 exec corpus-kb start --transport http --port "${APP_PORT}" --host "${APP_HOST}"
