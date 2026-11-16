@@ -9,6 +9,14 @@
 # per-Dockerfile ignore file (Dockerfile.dockerignore) keeps the context to
 # the packaging minimum.
 #
+# PREREQUISITE: the built SPA must exist at src/corpus_kb/ui_dist/ BEFORE
+# this build (ui_dist/ is gitignored, so a fresh checkout cannot ship it).
+# CI runs `poe ui-build` ahead of the docker smoke; on a NAS run
+#   pnpm -C ui_src install && pnpm -C ui_src build
+# once first (Node is a build-time tool only). The wheel self-check below
+# fails the build when the dist is missing — a UI-less image is never
+# produced silently.
+#
 # Runtime shape:
 #   - installs the built wheel (UI dist + packaged config + migrations ship
 #     as package data; the wheel self-check below fails the build otherwise)

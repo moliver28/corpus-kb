@@ -379,7 +379,14 @@ curl -X POST http://localhost:8010/api/query/sql \
 This path runs the server and Postgres from one compose file. It fits an
 amd64 NAS (Synology Container Manager, DSM 7.2+) or any Docker host. You
 need the repo checked out on the build machine. The build compiles the
-app image from source, so no Python install is needed on the host.
+app image from source, so no Python install is needed on the host. You
+do need Node 24 and pnpm once, because the image embeds the built
+browser app. Build it before the first image build:
+
+```bash
+pnpm -C ui_src install
+pnpm -C ui_src build
+```
 
 The default stack does not change. `docker compose up -d` starts Postgres
 only. This matches what `corpus-kb setup` does today.
