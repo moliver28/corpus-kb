@@ -326,6 +326,11 @@ def doctor(
 def start(
     transport: str = typer.Option("http", "--transport", help="Server transport"),
     port: int = typer.Option(8010, "--port", help="HTTP server port"),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        help="HTTP bind host (default: server.host config, then localhost)",
+    ),
     ui: bool | None = typer.Option(
         None,
         "--ui/--no-ui",
@@ -336,6 +341,8 @@ def start(
     from corpus_kb.server_wiring import main as server_main
 
     argv = ["--transport", transport, "--port", str(port)]
+    if host is not None:
+        argv.extend(["--host", host])
     if ui is True:
         argv.append("--ui")
     elif ui is False:

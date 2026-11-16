@@ -239,3 +239,55 @@ async def test_startup_postgres_happy_path_assembles_services(
     assert services["socket_server"].name == "socket"
     assert services["ui_mounted"] is True
     assert services["notebooks_mounted"] is False
+
+
+def test_main_host_flag_binds_server_host(monkeypatch: Any, capsys: Any) -> None:
+    """--host fills server.host in the config the wiring starts with."""
+    seen: dict[str, Any] = {}
+
+    async def fake_startup(cfg: dict[str, Any] | None) -> dict[str, Any]:
+        seen["cfg"] = cfg
+        return {"config": cfg if cfg is not None else {}}
+
+    async def fake_run_all(services: dict[str, Any]) -> None:
+        seen["services"] = services
+
+    async def fake_shutdown(services: dict[str, Any]) -> None:
+        seen["shutdown"] = True
+
+    monkeypatch.setattr(sw, "startup", fake_startup)
+    monkeypatch.setattr(sw, "run_all", fake_run_all)
+    monkeypatch.setattr(sw, "shutdown", fake_shutdown)
+    monkeypatch.setenv("CORPUS_KB_PORT", "8010")
+
+    sw.main(["--transport", "http", "--port", "8010", "--host", "0.0.0.0"])
+
+    cfg = seen["cfg"]
+    assert cfg is not None
+    assert cfg["server"]["host"] == "0.0.0.0"
+    assert cfg["server"]["port"] == 8010
+    assert seen["shutdown"] is True
+
+
+def test_main_without_host_keeps_config_untouched(monkeypatch: Any) -> None:
+    """No --host and an env port: the config stays None (default bind path)."""
+    seen: dict[str, Any] = {}
+
+    async def fake_startup(cfg: dict[str, Any] | None) -> dict[str, Any]:
+        seen["cfg"] = cfg
+        return {"config": {}}
+
+    async def fake_run_all(services: dict[str, Any]) -> None:
+        return None
+
+    async def fake_shutdown(services: dict[str, Any]) -> None:
+        return None
+
+    monkeypatch.setattr(sw, "startup", fake_startup)
+    monkeypatch.setattr(sw, "run_all", fake_run_all)
+    monkeypatch.setattr(sw, "shutdown", fake_shutdown)
+    monkeypatch.setenv("CORPUS_KB_PORT", "8010")
+
+    sw.main(["--transport", "http", "--port", "8010"])
+
+    assert seen["cfg"] is None

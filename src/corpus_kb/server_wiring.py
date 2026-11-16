@@ -24,7 +24,6 @@ import contextlib
 import logging
 import os
 import sys
-import webbrowser
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -51,13 +50,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Browser auto-open (UI SPA program): set to "0" to keep the server
-# from opening a browser tab (tests, headless hosts). Anything else —
-# including unset — follows the /app/ SPA mount outcome.
-UI_OPEN_ENV_VAR = "CORPUS_KB_UI_OPEN"
-
-UI_OPEN_DELAY_SECONDS = 1.5
-
 
 def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     """Mount the notebooks console when the config gate is on. NEVER raises.
@@ -73,36 +65,6 @@ def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     if not settings.enabled:
         return False
     return mount_notebooks(http_app, settings.directory)
-
-
-def browser_open_enabled(environ: dict[str, str] | None = None) -> bool:
-    """The auto-open guard: ``CORPUS_KB_UI_OPEN=0`` keeps the tab closed."""
-    env = os.environ if environ is None else environ
-    return env.get(UI_OPEN_ENV_VAR) != "0"
-
-
-async def open_browser_when_up(host: str, port: int, delay: float = UI_OPEN_DELAY_SECONDS) -> None:
-    """Open the browser once the server has had a moment to bind."""
-    await asyncio.sleep(delay)
-    webbrowser.open(f"http://{host}:{port}")
-
-
-def schedule_browser_open(
-    services: dict[str, Any],
-    host: str,
-    port: int,
-) -> asyncio.Task[None] | None:
-    """Schedule the delayed auto-open, or return None when it must not fire.
-
-    Fires ONLY when the ``/app/`` SPA actually mounted (``ui_mounted``
-    in the services dict) AND the env guard allows it. The browser opens
-    the server root, which 307s to ``/app/``.
-    """
-    if not services.get("ui_mounted", False):
-        return None
-    if not browser_open_enabled():
-        return None
-    return asyncio.create_task(open_browser_when_up(host, port))
 
 
 async def initialize_postgres_pool(
@@ -457,6 +419,10 @@ async def run_all(services: dict[str, Any]) -> None:
 
     # Browser auto-open (UX program Wave 3): fires ONLY when the [ui]
     # extra actually mounted and CORPUS_KB_UI_OPEN is not "0".
+    # Lazy import beside the SPA mount: the auto-open guard lives with the
+    # UI surface it depends on (corpus_kb.ui.browser_open).
+    from corpus_kb.ui.browser_open import schedule_browser_open
+
     browser_task = schedule_browser_open(services, str(host), port)
 
     # Queue autorun (textbook program Wave 3): ONE background drain task
@@ -537,6 +503,11 @@ def main(argv: list[str] | None = None) -> None:
         default=8010,
         help="HTTP server port (default: 8010)",
     )
+    parser.add_argument(
+        "--host",
+        default=None,
+        help="HTTP bind host (default: server.host config, then localhost)",
+    )
     ui_group = parser.add_mutually_exclusive_group()
     ui_group.add_argument(
         "--ui",
@@ -570,11 +541,17 @@ def main(argv: list[str] | None = None) -> None:
 
         async def _run() -> None:
             cfg: dict[str, Any] | None = None
-            if args.ui is not None or "CORPUS_KB_PORT" not in os.environ:
+            if (
+                args.ui is not None
+                or args.host is not None
+                or "CORPUS_KB_PORT" not in os.environ
+            ):
                 # The --ui/--no-ui flag overrides the ui.enabled config key;
                 # the --port flag fills in for an unset CORPUS_KB_PORT (the
                 # documented priority is env var, then CLI flag, then YAML).
-                # Load once here so startup and run_all see the overrides.
+                # --host works the same way: the flag fills server.host so
+                # containers and NAS hosts can bind 0.0.0.0. Load once here
+                # so startup and run_all see the overrides.
                 from corpus_kb.config import load_config
 
                 cfg = load_config()
@@ -584,6 +561,8 @@ def main(argv: list[str] | None = None) -> None:
                     ui_block["enabled"] = bool(args.ui)
                 if "CORPUS_KB_PORT" not in os.environ:
                     server_block["port"] = args.port
+                if args.host is not None:
+                    server_block["host"] = args.host
             services = await startup(cfg)
             try:
                 await run_all(services)

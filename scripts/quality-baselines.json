@@ -64,7 +64,7 @@
     "src/corpus_kb/research/retrieval_eval.py": 255,
     "src/corpus_kb/research/retrieval_settings.py": 261,
     "src/corpus_kb/research/search_settings.py": 269,
-    "src/corpus_kb/server_wiring.py": 606,
+    "src/corpus_kb/server_wiring.py": 585,
     "src/corpus_kb/storage/age_graph_store.py": 628,
     "src/corpus_kb/storage/duckdb_search.py": 308,
     "src/corpus_kb/storage/duckdb_store.py": 544,

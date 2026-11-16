@@ -267,7 +267,7 @@ def test_ui_open_env_var_reaches_its_reader(monkeypatch: pytest.MonkeyPatch) -> 
     registry promises. ``0`` keeps the tab closed; anything else follows
     the mount outcome (open).
     """
-    from corpus_kb.server_wiring import browser_open_enabled
+    from corpus_kb.ui.browser_open import browser_open_enabled
 
     monkeypatch.setenv("CORPUS_KB_UI_OPEN", "0")
     assert browser_open_enabled() is False
