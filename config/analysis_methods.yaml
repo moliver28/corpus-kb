@@ -10,7 +10,7 @@
 # (novice-UX program, wave 2) validate against the schema in
 # corpus_kb.analysis.method_register_tables. This file and
 # src/corpus_kb/config/analysis_methods.yaml must stay byte-identical.
-register_version: "3.2.0"
+register_version: "3.3.0"
 source_document:
   title: "I want to understand the NLP Analysis landscape so that I can ensure a team of non-NLP researchers are selected methods appropriately when using an NLP harness around a claude code like tool"
   path_note: "Owner research document with 30 methods and four linked tables that share ids 01-30. Per-method sources are the document footnotes."

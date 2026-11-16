@@ -146,7 +146,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "3.2.0"
+    assert register.register_version == "3.3.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -189,7 +189,7 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "3.2.0"
+    assert register.register_version == "3.3.0"
     assert len(register.methods) == 30
 
 
@@ -759,8 +759,8 @@ def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
 
 def test_register_version_bumped_for_progression_schema(register: MethodRegister) -> None:
     """The routing fields bumped the register to 3.0.0, W1 progression to 3.1.0,
-    and the W2 table contracts to 3.2.0 (surfaces cache per version)."""
-    assert register.register_version == "3.2.0"
+    the W2 table contracts to 3.2.0, and the dataflow fields to 3.3.0."""
+    assert register.register_version == "3.3.0"
 
 
 # ---------------------------------------------------------------------------
@@ -944,6 +944,51 @@ def test_next_edges_stay_groundable(register: MethodRegister) -> None:
             assert target_row.implementation_status != "not_planned", (
                 f"{record.id} suggests {target}, which is not planned."
             )
+
+
+# ---------------------------------------------------------------------------
+# Dataflow axes (derived ladder, issue 439)
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_produced_artifact_rejected() -> None:
+    record = _mutate(_valid_record(), produces=["vibes"])
+    with pytest.raises(ValueError, match="produces"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_duplicate_produces_rejected() -> None:
+    record = _mutate(_valid_record(), produces=["labels", "labels"])
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_produces_cap_is_five() -> None:
+    record = _mutate(
+        _valid_record(),
+        produces=["labels", "topics", "scores", "codes", "flags", "keyphrases"],
+    )
+    with pytest.raises(ValueError, match="1 to 5"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_empty_consumes_is_valid() -> None:
+    record = _mutate(_valid_record(), consumes=[])
+    register = MethodRegister.model_validate(_single_register(record))
+    assert register.methods[0].consumes == []
+
+
+def test_after_id_shape_and_self_rejected() -> None:
+    for bad in (["4"], ["31"], ["15"]):
+        record = _mutate(_valid_record(), id="15", after=bad)
+        with pytest.raises(ValueError):
+            MethodRegister.model_validate(_single_register(record))
+
+
+def test_after_cap_is_five() -> None:
+    record = _mutate(_valid_record(), after=[f"{i:02d}" for i in range(1, 7)])
+    with pytest.raises(ValueError, match="up to 5"):
+        MethodRegister.model_validate(_single_register(record))
 
 
 # ---------------------------------------------------------------------------
