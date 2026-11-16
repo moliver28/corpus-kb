@@ -44,7 +44,7 @@ launchctl bootstrap "gui/$UID_N" "$PLIST"
 launchctl enable "gui/$UID_N/$LABEL"
 sleep 6
 
-if curl -fsS -m 4 "http://127.0.0.1:$PORT/api/doctor" | grep -q '"status"'; then
+if curl -fsS -m 4 "http://127.0.0.1:$PORT/api/doctor" | grep '"status"' >/dev/null; then
     echo "OK: daemon serving on :$PORT (launchd: $LABEL, log: $LOG)"
 else
     echo "WARN: daemon not answering yet; check $LOG" >&2

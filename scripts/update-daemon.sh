@@ -18,7 +18,7 @@ UID_N="$(id -u)"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG"; }
 die() { log "$1"; exit "${2:-1}"; }
-healthy() { curl -fsS -m 4 "http://127.0.0.1:$PORT/api/doctor" | grep -q '"status"'; }
+healthy() { curl -fsS -m 4 "http://127.0.0.1:$PORT/api/doctor" | grep '"status"' >/dev/null; }
 
 deps() {
     if command -v uv >/dev/null 2>&1; then
