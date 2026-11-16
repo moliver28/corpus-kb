@@ -8,6 +8,7 @@ and computed rung, plus the six stored pins that win. Frozen from the
 from __future__ import annotations
 
 import warnings
+from typing import Any
 
 from corpus_kb.analysis.method_register import MethodRecord
 from corpus_kb.analysis.method_register_difficulty import (
@@ -200,3 +201,20 @@ def test_threshold_table_is_monotone() -> None:
         for ei in range(1, 5):
             assert computed_rung(depth, ei) in DIFFICULTY_LEVELS
     assert computed_rung(4, 1) == "advanced" and computed_rung(5, 3) == "advanced"
+
+
+def test_difficulty_score_snapshot(snapshot: Any) -> None:
+    """All 30 rows' scores in one pinned snapshot (deterministic, id-sorted)."""
+    scores = difficulty_scores(load_method_register({}))
+    payload = [
+        {
+            "id": score.method_id,
+            "depth": score.graph_depth,
+            "ei": score.element_interactivity,
+            "computed": score.computed_rung,
+            "stored": score.stored_rung,
+            "matches": score.matches,
+        }
+        for score in scores
+    ]
+    assert payload == snapshot
