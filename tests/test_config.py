@@ -290,3 +290,18 @@ def test_ollama_host_env_override_sets_base_url(
 def test_ollama_host_var_is_registered(no_env_overrides: None) -> None:
     """The variable sits in the doctor's known set, so it is never a dead-var warning."""
     assert "CORPUS_KB_OLLAMA_HOST" in KNOWN_CORPUS_KB_ENV_VARS
+
+
+def test_host_env_override_sets_server_host(
+    no_env_overrides: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CORPUS_KB_HOST overrides server.host (the compose app container bind)."""
+    monkeypatch.setenv("CORPUS_KB_HOST", "127.0.0.1")
+    cfg = load_config()
+    server = cast(dict[str, object], cfg["server"])
+    assert server["host"] == "127.0.0.1"
+
+
+def test_host_var_is_registered(no_env_overrides: None) -> None:
+    """The entrypoint reads this variable, so the doctor must not call it dead."""
+    assert "CORPUS_KB_HOST" in KNOWN_CORPUS_KB_ENV_VARS
