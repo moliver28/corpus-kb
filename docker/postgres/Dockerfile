@@ -94,7 +94,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Make the shipped Python 3.10 shared library discoverable for pgml.so.
 ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
 
-ARG PGVECTOR_VERSION=0.8.6-1.pgdg12+1
+ARG PGVECTOR_VERSION=0.8.6-1.pgdg12+2
 ARG AGE_VERSION=1.7.0~rc0-1.pgdg12+1
 ARG POSTGRESML_VERSION=2.10.0
 
