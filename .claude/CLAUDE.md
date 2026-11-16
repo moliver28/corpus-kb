@@ -1,6 +1,6 @@
 # Corpus-KB
 
-Local RAG system with MCP tools for AI code editors. Lets you ingest code and documents, semantically search, run SQL queries, and manage a knowledge graph all locally, no cloud.
+Local RAG system with MCP tools for AI code editors. Ingest code and documents, search semantically, run SQL queries, ask questions with citations, and manage a knowledge graph. Everything runs locally; no cloud.
 
 ## Quickstart
 
@@ -8,255 +8,67 @@ Local RAG system with MCP tools for AI code editors. Lets you ingest code and do
 # 1. Install
 pip install -e .
 
-# 2. Pull embedding model (required)
-ollama pull nomic-embed-text
+# 2. Prepare the stack (database, schema, migrations, embedding model)
+corpus-kb setup
 
-# 3. Run the server (stdio mode for editor agents)
-python -m src.server
-
-# Or via the installed CLI:
-corpus-kb
+# 3. Start the server (browser UI at http://localhost:8010/app/)
+corpus-kb start
 ```
 
-Default config is in `config.yaml` at the project root. On first run, data is stored in `~/.corpus-kb/` (LanceDB + DuckDB + SQLite graph).
+Editor agents connect over MCP stdio:
+
+```bash
+corpus-kb --transport stdio
+```
+
+The default embedding model is `qwen3-embedding:4b` (2560d). The full novice and expert paths are in the [README](../README.md) and [docs/getting-started.md](../docs/getting-started.md).
+
+The entry point is `src/corpus_kb/server_wiring.py`, module `server_wiring:main`. Config discovery: `CORPUS_KB_CONFIG` (absolute path), then `config.yaml` in `$CWD`, then the packaged default inside the package. There is no `--config` flag. Overlays: `CORPUS_KB_CONFIG_OVERLAY` holds `os.pathsep`-split YAML paths, deep-merged in order after the main file and before env overrides (issue #348).
 
 ## Server
 
 | Transport | Command | Use Case |
 |-----------|---------|----------|
-| stdio | `corpus-kb` (or `python -m src.server`) | Editor agents (OpenCode, Claude Code, Cursor, Codex) |
-| SSE | `corpus-kb --transport sse --port 8000` | Multi-user / remote |
+| MCP stdio | `corpus-kb --transport stdio` | Editor agents (Claude Code, Cursor, Codex, OpenCode, ZCode) |
+| HTTP | `corpus-kb start --transport http --port 8010` | REST API, browser UI, OpenAI-compatible `/v1` adapter |
+| JSON-RPC socket | Starts with the HTTP server | Local automation (POSIX socket; Windows TCP port) |
 
-The entry point is `src/corpus_kb/server_wiring.py`, module `server_wiring:main`. Config discovery: `CORPUS_KB_CONFIG` (absolute path), then `config.yaml` in `$CWD`, then the packaged default inside the package. There is no `--config` flag. Overlays: `CORPUS_KB_CONFIG_OVERLAY` holds `os.pathsep`-split YAML paths, deep-merged in order after the main file and before env overrides (issue #348).
+Readiness check for a running HTTP server: `curl http://localhost:8010/api/doctor`. It runs the same probes as `corpus-kb doctor`. Exit codes and ports: [docs/OPERATIONS.md](../docs/OPERATIONS.md).
 
-## MCP Tools Reference
+## MCP tool surface
 
-All tools are registered via `FastMCP` in `src/tools/`.
+Do not keep a hand-written tool table here; it drifts. Counted surfaces instead:
 
-### Ingest (5 tools)
+- `corpus-kb operations --indent 0` — every operation: surfaces, params, envelope keys. Runs offline.
+- Tool reference table: [docs/FEATURES.md](../docs/FEATURES.md).
+- HTTP routes with curl examples: [docs/API.md](../docs/API.md).
+- The generated research-commands section below (SSOT: `src/corpus_kb/surface_registry.py`).
 
-| Tool | Description |
-|------|-------------|
-| `ingest_file` | Ingest a single file, auto-detects code/markdown/text |
-| `ingest_text` | Ingest raw text with optional type hint (code/markdown/text) |
-| `ingest_directory` | Ingest all supported files in a directory (supports 40+ languages via tree-sitter + .md, .rst, .txt) |
-| `list_documents` | List all ingested documents with metadata |
-| `delete_document` | Delete an ingested document by doc_id |
+## Editor config
 
-Source: `src/tools/ingest_tools.py`
+Ready-made configs live in [`mcp-configs/`](../mcp-configs/): `claude-code.json`, `cursor.json`, `codex.json`, `zcode.json`, plus the root [`opencode.json`](../opencode.json). All of them launch `corpus-kb --transport stdio`. `python src/corpus_kb/_setup/validate_configs.py` checks their consistency before every push.
 
-### Search (4 tools)
+## Configuration
 
-| Tool | Description |
-|------|-------------|
-| `search` | Hybrid search (vector + full-text + RRF fusion). Args: query, k (max 50), source_type filter |
-| `search_context` | Search with parent/sibling/child chunk context expansion. Args: query, k (max 20), context_chunks (0-5) |
-| `search_similar` | Find chunks similar to a given chunk by chunk_id. Args: chunk_id, k (max 20) |
-| `retrieve_context` | Search and return results formatted as a string for LLM context building. Args: query, k (max 20), filters (JSON string) |
+The packaged default config is [`src/corpus_kb/config.yaml`](../src/corpus_kb/config.yaml); every key there has a live consumer. A root `config.yaml` overrides it. Env overrides (`CORPUS_KB_DATABASE_URL`, `CORPUS_KB_EMBEDDING_MODEL`, and friends) are listed in [docs/ADMIN.md](../docs/ADMIN.md). Headline defaults: `database.backend: postgres`; `embedding.model: qwen3-embedding:4b` at 2560d; schema width `halfvec(2560)`.
 
-Source: `src/tools/search_tools.py`
+## Storage
 
-### Knowledge Graph (5 tools)
+- **Postgres (default)**: pgvector `halfvec` vectors, Apache AGE graph, row-level security. Hybrid search fuses lexical and vector results with RRF in SQL (`corpus.rrf_fusion`).
+- **DuckDB**: one local file, single-writer, no Docker. Select it with `database.backend: duckdb`. Exactly one process owns the file at a time.
+- There is no LanceDB. The prototype history is in [docs/FAQ.md](../docs/FAQ.md); the backend comparison is [docs/STORAGE-BACKENDS.md](../docs/STORAGE-BACKENDS.md).
 
-| Tool | Description |
-|------|-------------|
-| `add_entity` | Add an entity to the knowledge graph. Args: name, type (default "concept"), metadata |
-| `add_relation` | Add a directed relation between two entities. Args: source_id, target_id, rel_type, weight (0.0-1.0) |
-| `search_graph` | Search entities by name or type. Args: query, type filter, limit (max 100) |
-| `bfs` | BFS traversal from a starting entity. Args: start_entity_id, max_depth (1-10) |
-| `get_entity_relations` | Get all relations for an entity (incoming and outgoing) |
+## Code map
 
-Source: `src/tools/graph_tools.py`
+- `src/corpus_kb/ingestion/` — pluggable ingestion strategies; the one pipeline seam.
+- `src/corpus_kb/tools/` — shared handlers; CLI, HTTP, socket, and MCP are thin adapters.
+- `src/corpus_kb/rag/` — embedder, reranker, late chunking, SQL-side hybrid fusion.
+- `src/corpus_kb/storage/` — `SqlGateway` seam (Postgres or DuckDB) and the `GraphStore` protocol.
+- `src/corpus_kb/profiles/` — one authored YAML per corpus, with `validate:` and `calibrate:` blocks.
 
-### Database / SQL (9 tools)
+## Deployment
 
-| Tool | Description |
-|------|-------------|
-| `sql_tables` | List all relational tables with their column schemas |
-| `add_tag` | Create a new tag for categorizing documents |
-| `tag_document` | Apply a tag to a document (creates tag if missing) |
-| `untag_document` | Remove a tag from a document |
-| `get_document_tags` | Get all tags applied to a document |
-| `set_metadata` | Set a metadata key-value pair, optionally scoped to a document |
-| `get_metadata` | Retrieve metadata entries filtered by key and/or doc_id |
-| `sync_database` | Manually trigger LanceDB to relational sync (idempotent) |
-| `query_document_stats` | Aggregate statistics: total docs/chunks, by type, avg chunk chars, date range |
-
-Relational tables: `documents`, `chunks`, `tags`, `document_tags`, `metadata`.
-
-Source: `src/tools/database_tools.py`
-
-### Versioning / Branching (8 tools)
-
-| Tool | Description |
-|------|-------------|
-| `list_versions` | List all versions of the chunks table for time-travel |
-| `create_tag` | Tag a specific version with a human-readable name |
-| `checkout_version` | Check out a specific table version for time-travel queries |
-| `restore_version` | Restore the table to a specific version |
-| `create_branch` | Create a new branch from an optional version |
-| `list_branches` | List all branches |
-| `switch_branch` | Switch to a specified branch |
-| `get_stats` | Database statistics: document count, chunk count, entity count, relation count, current version |
-
-Source: `src/tools/version_tools.py`
-
-### Resources (read-only URIs)
-
-| URI Pattern | Description |
-|-------------|-------------|
-| `stats://summary` | Database statistics formatted as text |
-| `chunk://{chunk_id}` | Full text content of a chunk |
-| `doc://{doc_id}` | Full document info with all its chunks |
-| `graph://{entity_id}` | Entity details with all relations |
-| `search://{query}` | Search results as formatted text |
-| `versions://` | Version tree |
-
-## Editor Config
-
-### OpenCode (`opencode.json`)
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "corpus-kb": {
-      "type": "local",
-      "command": ["corpus-kb", "--transport", "stdio"],
-      "autoApprove": [
-        "search", "search_context", "search_similar", "retrieve_context",
-        "list_documents", "get_stats", "list_versions", "list_branches",
-        "get_entity_relations", "search_graph", "sql_query", "sql_tables",
-        "get_document_tags", "get_metadata", "query_document_stats",
-        "sync_database"
-      ]
-    }
-  }
-}
-```
-
-### Claude Code (`claude mcp add` or `.vscode/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "corpus-kb": {
-      "name": "Corpus-KB",
-      "command": "corpus-kb",
-      "args": ["--transport", "stdio"],
-      "autoApprove": [
-        "search", "search_context", "search_similar", "retrieve_context",
-        "list_documents", "get_stats", "list_versions", "list_branches",
-        "get_entity_relations", "search_graph", "sql_query", "sql_tables",
-        "get_document_tags", "get_metadata", "query_document_stats",
-        "sync_database"
-      ]
-    }
-  }
-}
-```
-
-### Cursor
-
-```json
-{
-  "mcpServers": {
-    "corpus-kb": {
-      "name": "Corpus-KB",
-      "command": "corpus-kb",
-      "args": ["--transport", "stdio"]
-    }
-  }
-}
-```
-
-## Configuration (`config.yaml`)
-
-```yaml
-server:
-  name: corpus-kb
-  transport: stdio              # stdio | sse
-  host: localhost
-  port: 8010
-
-storage:
-  path: ~/.corpus-kb
-  lancedb_uri: ~/.corpus-kb/lancedb
-  graph_db: ~/.corpus-kb/graph.db
-
-database:
-  filename: corpus.db
-  auto_sync: true
-
-embedding:
-  provider: ollama
-  model: nomic-embed-text       # 768d. Upgrade to qwen3-embedding:8b-q8_0 for 4096d
-  base_url: http://localhost:11434
-  batch_size: 32
-  dimensions: 768
-
-chunking:
-  max_size: 4096
-  overlap: 200
-  code:                         # tree-sitter AST chunking (40+ languages)
-    max_size: 5000
-  markdown:                     # heading-aware section chunking
-    max_section_size: 5000
-  text:                         # semantic sentence-boundary chunking
-    strategy: semantic
-
-search:
-  hybrid: true
-  rrf_k: 60
-  expand_context: true
-
-graph:
-  backend: sqlite               # sqlite | graphqlite
-  extract_entities: true
-  max_traversal_depth: 5
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  FastMCP Server (src/server.py)                              │
-│  stdio / SSE transport                                       │
-├─────────────────────────────────────────────────────────────┤
-│  Tools Layer (src/tools/)                                    │
-│  ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌──────────┐ ┌─────┐ │
-│  │ Ingest   │ │ Search   │ │ Graph   │ │ Database │ │Ver  │ │
-│  │ 5 tools  │ │ 4 tools  │ │ 5 tools │ │ 11 tools │ │8 tls│ │
-│  └────┬─────┘ └────┬─────┘ └────┬────┘ └────┬─────┘ └──┬──┘ │
-├───────┴────────────┴────────────┴───────────┴──────────┴────┤
-│  Engine Layer                                               │
-│  ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐ │
-│  │ Chunking     │  │ Embedding   │  │ Hybrid Search      │ │
-│  │ (tree-sitter │  │ (Ollama)    │  │ (RRF fusion)       │ │
-│  │  + markdown  │  │             │  │                    │ │
-│  │  + semantic) │  │             │  │                    │ │
-│  └──────┬───────┘  └──────┬──────┘  └────────┬───────────┘ │
-├─────────┴─────────────────┴──────────────────┴─────────────┤
-│  Storage Layer                                              │
-│  ┌──────────────┐  ┌────────────┐  ┌──────────────────────┐│
-│  │ LanceDB      │  │ DuckDB     │  │ SQLite Graph        ││
-│  │ (vectors +   │  │ (relational│  │ (entity-relation    ││
-│  │  chunks,     │  │  tables:   │  │  store, BFS,        ││
-│  │  versioned)  │  │  docs,     │  │  upgradable)        ││
-│  │              │  │  chunks,   │  │                      ││
-│  │              │  │  tags,     │  │                      ││
-│  │              │  │  metadata) │  │                      ││
-│  └──────────────┘  └────────────┘  └──────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
-Three storage backends, each with a distinct role:
-- **LanceDB** stores chunk vectors and full text with Git-like versioning (branches, tags, time-travel).
-- **DuckDB** mirrors document and chunk metadata into relational tables for ad-hoc SQL queries, tags, and flexible metadata.
-- **SQLite Graph** tracks entities and relations for knowledge graph traversal (BFS). Upgradable to GraphQLite (Cypher) or LatticeDB.
-
-The chunking pipeline detects file type (code/markdown/text), splits accordingly (tree-sitter AST for code, heading-aware for markdown, semantic for text), resolves parent/child/sibling hierarchy, embeds via Ollama, and stores in LanceDB. Auto-sync populates DuckDB on startup and after each ingest.
-
+Long-running or multi-consumer setups run ONE server as a daemon. Every consumer connects over HTTP. Runbook and launchd installer: [docs/deployment.md](../docs/deployment.md).
 <!-- corpus-harness:research-commands:start -->
 ## Research command pack (generated — do not edit)
 
