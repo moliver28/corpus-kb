@@ -1001,6 +1001,9 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "queue.max_attempts": int,
         "graph_policy.mode": str,
         "graph.duckdb_graph_backend": str,
+        # Opt-in telemetry (issue #442, telemetry/settings.py is the reader).
+        "telemetry.enabled": bool,
+        "telemetry.log_dir": str,
     } == RUNTIME_CONFIG_KEYS
 
 

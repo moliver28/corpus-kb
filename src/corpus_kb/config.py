@@ -247,57 +247,46 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if mrl_error is not None:
         raise ValueError(mrl_error)
 
-    # W3 contextualize v2: backend/profile/apply_to/max_context_tokens are
-    # rejected AT LOAD with the remediation text (rag/contextual_settings.py
-    # is the single source of both the rules and the messages).
-    from corpus_kb.rag.contextual_settings import contextualize_settings_error
-
-    contextual_error = contextualize_settings_error(config)
-    if contextual_error is not None:
-        raise ValueError(contextual_error)
-
-    # Wave 4 topics: method/min_topic_size are rejected AT LOAD with the
-    # remediation text (topics/settings.py owns the rules and messages).
-    from corpus_kb.topics.settings import topics_settings_error
-
-    topics_error = topics_settings_error(config)
-    if topics_error is not None:
-        raise ValueError(topics_error)
-
-    # Corpus analysis program: labeling.min_signals, classification.tier
-    # and topics.over_time.bins/undated are rejected AT LOAD with the
-    # remediation text (analysis/settings.py owns the rules and messages).
-    from corpus_kb.analysis.settings import analysis_settings_error
-
-    analysis_error = analysis_settings_error(config)
-    if analysis_error is not None:
-        raise ValueError(analysis_error)
-
-    # Opt-in telemetry (issue #442): telemetry.enabled must be a real bool
-    # and telemetry.log_dir a non-empty string AT LOAD
-    # (telemetry/settings.py owns the rules and the remediation text).
-    from corpus_kb.telemetry.settings import telemetry_settings_error
-
-    telemetry_error = telemetry_settings_error(config)
-    if telemetry_error is not None:
-        raise ValueError(telemetry_error)
-
-    # Browser UI gates AT LOAD: ui.spa.* values must be sane
-    # (ui_spa_settings_error owns the rules and the remediation text).
-    ui_error = ui_spa_settings_error(config)
-    if ui_error is not None:
-        raise ValueError(ui_error)
-
-    # UX Wave 6 notebooks console: notebooks.enabled must be a real bool and
-    # notebooks.directory a non-empty string AT LOAD (notebooks/settings.py
-    # owns the rules and the remediation text).
-    from corpus_kb.notebooks.settings import notebooks_settings_error
-
-    notebooks_error = notebooks_settings_error(config)
-    if notebooks_error is not None:
-        raise ValueError(notebooks_error)
+    # Typed module gates AT LOAD, in order (see _typed_gate_errors).
+    typed_error = _typed_gate_errors(config)
+    if typed_error is not None:
+        raise ValueError(typed_error)
 
     return config
+
+
+def _typed_gate_errors(config: dict[str, object]) -> str | None:
+    """The AT LOAD typed-settings refusals, in load order (first error wins).
+
+    Each gate module owns its rules and remediation text: config_gates
+    (the Matryoshka MRL guard), rag/contextual_settings (W3 contextualize
+    v2), topics/settings (Wave 4), analysis/settings (the corpus analysis
+    program), telemetry/settings (issue #442: telemetry.enabled must be a
+    real bool and telemetry.log_dir a non-empty string), the ui.spa
+    reader in this module, and notebooks/settings (UX Wave 6). Imports
+    stay lazy: config.py loads before the package is fully importable in
+    some tool paths.
+    """
+    from corpus_kb.analysis.settings import analysis_settings_error
+    from corpus_kb.config_gates import matryoshka_mrl_error
+    from corpus_kb.notebooks.settings import notebooks_settings_error
+    from corpus_kb.rag.contextual_settings import contextualize_settings_error
+    from corpus_kb.telemetry.settings import telemetry_settings_error
+    from corpus_kb.topics.settings import topics_settings_error
+
+    for gate in (
+        matryoshka_mrl_error,
+        contextualize_settings_error,
+        topics_settings_error,
+        analysis_settings_error,
+        telemetry_settings_error,
+        ui_spa_settings_error,
+        notebooks_settings_error,
+    ):
+        error = gate(config)
+        if error is not None:
+            return error
+    return None
 
 
 def apply_extraction_backend_alias(config: dict[str, object]) -> None:
