@@ -57,7 +57,7 @@ footnotes. They have no register rows and no ops.
 4. Run `poe gen` again; this page's table updates from the YAML.
 
 <!-- amr-register:generated:start -->
-Register version: 3.2.0. Source: the research document named in `config/analysis_methods.yaml`.
+Register version: 3.3.0. Source: the research document named in `config/analysis_methods.yaml`.
 
 | Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Difficulty | Status | Op |
 |----|--------|---------------|--------|-------------|----------|------------|------------|--------|----|
@@ -128,6 +128,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Matrix reduction can weaken narrative and sequence information when categories shift while charting or uncategorized material drops from view. Bias: Fixed framework categories can make uncategorized material less visible.
   - Difficulty: `advanced`.
   - Teaches: `qualitative_coding`.
+  - Requires: `02` Rapid Qualitative Analysis (RQA) matrix.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `narrative`, evidence `labels`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Matrix reduction can weaken narrative and sequence information.
   - Limits: Deep interpretation beats the matrix when narrative sequence matters.
@@ -141,7 +142,8 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Matches are sensitive to synonyms, negation, spelling, and context. Bias: Vocabulary choices can favor some groups or ways of speaking.
   - Difficulty: `novice`.
   - Teaches: `keyword_rules`.
-  - Next: `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
+  - Requires: `12` Embedding clustering (including interactive clustering), `18` Zero-shot NLI classification.
+  - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM, `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `lexical`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Negation and context flip matches; counts never prove implicit meaning.
   - Limits: Rule matches find explicit mentions; implicit meaning needs reading or models.
@@ -171,6 +173,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Sensitive to the embedding model, candidate generation, and document length. Bias: The representation can favor language covered in model training.
   - Difficulty: `intermediate`.
   - Teaches: `vector_similarity`.
+  - Requires: `07` Statistical keyphrase extraction (YAKE).
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Model favoritism can rank trained-on language; scores are not importance.
   - Limits: Phrase previews only; not validated themes or importance ranking.
@@ -233,6 +236,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Seed words must point at real concepts; seeds do not guarantee the wanted topics or complete discovery. Bias: Supplied topic vocabulary can create confirmation bias.
   - Difficulty: `intermediate`.
   - Teaches: `topic_modeling`, `clustering`, `weak_supervision`.
+  - Requires: `09` Unsupervised BERTopic.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Seed vocabulary can create confirmation bias and incomplete discovery.
   - Limits: Seed-shaped exploration only; not complete or unbiased discovery.
@@ -246,6 +250,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Description wording and thresholds affect assignment versus discovery. Bias: Familiar topics can absorb material that merits a different reading.
   - Difficulty: `intermediate`.
   - Teaches: `topic_modeling`, `clustering`, `vector_similarity`.
+  - Requires: `04` Dictionary or rule-based classification, `09` Unsupervised BERTopic.
   - Routing axes: task `measurement`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Familiar topics can absorb material that merits a different reading.
   - Limits: Similarity routing only; not NLI classification.
@@ -295,7 +300,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Sensitive to neighbor coverage, distance choice, and local label errors. Bias: Overrepresented examples can dominate nearby votes.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification.
+  - Requires: `04` Dictionary or rule-based classification, `13` Embedding-centroid classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Overrepresented examples dominate nearby votes; local label errors propagate.
   - Limits: Example-backed labels only; coverage stops where labels stop.
@@ -330,6 +335,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: A fixed encoder cannot learn distinctions it does not represent. Bias: Training examples and pretrained representations both shape the decisions.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
+  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM, `19` Programmatic weak supervision (Snorkel).
   - Next: `17` SetFit few-shot classification, `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: A fixed encoder cannot learn distinctions it does not represent.
@@ -344,6 +350,8 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Few examples may not cover category diversity. Noisy examples harm adaptation. Bias: Small training sets can amplify analyst-selected examples.
   - Difficulty: `advanced`.
   - Teaches: `classification`, `vector_similarity`.
+  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM, `16` Frozen embeddings with a linear classifier.
+  - Next: `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Noisy or analyst-chosen few examples can amplify bias.
   - Limits: The tested categories and example set only; never a promised benchmark number.
@@ -389,7 +397,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Task and label sets must stay stable and annotators stay consistent. Uncertainty sampling can chase difficult or noisy cases, not representative ones. Bias: Selected annotation data need not match corpus prevalence.
   - Difficulty: `advanced`.
   - Teaches: `active_learning`, `classification`.
-  - Requires: `16` Frozen embeddings with a linear classifier.
+  - Requires: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification.
   - Routing axes: task `prediction`, comparison `none`, output `ranked_list`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Uncertainty sampling chases noisy cases, not representative ones.
   - Limits: Annotation ordering only; the strategy need not beat random sampling.
@@ -489,6 +497,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Correct sentiment requires the correct target and aspect link. Bias: Predefined aspects can exclude concerns outside the team's framework.
   - Difficulty: `intermediate`.
   - Teaches: `sentiment_analysis`, `classification`.
+  - Requires: `04` Dictionary or rule-based classification.
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Wrong target links flip sentiment; declared aspects exclude unlisted concerns.
   - Limits: Declared aspects only; uncovered aspects stay unmeasured.
@@ -506,6 +515,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Cautions: Different times or conditions can make apparent contradictions compatible. Bias: Candidate selection can favor disagreement and miss agreement or context.
   - Difficulty: `intermediate`.
   - Teaches: `contradiction_detection`, `vector_similarity`.
+  - Requires: `23` Hybrid retrieval with reranking.
   - Routing axes: task `measurement`, comparison `temporal`, output `ranked_list`, evidence `claims`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Different times or conditions make apparent contradictions compatible.
   - Limits: A candidate queue for humans; model decisions never prove a claim false.

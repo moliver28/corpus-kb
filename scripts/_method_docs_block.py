@@ -56,8 +56,6 @@ _ROUTING_PROSE_FIELDS = (
     ("Limits", "scope_limits"),
 )
 
-_PROGRESSION_FIELDS = ("difficulty", "concepts", "prerequisites", "next")
-
 # The wave-2 parity statement: which op families the DuckDB gate proves,
 # the graph reads, and the one declared numeric drift (the coding tables'
 # numeric -> DOUBLE mirror; values can differ in far decimals).
@@ -79,28 +77,31 @@ _BACKEND_PROOF = [
 ]
 
 
-def _progression_lines(method: dict[str, Any], names: dict[str, str]) -> list[str]:
+def _progression_lines(
+    method: dict[str, Any],
+    names: dict[str, str],
+    prereqs_by_id: dict[str, list[str]],
+    next_by_id: dict[str, list[str]],
+) -> list[str]:
     """The progression bullets for one method (novice-UX program, wave 1).
 
-    Renders nothing when the row carries no progression fields (all four
-    are optional), so old registers and test fixtures still generate
-    cleanly. Each present field renders one line; concepts and method-id
+    The rung and the taught concepts come from the row; the Requires and
+    Next lines come from the derived ladder views, keyed by method id.
+    Renders nothing when the row carries none of them, so old registers
+    and test fixtures still generate cleanly. Concepts and method-id
     links backtick their tokens (the code-token convention).
     """
-    present = [name for name in _PROGRESSION_FIELDS if method.get(name) not in (None, [])]
-    if not present:
-        return []
     lines: list[str] = []
     if method.get("difficulty"):
         lines.append(f"  - Difficulty: {_code(method['difficulty'])}.")
     concepts = method.get("concepts") or []
     if concepts:
         lines.append(f"  - Teaches: {', '.join(_code(concept) for concept in concepts)}.")
-    prereqs = method.get("prerequisites") or []
+    prereqs = prereqs_by_id.get(method["id"]) or []
     if prereqs:
         needs = ", ".join(_link_text(link, names) for link in prereqs)
         lines.append(f"  - Requires: {needs}.")
-    nxt = method.get("next") or []
+    nxt = next_by_id.get(method["id"]) or []
     if nxt:
         steps = ", ".join(_link_text(link, names) for link in nxt)
         lines.append(f"  - Next: {steps}.")
@@ -197,7 +198,11 @@ def _table_lines(method: dict[str, Any]) -> list[str]:
     return lines
 
 
-def build_block(register: dict[str, Any]) -> str:
+def build_block(
+    register: dict[str, Any],
+    prereqs_by_id: dict[str, list[str]],
+    next_by_id: dict[str, list[str]],
+) -> str:
     """The generated markdown: the register table plus guidance bullets."""
     methods: list[dict[str, Any]] = register["methods"]
     names = {method["id"]: method["name"] for method in methods}
@@ -237,7 +242,7 @@ def build_block(register: dict[str, Any]) -> str:
             f"  - Cautions: {_prose(method['robustness_caveat'])} "
             f"Bias: {_prose(method['bias_risk'])}"
         )
-        lines += _progression_lines(method, names)
+        lines += _progression_lines(method, names, prereqs_by_id, next_by_id)
         lines += _routing_lines(method)
         lines += _table_lines(method)
     lines += _BACKEND_PROOF
