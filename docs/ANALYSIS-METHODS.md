@@ -566,4 +566,15 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
 The analysis ops behind these methods run on Postgres and on DuckDB. The parity gate proves it on a migrated DuckDB file (`tests/test_backend_operation_parity.py`). The screens, classifiers, cluster report, keyphrase ranks, sentiment screen, active-learning rank, and NLI pair run on both engines. The deep surface gate pins the same envelope keys on every surface. The six graph reads run on Postgres (the AGE or PG store) and on DuckDB (the graph store).
 
 One caveat: DuckDB stores coding confidences as `DOUBLE`. The stored value can differ from Postgres in far decimals.
+
+## Difficulty seed
+
+Stored rungs win. The report is advisory.
+
+Method 03 computes intermediate; the register pins advanced.
+Method 06 computes novice; the register pins intermediate.
+Method 08 computes novice; the register pins intermediate.
+Method 09 computes advanced; the register pins intermediate.
+Method 12 computes advanced; the register pins intermediate.
+Method 18 computes novice; the register pins intermediate.
 <!-- amr-register:generated:end -->
