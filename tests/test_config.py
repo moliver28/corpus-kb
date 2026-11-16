@@ -275,3 +275,18 @@ def test_ui_open_env_var_reaches_its_reader(monkeypatch: pytest.MonkeyPatch) -> 
     assert browser_open_enabled() is True
     monkeypatch.delenv("CORPUS_KB_UI_OPEN")
     assert browser_open_enabled() is True
+
+
+def test_ollama_host_env_override_sets_base_url(
+    no_env_overrides: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CORPUS_KB_OLLAMA_HOST overrides embedding.base_url (compose ollama service)."""
+    monkeypatch.setenv("CORPUS_KB_OLLAMA_HOST", "http://ollama:11434")
+    cfg = load_config()
+    embedding = cast(dict[str, object], cfg["embedding"])
+    assert embedding["base_url"] == "http://ollama:11434"
+
+
+def test_ollama_host_var_is_registered(no_env_overrides: None) -> None:
+    """The variable sits in the doctor's known set, so it is never a dead-var warning."""
+    assert "CORPUS_KB_OLLAMA_HOST" in KNOWN_CORPUS_KB_ENV_VARS

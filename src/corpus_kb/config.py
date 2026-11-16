@@ -100,6 +100,7 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
     env_overrides: dict[tuple[str, str], str] = {
         ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
         ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
+        ("embedding", "base_url"): "CORPUS_KB_OLLAMA_HOST",
         ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
         ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
@@ -348,6 +349,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_DATABASE_BACKEND",
         "CORPUS_KB_EMBEDDING_MODEL",
         "CORPUS_KB_EMBEDDING_DIMENSIONS",
+        "CORPUS_KB_OLLAMA_HOST",
         "CORPUS_KB_GRAPH_BACKEND",
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",

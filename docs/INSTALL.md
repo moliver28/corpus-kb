@@ -315,6 +315,7 @@ You can also use environment variables. These override some values in `config.ya
 | `CORPUS_KB_DATABASE_URL` | `database.connection_string` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
+| `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |

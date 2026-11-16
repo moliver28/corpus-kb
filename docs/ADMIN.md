@@ -289,6 +289,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_DATABASE_BACKEND` | `database.backend` | `load_config` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` | `load_config` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` | `load_config` |
+| `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` (the Ollama endpoint, for example `http://ollama:11434` in a compose network) | `load_config` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` | `load_config` |
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
