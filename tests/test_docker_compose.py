@@ -92,8 +92,31 @@ def test_app_service_builds_behind_profile(compose_path: Path) -> None:
     assert app["build"]["context"] == "."
     assert app["build"]["dockerfile"] == "docker/app/Dockerfile"
     assert app["depends_on"]["postgres"]["condition"] == "service_healthy"
-    assert "8010:8010" in [str(p) for p in app["ports"]]
+    assert any(str(p).endswith(":8010") for p in app["ports"])
     assert app["restart"] == "unless-stopped"
+
+
+def test_app_publish_bind_defaults_to_loopback(compose_path: Path) -> None:
+    """The app port publishes on host loopback unless CORPUS_KB_PUBLISH_BIND says otherwise.
+
+    The HTTP API has no login, so the default publish must not listen on
+    all interfaces. LAN access (a NAS serving ``http://<nas-ip>:8010``)
+    is an explicit act: set ``CORPUS_KB_PUBLISH_BIND=0.0.0.0``.
+    """
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    app = data["services"]["app"]
+    assert "${CORPUS_KB_PUBLISH_BIND:-127.0.0.1}:8010:8010" in [str(p) for p in app["ports"]]
+
+
+def test_app_environment_wires_the_host_override(compose_path: Path) -> None:
+    """CORPUS_KB_HOST passes into the app container as a registered variable.
+
+    The entrypoint reads it for the ``--host`` bind. Without the
+    environment row a project-level variable never reaches the container.
+    """
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    env = data["services"]["app"]["environment"]
+    assert env["CORPUS_KB_HOST"] == "${CORPUS_KB_HOST:-0.0.0.0}"
 
 
 def test_ollama_service_profile_only_no_host_port(compose_path: Path) -> None:
@@ -131,13 +154,16 @@ def test_no_port_conflicts(compose_path: Path) -> None:
     """Host ports used by services are exactly the two declared ones.
 
     Postgres stays on loopback 5433 (the compose-contract port); the app
-    server serves 8010 on all interfaces for LAN access.
+    server serves 8010 on host loopback (see the publish-bind test).
     """
     data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     host_ports: set[int] = set()
     for svc in data["services"].values():
         for port in svc.get("ports", []):
-            parts = str(port).split(":")
+            # The app publish bind is templated; resolve its loopback
+            # default so the effective host-port set stays exact.
+            text = str(port).replace("${CORPUS_KB_PUBLISH_BIND:-127.0.0.1}", "127.0.0.1")
+            parts = text.split(":")
             # Accept 5433, 8010:8010, or 127.0.0.1:5433:5432
             host_port = parts[-2] if len(parts) > 1 else parts[0]
             if host_port.isdigit():

@@ -318,6 +318,7 @@ You can also use environment variables. These override some values in `config.ya
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
 | `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
+| `CORPUS_KB_HOST` | `server.host` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
@@ -398,14 +399,34 @@ docker compose --profile app up -d --build
 ```
 
 This builds the app image, starts Postgres, waits for the health checks,
-and starts the server. The first build takes several minutes. Then open:
+and starts the server. The first build takes several minutes. Then open
+this on the Docker host:
 
 ```
-http://<nas-ip>:8010/app/
+http://localhost:8010/app/
 ```
 
-The server binds `0.0.0.0:8010` inside the container. The UI and the API
-serve on your LAN. Keep the port off the public internet.
+The server binds `0.0.0.0:8010` inside the container. The API has no
+login. Anyone who can reach the port can read and delete data. Compose
+publishes port 8010 on the host loopback address only. Keep the port off
+the public internet.
+
+### Serve the app on your LAN (opt-in)
+
+Compose reads the publish bind from `CORPUS_KB_PUBLISH_BIND`. To serve
+the UI on your LAN, create a `.env` file next to `compose.yaml` with one
+line:
+
+```
+CORPUS_KB_PUBLISH_BIND=0.0.0.0
+```
+
+Run `docker compose --profile app up -d --build` again. Then open
+`http://<nas-ip>:8010/app/` from a LAN device. Never forward this port
+to the public internet. To go back to loopback-only, delete the line.
+
+On Synology, set `CORPUS_KB_PUBLISH_BIND=0.0.0.0` in the Container
+Manager project environment instead.
 
 ### Search without Ollama (degraded mode)
 

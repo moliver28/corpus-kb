@@ -3,8 +3,8 @@
 Split out of ``docker_smoke.py`` (size-ratchet F11): the compose env
 scrub, the deterministic project naming, and the failure forensics live
 here so the gate script stays under its recorded line ceiling. The gate
-invokes it through ``python -m scripts.docker_smoke`` — the ``-m`` form
-keeps the repo root on sys.path so this sibling import resolves.
+runs ``python scripts/docker_smoke.py`` — that form puts ``scripts/``
+first on sys.path, so this sibling import resolves.
 """
 
 from __future__ import annotations
