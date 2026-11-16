@@ -278,8 +278,7 @@ def _typed_gate_errors(config: dict[str, object]) -> str | None:
 
     Each gate module owns its rules and remediation text: config_gates
     (Matryoshka guard), contextual/topics/analysis/notebooks/telemetry
-    settings, and the ui.spa reader here. Imports stay lazy: config.py
-    loads before the package is fully importable in some tool paths.
+    settings, and the ui.spa reader here. Imports stay lazy (tool paths).
     """
     from corpus_kb.analysis.settings import analysis_settings_error
     from corpus_kb.config_gates import matryoshka_mrl_error
@@ -879,9 +878,7 @@ def get_default_config() -> dict[str, object]:
                 "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
             },
         },
-        # Opt-in local event log (issue #442): OFF by default; metadata
-        # only. A relative log_dir resolves under installer.data_dir at
-        # load time (F18), never against the working directory.
+        # Opt-in local event log (issue #442): OFF by default. See ADMIN.md.
         "telemetry": {
             "enabled": False,
             "log_dir": "telemetry_logs",
@@ -960,6 +957,10 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.analysis.settings import ANALYSIS_CONFIG_DEFAULTS
 
     config.setdefault("analysis", _detached_defaults(ANALYSIS_CONFIG_DEFAULTS))
+    # Opt-in telemetry (issue #442; telemetry/settings.py is the typed reader).
+    from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
+
+    config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:
