@@ -33,16 +33,18 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from corpus_kb.storage.duckdb_support import _BACKOFF_SECONDS, MAX_TRANSACTION_ATTEMPTS
 
+T = TypeVar("T")
+_RunT = TypeVar("_RunT")
+
 if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
     import duckdb
 
     from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 
-T = TypeVar("T")
-_RunT = TypeVar("_RunT")
-
-#: Attribute-contract type for the gateway's thread hand-off helper.
-RunSyncFn = Callable[[Callable[[duckdb.DuckDBPyConnection], _RunT]], Awaitable[_RunT]]
+    # Attribute-contract type for the gateway's thread hand-off helper.
+    # Defined under TYPE_CHECKING: duckdb is an optional extra, so this
+    # alias must never evaluate at runtime (annotations stay lazy).
+    RunSyncFn = Callable[[Callable[[duckdb.DuckDBPyConnection], _RunT]], Awaitable[_RunT]]
 
 
 class DuckDbTxMixin:
