@@ -7,16 +7,18 @@ Sub-commands:
 
 All mutating actions require explicit user confirmation via input().
 
-Zero-drift split (Wave 3): this module keeps the doctor, the setup/install
-orchestrators, the dry-run plan printer, and the argparse entry point. The
-moved pieces live in sibling modules and are RE-EXPORTED below so the
+Zero-drift split (Wave 3): this module keeps the doctor command, the
+setup/install orchestrators, and the argparse entry point. The moved
+pieces live in sibling modules and are RE-EXPORTED below so the
 historical ``install.<name>`` surface (CLI wiring, tests that patch
 ``install_module.<name>``) keeps working byte-for-byte:
 
-  install_state.py  checkpoint state (load/save/reset + constants)
-  profiles.py       hardware/GPU detection + installer profiles
-  setup_steps.py    confirm, service probes, deps/db/model steps, config write
-  setup_stack.py    docker stack, image verification, extension/model steps
+  install_state.py    checkpoint state (load/save/reset + constants)
+  profiles.py         hardware/GPU detection + installer profiles
+  setup_steps.py      confirm, service probes, deps/db/model steps, config write
+  setup_stack.py      docker stack, image verification, extension/model steps
+  doctor_report.py    doctor text report + doctor --json report
+  setup_pull_pair.py  stdout router + the concurrent pull pair stages
 """
 
 from __future__ import annotations
@@ -24,7 +26,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
-import io
 import json
 import logging
 import os
@@ -32,16 +33,14 @@ import platform
 import shutil
 import subprocess
 import sys
-import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from io import StringIO
-from typing import Any, TextIO
-from urllib.parse import unquote, urlsplit
+from typing import Any
 
 import psutil
 
 from corpus_kb._setup.doctor_engine import resolved_backend
+from corpus_kb._setup.doctor_report import doctor_json_report, print_doctor_report
 
 # NOTE: platform/shutil/subprocess/psutil are imported (not used directly) because the
 # installer tests patch them as attributes of THIS module
@@ -58,12 +57,12 @@ from corpus_kb._setup.install_state import (
     reset_install_state,
     save_install_state,
 )
-from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb._setup.profiles import (
     _detect_gpu_vram_gb,
     load_installer_profiles,
 )
 from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+from corpus_kb._setup.setup_pull_pair import _run_pull_pair, _verify_image_before_pulls
 from corpus_kb._setup.setup_pulls import (
     collect_model_consents,
     setup_compose_pull,
@@ -104,199 +103,6 @@ def detect_profile() -> dict[str, Any]:
     from corpus_kb._setup.profiles import detect_profile as _detect_profile
 
     return _detect_profile(_detect_gpu_vram_gb)
-
-
-def _print_doctor_system_lines(info: dict[str, Any]) -> str:
-    """The header through the Ollama line, backend-honest on DuckDB setups."""
-    backend = str(info.get("backend", "postgres"))
-    print("\n=== Corpus-KB Doctor ===")
-    print(f"OS:           {info['os']}")
-    print(f"Python:       {info['python']}")
-    print(f"CPU cores:    {info['cpu_cores']}")
-    print(f"RAM:          {info['ram_gb']} GB")
-    if info.get("vram_detected"):
-        print(f"GPU VRAM:     {info['vram_gb']} GB")
-    else:
-        print("GPU VRAM:     unknown (no NVIDIA VRAM detection available)")
-    print(f"Profile:      {info['profile']}")
-    if backend == "duckdb":
-        print("Postgres:     not used (database.backend: duckdb)")
-    else:
-        print(
-            f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'}"
-            f" ({info['postgres_msg']})"
-        )
-    print(f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})")
-    if backend != "duckdb":
-        print("Extensions:")
-        extensions = info.get("extensions")
-        for name, label in EXTENSIONS:
-            if extensions is None:
-                print(f"  {label} ({name}): UNKNOWN (Postgres unreachable; cannot verify)")
-            else:
-                installed, version = extensions[name]
-                if installed:
-                    print(f"  {label} ({name}): OK v{version}")
-                else:
-                    print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
-    return backend
-
-
-def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
-    """The configuration block: env check, config file, and overlay paths."""
-    if env_check is None:
-        return
-    print("\nConfiguration:")
-    print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
-    if env_check.fix:
-        print(f"    fix: {env_check.fix}")
-    if env_check.doc:
-        print(f"    docs: {env_check.doc}")
-    # Issue #348: report the config file and the overlay paths, so a
-    # client never has to parse config.yaml to know what is in force.
-    print(f"  Config file: {info.get('config_file', 'packaged default')}")
-    overlays = info.get("overlay_paths") or []
-    print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
-
-
-def print_doctor_report(
-    info: dict[str, Any],
-    research: list[Any] | None = None,
-    env_check: Any | None = None,
-    storage: list[Any] | None = None,
-    journey: list[Any] | None = None,
-) -> None:
-    """Print read-only diagnostic report."""
-    backend = _print_doctor_system_lines(info)
-    _print_doctor_config_block(env_check, info)
-    if research is None:
-        if backend == "duckdb":
-            print("\nResearch subsystem: SKIPPED (needs the Postgres backend)")
-        else:
-            print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
-    else:
-        from corpus_kb._setup.doctor_research import print_research_checks
-
-        print_research_checks(research)
-    if storage:
-        from corpus_kb._setup.doctor_storage import print_storage_checks
-
-        print_storage_checks(storage)
-    if journey:
-        from corpus_kb._setup.doctor_journey import print_journey_checks
-
-        print_journey_checks(journey)
-    print("\nRecommended commands (drop --dry-run to execute setup):")
-    print("  1. pip install -e .[dev]")
-    print("  2. corpus-kb setup")
-    print(f"  3. ollama pull {info['recommended_model']}")
-    print("========================\n")
-
-
-# ResearchCheck statuses (lowercase) to the doctor --json levels (issue #348).
-_LEVEL_BY_STATUS = {"ok": "OK", "warn": "WARN", "fail": "FAIL", "info": "INFO", "skipped": "INFO"}
-
-
-def _check_entry(check: Any) -> dict[str, str]:
-    """One JSON check entry: name, level, detail, plus fix and doc when set."""
-    status = str(getattr(check, "status", ""))
-    entry = {
-        "name": str(getattr(check, "name", "")),
-        "level": _LEVEL_BY_STATUS.get(status.lower(), status.upper()),
-        "detail": str(getattr(check, "detail", "")),
-    }
-    fix = getattr(check, "fix", "")
-    if fix:
-        entry["fix"] = str(fix)
-    doc = getattr(check, "doc", "")
-    if doc:
-        entry["doc"] = str(doc)
-    return entry
-
-
-def _database_display_name(backend: str, conn_str: str) -> str:
-    """The database name (Postgres) or file path (DuckDB) for the JSON report."""
-    if backend == "duckdb":
-        if conn_str.startswith(DUCKDB_DSN_PREFIX):
-            return conn_str[len(DUCKDB_DSN_PREFIX) :]
-        return conn_str
-    try:
-        path = urlsplit(conn_str).path
-    except ValueError:
-        return ""
-    return unquote(path.lstrip("/"))
-
-
-def _resolved_config_summary(config: dict[str, Any], conn_str: str) -> dict[str, Any]:
-    """The resolved config values a client needs (issue #348): backend,
-    database name, embedding model, chat model, overlay paths."""
-    from corpus_kb.config import config_overlay_paths
-
-    backend = resolved_backend(config)
-    emb_cfg = config.get("embedding") or {}
-    llm_cfg = config.get("llm") or {}
-    return {
-        "backend": backend,
-        "database": _database_display_name(backend, conn_str),
-        "embedding_model": str(emb_cfg.get("model", "")) if isinstance(emb_cfg, dict) else "",
-        "chat_model": str(llm_cfg.get("model", "")) if isinstance(llm_cfg, dict) else "",
-        "config_overlays": [str(overlay) for overlay in config_overlay_paths()],
-    }
-
-
-def doctor_json_report(
-    info: dict[str, Any],
-    env_check: Any | None,
-    research: list[Any] | None,
-    storage: list[Any] | None,
-    config: dict[str, Any],
-    conn_str: str,
-    journey: list[Any] | None = None,
-) -> dict[str, Any]:
-    """The machine-readable doctor report (issue #348).
-
-    Every check carries its name, level (OK, INFO, WARN, FAIL) and fix
-    text; the config block carries the resolved values a client needs, so
-    clients stop parsing config.yaml or the text output. On a DuckDB
-    backend the Postgres check is INFO ("not used"), never a FAIL.
-    """
-    backend = resolved_backend(config)
-    if backend == "duckdb":
-        checks: list[dict[str, str]] = [
-            {
-                "name": "Postgres",
-                "level": "INFO",
-                "detail": "not used: database.backend is duckdb",
-            }
-        ]
-    else:
-        checks = [
-            {
-                "name": "Postgres",
-                "level": "OK" if info["postgres_ok"] else "FAIL",
-                "detail": str(info["postgres_msg"]),
-            }
-        ]
-        if not info["postgres_ok"]:
-            checks[0]["fix"] = "run: corpus-kb setup"
-    checks.append(
-        {
-            "name": "Ollama",
-            "level": "OK" if info["ollama_ok"] else "WARN",
-            "detail": str(info["ollama_msg"]),
-        }
-    )
-    if not info["ollama_ok"]:
-        checks[-1]["fix"] = "install Ollama, then run: ollama serve"
-    if env_check is not None:
-        checks.append(_check_entry(env_check))
-    for group in (research, storage, journey):
-        for check in group or []:
-            checks.append(_check_entry(check))
-    return {
-        "checks": checks,
-        "config": _resolved_config_summary(config, conn_str),
-    }
 
 
 async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
@@ -587,167 +393,6 @@ def _setup_phase_steps(
             lambda: setup_update_config(config, profile, apply=True),
         ),
     ]
-
-
-class _StageRouter(io.TextIOBase):
-    """A sys.stdout shim: routes each pull-pair thread's prints to its buffer.
-
-    The two download stages share one process stdout. The router keeps
-    their printed lines apart so the joined report stays ordered.
-    """
-
-    def __init__(self, routes: dict[int, StringIO], passthrough: TextIO) -> None:
-        self._routes = routes
-        self._passthrough = passthrough
-
-    def write(self, text: str) -> int:
-        sink = self._routes.get(threading.get_ident())
-        if sink is None:
-            return self._passthrough.write(text)
-        return sink.write(text)
-
-    def flush(self) -> None:
-        sink = self._routes.get(threading.get_ident())
-        if sink is None:
-            self._passthrough.flush()
-        else:
-            sink.flush()
-
-
-def _verify_image_before_pulls(plan: _SetupPlan, build_local: bool) -> bool:
-    """Run the fatal signature check before any download starts.
-
-    Returns True when setup may continue (verified, skipped, or not
-    applicable) and False when verification failed and setup must stop.
-    The check keeps its historical ``[Step 1/6]`` error prefix.
-    """
-    compose_pending = "compose" not in plan.completed and bool(plan.compose_cmd) and not build_local
-    if not compose_pending:
-        return True
-    if plan.skip_image_verify:
-        print("  Skipping Postgres image signature verification.")
-        return True
-    try:
-        _verify_postgres_image(plan.postgres_image, False)
-    except RuntimeError as exc:
-        print(f"\n[Step 1/6] ERROR: {exc}")
-        return False
-    return True
-
-
-def _pull_pair_stages(
-    plan: _SetupPlan,
-    *,
-    build_local: bool,
-    pull_possible: bool,
-    pull_agreed: bool,
-    consents: list[tuple[str, bool]],
-    buffers: dict[str, StringIO],
-    routes: dict[int, StringIO],
-) -> tuple[Callable[[], int], Callable[[], int]]:
-    """The two download stages: (image pull, model pull).
-
-    Each stage registers its thread's stdout route first, so the
-    _StageRouter keeps its printed lines inside its own buffer.
-    """
-    pull_pending = "pull" not in plan.completed
-    models_pending = "models" not in plan.completed
-
-    def _pull_stage() -> int:
-        routes[threading.get_ident()] = buffers["pull"]
-        if not pull_pending:
-            print("\n[Step 1a/6] Docker images already pulled; skipping.")
-            return 0
-        print("\n[Step 1a/6] Pulling the Docker stack images...")
-        compose_cmd = plan.compose_cmd
-        if not pull_possible or compose_cmd is None:
-            if build_local:
-                print("  --build-local set: the image builds at compose up; pull skipped.")
-            else:
-                print("  Docker not found; skipping the image pull.")
-            return 0
-        return setup_compose_pull(compose_cmd, True, agreed=pull_agreed)
-
-    def _models_stage() -> int:
-        routes[threading.get_ident()] = buffers["models"]
-        if not models_pending:
-            print("\n[Step 5/6] Ollama models already pulled; skipping.")
-            return 0
-        print("\n[Step 5/6] Pulling the required Ollama models...")
-        return setup_pull_models(True, consents=consents)
-
-    return _pull_stage, _models_stage
-
-
-def _run_pull_pair(plan: _SetupPlan, config: dict[str, Any], *, build_local: bool) -> int:
-    """Pull Docker images and Ollama models concurrently, then report in order.
-
-    The compose ``pull`` and the model downloads are the two slow network
-    steps, so they run side by side in threads. Every confirmation is
-    asked here on the calling thread first, so the prompts never race the
-    downloads. Each stage's printed lines land in its own buffer, and the
-    joined report prints pull first, models second — the same order every
-    run. Each stage checkpoints on its own success, pull then models.
-    """
-    pull_pending = "pull" not in plan.completed
-    models_pending = "models" not in plan.completed
-    pull_possible = pull_pending and bool(plan.compose_cmd) and not build_local
-    pull_agreed = False
-    consents: list[tuple[str, bool]] = []
-    if pull_possible:
-        pull_agreed = confirm("Pull the Docker images for the compose stack.")
-    if models_pending:
-        consents = collect_model_consents()
-
-    buffers = {"pull": StringIO(), "models": StringIO()}
-    routes: dict[int, StringIO] = {}
-    results: dict[str, int] = {"pull": 0, "models": 0}
-    labels = {"pull": "image pull", "models": "model pull"}
-    pull_stage, models_stage = _pull_pair_stages(
-        plan,
-        build_local=build_local,
-        pull_possible=pull_possible,
-        pull_agreed=pull_agreed,
-        consents=consents,
-        buffers=buffers,
-        routes=routes,
-    )
-
-    def _run_stage(name: str, stage: Callable[[], int]) -> None:
-        try:
-            results[name] = stage()
-        except Exception as exc:
-            results[name] = 1
-            print(f"  ERROR: the {labels[name]} failed: {exc}")
-
-    threads = (
-        threading.Thread(target=_run_stage, args=("pull", pull_stage)),
-        threading.Thread(target=_run_stage, args=("models", models_stage)),
-    )
-    real_stdout = sys.stdout
-    sys.stdout = _StageRouter(routes, real_stdout)
-    try:
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-    finally:
-        sys.stdout = real_stdout
-
-    print(buffers["pull"].getvalue(), end="")
-    print(buffers["models"].getvalue(), end="")
-
-    exit_code = results["pull"] | results["models"]
-    progressed = False
-    if pull_pending and pull_possible and not results["pull"]:
-        plan.completed.append("pull")
-        progressed = True
-    if models_pending and not results["models"]:
-        plan.completed.append("models")
-        progressed = True
-    if progressed:
-        save_install_state(plan.state, config)
-    return exit_code
 
 
 async def _run_setup_phases(
