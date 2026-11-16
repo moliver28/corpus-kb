@@ -626,3 +626,8 @@ AUTO_APPROVE_WRITE_TOOLS
 # only DEMO_KEYS needs the bare reference. Vulture scans src only and
 # sees the tests' use as outside its reach.
 DEMO_KEYS
+
+# Difficulty seed (issue 440, analysis difficulty program): the mismatch
+# report feeds the generated docs block and the syrupy snapshot; vulture
+# scans src only and sees no caller in either.
+difficulty_mismatches
