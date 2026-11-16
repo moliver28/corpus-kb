@@ -185,7 +185,7 @@ class MethodRecord(BaseModel):
 
     @model_validator(mode="after")
     def _table_fields(self) -> Self:
-        """Table-contract checks; runs after the progression checks."""
+        """Table-contract checks; runs after the dataflow checks."""
         validate_table_fields(self)
         return self
 
