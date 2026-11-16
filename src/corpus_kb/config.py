@@ -37,29 +37,22 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
-# The verify badge's "verified" bar (UI SPA program Task 3): at or above
-# this groundedness the judge entailed every claim it checked; below it
-# the answer is "partial". Hoisted from ui/view_models.py BEFORE that
-# file's deletion so the policy keeps one source. Task 4's manifest
-# generator codegens the SPA's thresholds.generated.ts from this default
-# (compile-time types; the value never travels over the wire).
+# The verify badge's "verified" bar (UI SPA Task 3): at or above this
+# groundedness the judge entailed every claim; below it the answer is
+# "partial". Codegen source for the SPA's thresholds; never on the wire.
 VERIFY_FULL_GROUNDEDNESS = 0.99
 
-# ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount).
-# poll_ms: interval between status polls on the Ingest and Scale pages.
-SPA_POLL_MS_DEFAULT = 2000
-# request_timeout_s: how long one SPA API call waits before giving up.
-SPA_REQUEST_TIMEOUT_S_DEFAULT = 60
-# max_upload_mb: the per-file upload cap (taxonomy 413 above it).
-SPA_MAX_UPLOAD_MB_DEFAULT = 50
+# ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py mounts it).
+SPA_POLL_MS_DEFAULT = 2000  # status-poll interval on Ingest/Scale pages
+SPA_REQUEST_TIMEOUT_S_DEFAULT = 60  # one app API call's wait budget
+SPA_MAX_UPLOAD_MB_DEFAULT = 50  # per-file upload cap
 
 
 def ui_spa_settings_error(config: dict[str, object]) -> str | None:
     """Remediation text for invalid ``ui.spa`` values, or None when valid.
 
     Only VALUES are rejected — a partial block fills from the defaults.
-    Called from ``load_config`` so a bad value fails AT LOAD, never
-    mid-startup. Messages are plain English (STE).
+    Called from ``load_config`` so a bad value fails AT LOAD. STE text.
     """
     ui = _section_dict(config, "ui")
     spa = ui.get("spa")
@@ -92,10 +85,9 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
 def apply_env_overrides(config: dict[str, Any]) -> None:
     """Apply CORPUS_KB_* environment variable overrides to ``config``.
 
-    Every mapped variable is live: the config key it writes has a real
-    consumer (install.py, install_state.py, server_wiring.py). Doctor reports
-    any set-but-unmapped CORPUS_KB_* variable (see KNOWN_CORPUS_KB_ENV_VARS
-    and _setup/doctor_env.py).
+    Every mapped variable is live: its config key has a real consumer.
+    Doctor reports any set-but-unmapped CORPUS_KB_* variable
+    (KNOWN_CORPUS_KB_ENV_VARS; _setup/doctor_env.py).
     """
     env_overrides: dict[tuple[str, str], str] = {
         ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
@@ -140,11 +132,9 @@ def config_file_path() -> Path | None:
     """The user's config.yaml file, or None when only the packaged default applies.
 
     Discovery mirrors ``load_config``: ``CORPUS_KB_CONFIG`` first, then
-    ``./config.yaml`` in the current working directory. The packaged
-    default shipped inside the package is NOT a user file, so it is never
-    returned: callers that WRITE config must treat None as a refusal.
-    Overlay paths (``CORPUS_KB_CONFIG_OVERLAY``) are reported separately
-    by :func:`config_overlay_paths`.
+    ``./config.yaml`` in the working directory. The packaged default is
+    NOT a user file: callers that WRITE config must treat None as a
+    refusal. Overlays are reported by :func:`config_overlay_paths`.
     """
     env_path = os.environ.get("CORPUS_KB_CONFIG")
     if env_path:
@@ -160,11 +150,9 @@ def config_file_path() -> Path | None:
 def config_overlay_paths(environ: dict[str, str] | None = None) -> list[Path]:
     """The overlay YAML paths from ``CORPUS_KB_CONFIG_OVERLAY``, in order.
 
-    The variable holds one or more paths split on ``os.pathsep`` (on
-    Windows ``;``, elsewhere ``:``), so one variable can name several
-    study overlays. Empty entries are dropped. The paths are returned as
-    configured — existence is checked at load time, where a missing file
-    is an error (never a silent skip). Pure: no IO.
+    The variable holds ``os.pathsep``-split paths (``;`` on Windows), so
+    one variable names several study overlays. Empty entries are dropped;
+    a missing file errors at load time, never a silent skip. Pure: no IO.
     """
     env = os.environ if environ is None else environ
     raw = env.get("CORPUS_KB_CONFIG_OVERLAY", "")
@@ -180,17 +168,11 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     Returns:
         Configuration dictionary with defaults and env var overrides applied
 
-    Config discovery order:
-        1. Explicit path argument
-        2. CORPUS_KB_CONFIG environment variable
-        3. ./config.yaml in the current working directory
-        4. Packaged default config.yaml shipped with corpus_kb
-
-    Overlays (issue #348): every path in ``CORPUS_KB_CONFIG_OVERLAY``
-    (``os.pathsep``-split, merged in order) deep-merges AFTER the main
-    file and BEFORE the env overrides, so one study overlay can change a
-    few keys without a full config copy. A missing overlay file is an
-    error, never a silent skip.
+    Discovery order: explicit path, then CORPUS_KB_CONFIG, then
+    ./config.yaml, then the packaged default. Overlays (issue #348):
+    every ``CORPUS_KB_CONFIG_OVERLAY`` path deep-merges in order AFTER
+    the main file and BEFORE the env overrides. A missing overlay file
+    is an error, never a silent skip.
     """
     config = get_default_config()
 
@@ -321,16 +303,11 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 def apply_extraction_backend_alias(config: dict[str, object]) -> None:
     """Sync ``graph.extractor`` with the preferred ``extraction.backend`` key.
 
-    The extraction backend used to live at ``graph.extractor`` — the wrong
-    section (embedding uses ``embedding.provider``, the graph store uses
-    ``graph.backend``). ``extraction.backend`` is the preferred key now;
-    ``graph.extractor`` keeps working forever as the accepted alias.
-
-    Precedence: a non-empty ``extraction.backend`` string WINS and is
-    mirrored into ``graph.extractor``, so every consumer that still reads
-    the alias (ingest_extract's fallback chain) sees the effective value.
-    When only ``graph.extractor`` is set, it stays authoritative — old
-    configs and hand-built dicts never silently lose their backend.
+    The backend used to live at ``graph.extractor``; the preferred key is
+    ``extraction.backend`` now and the alias keeps working forever.
+    Precedence: a non-empty ``extraction.backend`` WINS and is mirrored
+    into ``graph.extractor``; when only the alias is set, it stays
+    authoritative — old configs never silently lose their backend.
     Mutates ``config`` in place; safe on any dict shape.
     """
     extraction = config.get("extraction")
@@ -349,11 +326,9 @@ def apply_extraction_backend_alias(config: dict[str, object]) -> None:
 
 
 # Every CORPUS_KB_* variable the code reads: the load_config override map
-# above plus the direct readers (config discovery in this module, snapshot
-# interval in domain/application.py, the golden-bench dir override read by
-# eval/golden_fetch.py, and the browser auto-open guard read by
-# server_wiring.browser_open_enabled). doctor reports any set variable
-# outside this set as a warning (see _setup/doctor_env.py).
+# above plus the direct readers (config discovery here, the snapshot
+# interval, the golden-bench dir, and the browser auto-open guard).
+# doctor warns on any set variable outside this set (doctor_env.py).
 KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
     {
         "CORPUS_KB_CONFIG",
@@ -447,14 +422,13 @@ def _follow_graph_backend(config: dict[str, object], file_config: dict[str, obje
 def backend_mix_errors(config: dict[str, object]) -> list[str]:
     """Refuse Postgres-only engine selections while ``database.backend`` is duckdb.
 
-    One operation, one truth: AGE and PostgresML (embedder, legacy
-    ``search.reranker``, extraction) physically cannot run on DuckDB, so a
-    duckdb selection that still names one is refused AT LOAD with a
-    plain-English remediation — never a silent downgrade. Returns every
-    violation in a fixed order (age, embedder, reranker, extraction);
-    empty when the backend is not ``duckdb`` (Postgres accepts all of
-    these) — an unknown ``database.backend`` value is NOT a mix and is
-    left to ``validate_configs``' enum rule. Pure: no IO, no globals.
+    AGE and PostgresML (embedder, legacy ``search.reranker``, extraction)
+    physically cannot run on DuckDB, so a duckdb selection that names one
+    is refused AT LOAD with a plain-English remediation — never a silent
+    downgrade. Returns every violation in a fixed order (age, embedder,
+    reranker, extraction); empty when the backend is not ``duckdb``. An
+    unknown ``database.backend`` value is left to validate_configs.
+    Pure: no IO, no globals.
     """
     database = _section_dict(config, "database")
     if database.get("backend") != "duckdb":

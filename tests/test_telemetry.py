@@ -157,7 +157,7 @@ def test_sink_never_raises_and_flags_suppression(
     )
     for _ in range(100):
         write_event(log, event)  # must never raise (F5)
-    assert sink._suppressed is True
+    assert sink.suppression_flag() is True
     assert not log.exists()
 
 

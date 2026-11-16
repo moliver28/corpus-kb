@@ -85,44 +85,32 @@ _SPECS: dict[str, _Spec] = {
         "keyphrases_extract",
         opts=(_Opt("variant", "sdef", "tfidf"), _Opt("limit", "int", 20), _Opt("chunk_ids", "raw")),
     ),
-    "lexical_classify": _Spec(
-        _LEX, "lexical_classify", opts=(_Opt("chunk_ids", "raw"),), method_id="15"
-    ),
+    "lexical_classify": _Spec(_LEX, "lexical_classify", opts=(_Opt("chunk_ids", "raw"),)),
     "neighbors_classify": _Spec(
-        _NEIGH,
-        "neighbors_classify",
-        opts=(_Opt("k", "int", 5), _Opt("chunk_ids", "raw")),
-        method_id="14",
+        _NEIGH, "neighbors_classify", opts=(_Opt("k", "int", 5), _Opt("chunk_ids", "raw"))
     ),
     "centroids_classify": _Spec(
         _CENT,
         "centroids_classify",
         opts=(_Opt("abstain_margin", "float", 0.05), _Opt("chunk_ids", "raw")),
-        method_id="13",
     ),
     "clusters_inspect": _Spec(
         _CLUST,
         "clusters_inspect",
         opts=(_Opt("min_cluster_size", "int"), _Opt("sample_cap", "int")),
-        method_id="12",
     ),
     "duplicates_screen": _Spec(
         _VSCREEN,
         "duplicates_screen",
         opts=(_Opt("threshold", "float", 0.98), _Opt("limit", "int", 100)),
-        method_id="29",
     ),
     "outliers_rank": _Spec(
-        _VSCREEN,
-        "outliers_rank",
-        opts=(_Opt("k", "int", 10), _Opt("limit", "int", 20)),
-        method_id="30",
+        _VSCREEN, "outliers_rank", opts=(_Opt("k", "int", 10), _Opt("limit", "int", 20))
     ),
     "contradictions_screen": _Spec(
         _NLI,
         "contradictions_screen",
         opts=(_Opt("candidate_k", "int", 5), _Opt("limit", "int", 50), _Opt("model", "str")),
-        method_id="28",
     ),
     "sentiment_screen": _Spec(
         _SENT, "sentiment_screen", opts=(_Opt("chunk_ids", "raw"), _Opt("limit", "int"))
@@ -131,7 +119,6 @@ _SPECS: dict[str, _Spec] = {
         _ACTIVE,
         "active_learn_next",
         opts=(_Opt("strategy", "sdef", "margin"), _Opt("batch", "int", 10)),
-        method_id="20",
     ),
     "analysis_embed_meta": _Spec(_MEMBED, "analysis_embed_meta", opts=(_Opt("kinds", "str"),)),
     "statements_list": _Spec(
@@ -200,7 +187,6 @@ _SPECS: dict[str, _Spec] = {
         pool_kw="pg_pool",
         positional=(_Opt("query", "sdef", ""),),
         opts=(_Opt("k", "int"),),
-        method_id="24",
     ),
     "search_graph": _Spec(
         _GRAPH,
