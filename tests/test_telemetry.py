@@ -445,3 +445,31 @@ def _register_for_tests() -> object:
 
     return load_method_register()
 
+
+# ---------------------------------------------------------------------------
+# Task 6: the zero-write proof and the off-by-default CI proof
+# ---------------------------------------------------------------------------
+
+
+async def test_no_writes_when_disabled(tmp_path: Path) -> None:
+    from corpus_kb.telemetry import emit
+
+    async def handler(**_kwargs: object) -> dict[str, object]:
+        return {"status": "success"}
+
+    config = {"telemetry": {"enabled": False, "log_dir": str(tmp_path)}}
+    for _ in range(5):
+        result = await emit(handler, method_id="12", config=config)
+        assert result["status"] == "success"
+    assert not (tmp_path / "events.jsonl").exists()
+
+
+def test_off_by_default_ci_proof() -> None:
+    """The shipped shape must never enable telemetry (Review Focus 2)."""
+    from corpus_kb.telemetry.sink import EVENT_SCHEMA_VERSION
+
+    assert get_default_config()["telemetry"]["enabled"] is False
+    assert load_telemetry_settings({}).enabled is False
+    assert load_telemetry_settings({}).log_dir.name == "telemetry_logs"
+    assert EVENT_SCHEMA_VERSION == "1"
+
