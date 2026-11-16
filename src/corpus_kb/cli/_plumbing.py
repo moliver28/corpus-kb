@@ -113,9 +113,7 @@ async def flow(
         return await handler(pool, cfg, **kwargs)
 
     try:
-        result = await emit_event(
-            call, method_id=method_id_for_op(op_name, kwargs), config=cfg
-        )
+        result = await emit_event(call, method_id=method_id_for_op(op_name, kwargs), config=cfg)
     except CorpusError as exc:
         print(f"ERROR: {exc}")
         remediation = getattr(exc, "remediation", None)

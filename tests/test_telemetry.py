@@ -176,10 +176,10 @@ def test_emit_skips_none_method_id(tmp_path: Path) -> None:
 def test_emit_records_success_and_keeps_envelope(tmp_path: Path) -> None:
     from corpus_kb.telemetry import emit
 
-    MARKER = "LEAK-MARKER-0123456789abcdef0123456789abcdef01"
+    marker = "LEAK-MARKER-0123456789abcdef0123456789abcdef01"
 
     async def handler(**_kwargs: object) -> dict[str, object]:
-        return {"status": "success", "chunks": [MARKER]}
+        return {"status": "success", "chunks": [marker]}
 
     config = {"telemetry": {"enabled": True, "log_dir": str(tmp_path)}}
     result = _run(emit(handler, method_id="12", config=config))
@@ -194,7 +194,7 @@ def test_emit_records_success_and_keeps_envelope(tmp_path: Path) -> None:
     assert isinstance(row["first_attempt"], bool)
     assert row["session_ordinal"] >= 1
     # Review Focus 3: no content ever reaches the log.
-    assert MARKER not in lines[0]
+    assert marker not in lines[0]
 
 
 def test_emit_records_typed_error_and_reraises(tmp_path: Path) -> None:
@@ -248,10 +248,23 @@ def test_attribution_map_names_all_18_ops() -> None:
     from corpus_kb.telemetry.attribution import METHOD_FOR_OP
 
     assert set(METHOD_FOR_OP) == {
-        "analyze_run", "labeling_build", "topics_build", "keyphrases_extract",
-        "clusters_inspect", "centroids_classify", "neighbors_classify", "lexical_classify",
-        "classification_build", "nli_classify", "active_learn_next", "search", "ask",
-        "ingest_text", "sentiment_screen", "contradictions_screen", "duplicates_screen",
+        "analyze_run",
+        "labeling_build",
+        "topics_build",
+        "keyphrases_extract",
+        "clusters_inspect",
+        "centroids_classify",
+        "neighbors_classify",
+        "lexical_classify",
+        "classification_build",
+        "nli_classify",
+        "active_learn_next",
+        "search",
+        "ask",
+        "ingest_text",
+        "sentiment_screen",
+        "contradictions_screen",
+        "duplicates_screen",
         "outliers_rank",
     }
     assert METHOD_FOR_OP["clusters_inspect"] == "12"
@@ -365,9 +378,7 @@ def test_flow_keyphrases_discriminates_variant(
     from corpus_kb.cli._plumbing import flow
     from corpus_kb.tools import keyphrase_tools
 
-    async def fake_keyphrases(
-        _pool: object, _cfg: object, **_kwargs: object
-    ) -> dict[str, object]:
+    async def fake_keyphrases(_pool: object, _cfg: object, **_kwargs: object) -> dict[str, object]:
         return {"status": "success"}
 
     monkeypatch.setattr(keyphrase_tools, "keyphrases_extract", fake_keyphrases)
@@ -472,4 +483,3 @@ def test_off_by_default_ci_proof() -> None:
     assert load_telemetry_settings({}).enabled is False
     assert load_telemetry_settings({}).log_dir.name == "telemetry_logs"
     assert EVENT_SCHEMA_VERSION == "1"
-

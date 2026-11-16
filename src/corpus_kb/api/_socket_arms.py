@@ -79,8 +79,8 @@ async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, 
 
 async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
-    from corpus_kb.tools.nli_tools import nli_classify
     from corpus_kb.telemetry import emit as _emit_event
+    from corpus_kb.tools.nli_tools import nli_classify
 
     labels = params.get("labels")
 
