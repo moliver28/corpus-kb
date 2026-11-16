@@ -326,6 +326,11 @@ def doctor(
 def start(
     transport: str = typer.Option("http", "--transport", help="Server transport"),
     port: int = typer.Option(8010, "--port", help="HTTP server port"),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        help="HTTP bind host (default: server.host config, then localhost)",
+    ),
     ui: bool | None = typer.Option(
         None,
         "--ui/--no-ui",
@@ -336,6 +341,8 @@ def start(
     from corpus_kb.server_wiring import main as server_main
 
     argv = ["--transport", transport, "--port", str(port)]
+    if host is not None:
+        argv.extend(["--host", host])
     if ui is True:
         argv.append("--ui")
     elif ui is False:
@@ -369,45 +376,13 @@ from corpus_kb.cli.cli_calibrate import calibrate_app  # noqa: E402
 
 app.add_typer(calibrate_app, name="calibrate")
 
+# Review accept/override commands (size-ratchet F11): one operation
+# family over the one shared review_surface handler; cli_review_ops is
+# the thin adapter and imports corpus_kb.cli nowhere, so this import
+# stays acyclic.
+from corpus_kb.cli.cli_review_ops import attach_review_commands  # noqa: E402
 
-def _review_command(decision: str):
-    def _cmd(
-        assignment_id: str = typer.Argument(
-            ..., help="Coding assignment UUID. corpus-kb coding assignments prints the list."
-        ),
-        reviewer: str = typer.Option(..., "--reviewer", help="Reviewer identity"),
-        note: str = typer.Option(
-            "", "--note", help="Decision note (link fixes describe the change)"
-        ),
-    ) -> int:
-        """Record one reviewer decision and advance the projections."""
-        import json
-
-        async def _run() -> int:
-            from uuid import UUID
-
-            from corpus_kb.research.review_surface import execute_review
-
-            async with wired_store() as wired:
-                result = await execute_review(
-                    wired.store,
-                    _tenant(),
-                    wired.conn_str,
-                    UUID(assignment_id),
-                    reviewer,
-                    decision,
-                    note,
-                )
-                print(json.dumps(result, indent=2, default=str))
-                return 0
-
-        return _run_async(_run())
-
-    return _cmd
-
-
-review_app.command("accept", help="Confirm the model's assignment")(_review_command("accept"))
-review_app.command("override", help="Overrule the model's assignment")(_review_command("override"))
+attach_review_commands(review_app)
 
 # Moved-name re-exports (zero-drift Wave 3B): the cli_support helpers, the
 # detection/override printers (cli_support) and _print_report

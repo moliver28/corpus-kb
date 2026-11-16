@@ -1,0 +1,9 @@
+# Per-Dockerfile ignore (BuildKit frontend >= 1.1, pulled by the `# syntax=`
+# line): context = repo root, so exclude everything and re-include only the
+# packaging minimum the Dockerfile copies.
+**
+!pyproject.toml
+!README.md
+!LICENSE
+!src/**
+!docker/app/entrypoint.sh

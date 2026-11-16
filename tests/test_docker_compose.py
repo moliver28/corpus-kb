@@ -1,8 +1,10 @@
 """Validate the repo-root compose files.
 
 Docker is not required to run these tests. We use PyYAML to verify that the
-compose files are well-formed and contain the expected services/volumes. Live
-``docker compose up`` verification is deferred to the manual QA phase (F3).
+compose files are well-formed and contain the expected services/volumes.
+Live ``docker compose up`` verification runs in CI through the
+``docker-smoke`` gate (poe target, ci.yml / docker): it builds the app
+image, boots the ``app`` profile stack, and exercises the server.
 """
 
 from __future__ import annotations
@@ -67,11 +69,40 @@ def test_postgres_service_uses_prebuilt_image(compose_path: Path) -> None:
     assert "healthcheck" in pg
 
 
-def test_ollama_service_not_in_default_compose(compose_path: Path) -> None:
-    """Ollama must not be part of the default compose stack."""
+def test_default_stack_is_postgres_only(compose_path: Path) -> None:
+    """Only Postgres runs without a profile.
+
+    Ollama and the app server are opt-in services (``ollama`` / ``app``
+    profiles), so a bare ``docker compose up`` keeps the historical
+    Postgres-only behavior byte-for-byte.
+    """
     data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = data["services"]
-    assert "ollama" not in services
+    assert "postgres" in services
+    assert "postgres" not in (services["postgres"].get("profiles") or [])
+    default_active = {name for name, svc in services.items() if not svc.get("profiles")}
+    assert default_active == {"postgres"}
+
+
+def test_app_service_builds_behind_profile(compose_path: Path) -> None:
+    """The app service builds the repo image behind the ``app`` profile."""
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    app = data["services"]["app"]
+    assert app["profiles"] == ["app"]
+    assert app["build"]["context"] == "."
+    assert app["build"]["dockerfile"] == "docker/app/Dockerfile"
+    assert app["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert "8010:8010" in [str(p) for p in app["ports"]]
+    assert app["restart"] == "unless-stopped"
+
+
+def test_ollama_service_profile_only_no_host_port(compose_path: Path) -> None:
+    """The ollama service is opt-in and stays inside the compose network."""
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    ollama = data["services"]["ollama"]
+    assert ollama["profiles"] == ["ollama"]
+    assert "ports" not in ollama
+    assert ollama["image"].startswith("ollama/ollama:")
 
 
 def test_build_local_override_exists(build_local_path: Path) -> None:
@@ -97,15 +128,18 @@ def test_build_local_override_uses_local_dockerfile(build_local_path: Path) -> N
 
 
 def test_no_port_conflicts(compose_path: Path) -> None:
-    """Host ports used by services do not overlap."""
+    """Host ports used by services are exactly the two declared ones.
+
+    Postgres stays on loopback 5433 (the compose-contract port); the app
+    server serves 8010 on all interfaces for LAN access.
+    """
     data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     host_ports: set[int] = set()
     for svc in data["services"].values():
         for port in svc.get("ports", []):
             parts = str(port).split(":")
-            # Accept 5433 or 127.0.0.1:5433:5432
+            # Accept 5433, 8010:8010, or 127.0.0.1:5433:5432
             host_port = parts[-2] if len(parts) > 1 else parts[0]
             if host_port.isdigit():
                 host_ports.add(int(host_port))
-    assert len(host_ports) == 1, f"unexpected host ports: {host_ports}"
-    assert 5433 in host_ports
+    assert host_ports == {5433, 8010}, f"unexpected host ports: {host_ports}"

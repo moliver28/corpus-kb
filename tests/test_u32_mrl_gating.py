@@ -18,7 +18,8 @@ import pytest
 import yaml
 
 from corpus_kb._setup import validate_configs
-from corpus_kb.config import get_default_config, load_config, matryoshka_mrl_error
+from corpus_kb.config import get_default_config, load_config
+from corpus_kb.config_gates import matryoshka_mrl_error
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -147,3 +148,10 @@ class TestValidateConfigs:
         embedding["mrl_trained"] = True
         retrieval["matryoshka_enabled"] = True
         assert validate_configs.validate_runtime_config(config) == []
+
+
+def test_mrl_gate_is_silent_without_both_sections() -> None:
+    """Missing retrieval/embedding sections: the gate never trips."""
+    assert matryoshka_mrl_error({}) is None
+    assert matryoshka_mrl_error({"retrieval": {"matryoshka_enabled": True}}) is None
+    assert matryoshka_mrl_error({"embedding": {"mrl_trained": False}}) is None

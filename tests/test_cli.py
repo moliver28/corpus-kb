@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from typer.testing import CliRunner
 
@@ -95,3 +96,28 @@ def test_version_flag_works_without_subcommand() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert "Usage" not in result.output
+
+
+def test_start_help_includes_host() -> None:
+    """The start command exposes a --host flag for LAN binds (NAS compose)."""
+    result = runner.invoke(app, ["start", "--help"])
+    assert result.exit_code == 0
+    assert "--host" in _strip_ansi(result.output)
+
+
+def test_start_passes_host_to_server_main(monkeypatch: Any) -> None:
+    """--host travels into the server argv unchanged."""
+    import corpus_kb.server_wiring as wiring
+
+    seen: dict[str, list[str]] = {}
+
+    def fake_main(argv: list[str] | None = None) -> None:
+        seen["argv"] = list(argv or [])
+
+    monkeypatch.setattr(wiring, "main", fake_main)
+    result = runner.invoke(
+        app,
+        ["start", "--transport", "http", "--port", "8010", "--host", "0.0.0.0"],
+    )
+    assert result.exit_code == 0
+    assert seen["argv"] == ["--transport", "http", "--port", "8010", "--host", "0.0.0.0"]
