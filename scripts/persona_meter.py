@@ -29,7 +29,7 @@ from corpus_kb._setup.doctor_journey_maps import BUILD_PRODUCTS
 from corpus_kb._setup.doctor_journey_state import JourneyState
 from corpus_kb.analysis.method_register import MethodRecord, MethodRegister
 
-__all__ = ["HEALTHY_STATE", "WalkPhase", "walk_phases"]
+__all__ = ["HEALTHY_STATE", "WalkPhase", "visit_order", "walk_phases"]
 
 # The measured healthy snapshot from tests/test_doctor_journey.py. A
 # built product sits at 120 in this convention.
@@ -93,3 +93,23 @@ def walk_phases(register: MethodRegister, ollama_ok: bool = False) -> list[WalkP
             return phases
         state = replace(state, **{builds[0][1]: 120})
         phase += 1
+
+
+def visit_order(register: MethodRegister, phases: list[WalkPhase]) -> list[str]:
+    """Every register method id exactly once, in derived walk order.
+
+    Visit each phase's runnable rows in ``_runnable_sorted`` order and
+    keep only the first occurrence of a row across phases. Then visit
+    every remaining method id in id order. That tail is the rows that
+    never became runnable in any phase.
+    """
+    order: list[str] = []
+    seen: set[str] = set()
+    known = {row.id for row in register.methods}
+    for phase in phases:
+        for row in phase.runnable:
+            if row.id not in seen:
+                seen.add(row.id)
+                order.append(row.id)
+    order.extend(rid for rid in sorted(known - seen))
+    return order

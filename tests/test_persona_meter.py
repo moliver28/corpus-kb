@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from corpus_kb.analysis.method_register_loader import load_method_register
-from scripts.persona_meter import HEALTHY_STATE, walk_phases
+from scripts.persona_meter import HEALTHY_STATE, visit_order, walk_phases
 
 
 def _register():
@@ -45,3 +45,33 @@ def test_llm_gated_methods_never_reach_runnable_offline():
     phases = walk_phases(_register(), ollama_ok=False)
     ids = {r.id for p in phases for r in p.runnable}
     assert "23" not in ids and "24" not in ids  # search/ask need llm
+
+
+def test_visit_order_covers_every_method_once():
+    register = _register()
+    order = visit_order(register, walk_phases(register, ollama_ok=False))
+    assert sorted(order) == [f"{i:02d}" for i in range(1, 31)]
+    assert len(set(order)) == 30
+
+
+def test_visit_order_matches_the_phase_derivation():
+    register = _register()
+    phases = walk_phases(register, ollama_ok=False)
+    order = visit_order(register, phases)
+    seen: set[str] = set()
+    runnable_once: list[str] = []
+    for phase in phases:
+        for row in phase.runnable:
+            if row.id not in seen:
+                seen.add(row.id)
+                runnable_once.append(row.id)
+    tail = [rid for rid in order if rid not in seen]
+    assert tail == sorted(tail)
+    assert order == runnable_once + tail
+
+
+def test_visit_order_is_deterministic():
+    register = _register()
+    assert visit_order(register, walk_phases(register, ollama_ok=False)) == visit_order(
+        register, walk_phases(register, ollama_ok=False)
+    )
