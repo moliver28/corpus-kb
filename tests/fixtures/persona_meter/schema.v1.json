@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "meter": "persona-meter",
+  "recipe": "novice_default",
+  "fields": {
+    "phrase_resolution_steps": {
+      "gated": true,
+      "direction": "ceiling"
+    },
+    "wall_ms": {
+      "gated": false
+    },
+    "failed_attempts": {
+      "gated": false
+    },
+    "override_needed": {
+      "gated": false
+    },
+    "success": {
+      "gated": false
+    },
+    "doctor_next_step": {
+      "gated": false
+    }
+  },
+  "walk_gated": [
+    "novice_walk_order"
+  ]
+}

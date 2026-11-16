@@ -82,5 +82,9 @@
     "src/corpus_kb/topics/engine.py": 553,
     "src/corpus_kb/topics/reduction.py": 258,
     "src/corpus_kb/web/fetch.py": 396
+  },
+  "persona_meter": {
+    "report_path": "tests/fixtures/persona_meter/report.v1.json",
+    "schema_path": "tests/fixtures/persona_meter/schema.v1.json"
   }
 }

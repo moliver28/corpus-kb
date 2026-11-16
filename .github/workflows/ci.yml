@@ -273,6 +273,34 @@ jobs:
         run: poe validation-gate
 
   # ─────────────────────────────────────────────────────────────────────
+  # Persona meter (issue #441, zero-drift rule 10): deterministic offline
+  # novice walk over every register method, ratcheted against the
+  # committed fixture. No database, no Ollama, no network — the walk pins
+  # phrase mode through embedding.provider, so this job never degrades.
+  # ─────────────────────────────────────────────────────────────────────
+  persona-meter:
+    name: "persona-meter (novice walk ratchet)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project deps
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev]"
+
+      - name: Persona meter gate
+        run: poe persona-meter
+
+  # ─────────────────────────────────────────────────────────────────────
   # Validate-configs: checks MCP config JSON files for format correctness
   # and cross-config consistency. Fast, no deps needed beyond stdlib.
   # ─────────────────────────────────────────────────────────────────────

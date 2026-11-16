@@ -725,6 +725,19 @@ help = "sqlglot schema parity across both migration sets (issue #127, rule 10)"
 cmd = "python -m pytest tests/pipeline/ tests/ingestion/ -q --tb=short"
 help = "Wave 4 ingest validator gate: validators, modes, semchunk, dedup"
 
+[tool.poe.tasks.persona-meter]
+# Persona meter gate (issue #441, zero-drift rule 10): the deterministic
+# offline novice walk (scripts/persona_meter.py) runs over every register
+# method at the novice-default recipe; scripts/persona_ratchet.py compares
+# the gated metrics with the committed baseline. No Ollama, no database,
+# no network. Phrase-resolution ceilings only move down (owner-confirm F7:
+# the gated metric "phrase_resolution_steps" was renamed from
+# "steps_to_success" pre-merge).
+# -m keeps the repo root on sys.path, so the script can import its
+# sibling modules (scripts/ is a namespace package under `python -m`).
+cmd = "python -m scripts.persona_ratchet"
+help = "Persona meter gate: offline novice walk vs the committed baseline (issue #441)"
+
 [tool.poe.tasks.validate-profiles]
 cmd = "python src/corpus_kb/_setup/validate_profiles.py"
 help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
