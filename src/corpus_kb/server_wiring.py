@@ -541,11 +541,7 @@ def main(argv: list[str] | None = None) -> None:
 
         async def _run() -> None:
             cfg: dict[str, Any] | None = None
-            if (
-                args.ui is not None
-                or args.host is not None
-                or "CORPUS_KB_PORT" not in os.environ
-            ):
+            if args.ui is not None or args.host is not None or "CORPUS_KB_PORT" not in os.environ:
                 # The --ui/--no-ui flag overrides the ui.enabled config key;
                 # the --port flag fills in for an unset CORPUS_KB_PORT (the
                 # documented priority is env var, then CLI flag, then YAML).
