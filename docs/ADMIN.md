@@ -446,6 +446,15 @@ the full swap guide live in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
   changed date on a re-ingest updates Postgres; DuckDB keeps the first.
 - `documents.chunk_count` stays 0 in the DuckDB table (one insert, no
   later update). Document reads compute the real count from `chunks`.
+- Knowledge-graph ids have two spaces: the event store logs each domain
+  event under its own per-event originator AS WELL AS the aggregate's, so
+  the id `add-entity` returns is keyed on whichever row won the
+  (tenant, name, type) conflict. Use exactly what the `add-entity`
+  envelope printed for later `add-relation` calls; `add-relation` validates
+  against the projected `entities` table and refuses ids from the other
+  space. Hop queries (`graph-neighbors`, `graph-traverse`) read the
+  `nodes`/`edges` model, which fills only from document-anchored entity
+  ingestion; `search-graph` queries the projection view of every entity.
 
 ## DuckDB backend: setup and doctor
 

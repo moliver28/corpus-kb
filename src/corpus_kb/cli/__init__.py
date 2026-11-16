@@ -162,6 +162,7 @@ register_ask_command(app)
 # raw-text ingest command. Each module reuses the cli_ingest plumbing
 # and imports corpus_kb.cli nowhere, so these imports stay acyclic.
 from corpus_kb.cli.cli_events import register as register_events_command  # noqa: E402
+from corpus_kb.cli.cli_dlq import register as register_dlq_commands  # noqa: E402
 from corpus_kb.cli.cli_graph import register as register_graph_commands  # noqa: E402
 from corpus_kb.cli.cli_graph_hops import register as register_graph_hops_commands  # noqa: E402
 from corpus_kb.cli.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
@@ -170,6 +171,7 @@ from corpus_kb.cli.cli_quickstart import register as register_quickstart  # noqa
 from corpus_kb.cli.cli_tags import register as register_tag_commands  # noqa: E402
 
 register_events_command(app)
+register_dlq_commands(app)
 register_graph_commands(app)
 register_graph_hops_commands(app)
 register_ingest_text_command(app)

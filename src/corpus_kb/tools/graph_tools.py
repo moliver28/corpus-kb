@@ -14,12 +14,58 @@ tools are handed a pool explicitly). The envelope is exactly what POST
 
 from __future__ import annotations
 
+import logging
+
 import asyncpg
 
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 __all__ = ["add_entity", "add_relation"]
+
+_log = logging.getLogger(__name__)
+
+
+async def _projected_entity_id(
+    pg_pool: asyncpg.Pool, tenant_id: str, name: str, entity_type: str
+) -> str | None:
+    """The row id the projection materialized for (tenant, name, type).
+
+    The eventsourcing recorder logs each domain event under its own
+    (per-event) originator in addition to the aggregate's row, so the
+    aggregate ids a handler returns are NOT always the ids the read model
+    carries. The projected id is the one every other surface (search,
+    hops, relations FK) is keyed on, so callers get it. Read strictly
+    through the CALLER'S pool: an empty result keeps the envelope exactly
+    what the handler produced (test stubs yield empty and see no change).
+    """
+    try:
+        rows = await pg_pool.fetch(
+            """
+            SELECT entity_id::text AS entity_id
+            FROM entities
+            WHERE tenant_id = $1 AND name = $2 AND entity_type = $3
+            """,
+            uuid_arg(tenant_id, "tenant_id"),
+            name,
+            entity_type,
+        )
+        if not rows:
+            return None
+        return str(rows[0]["entity_id"])
+    except Exception as exc:
+        _log.warning("projected entity lookup unavailable: %s", exc)
+        return None
+
+
+async def _entity_exists(pg_pool: asyncpg.Pool, tenant_id: str, entity_id: str) -> bool:
+    """Existence check in the PROJECTED entities table (pool fetch only)."""
+    rows = await pg_pool.fetch(
+        "SELECT 1 FROM entities WHERE tenant_id = $1 AND entity_id = $2::uuid",
+        uuid_arg(tenant_id, "tenant_id"),
+        entity_id,
+    )
+    return bool(rows)
 
 
 async def add_entity(
@@ -47,7 +93,20 @@ async def add_entity(
         metadata=metadata or {},
     )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_entity(cmd)
+    result = handler.handle_add_entity(cmd)
+    # Advance ALL read models, then return the PROJECTED id (search/hops/
+    # relations key on it), keeping the aggregate id under agggregate_id
+    # for callers that audit the event flow.
+    from corpus_kb.projections.catchup import advance_all_projections
+
+    try:
+        await advance_all_projections(pg_pool, cmd.tenant_id)
+    except Exception as exc:  # fails open: infra-unavailable keeps the envelope
+        _log.warning("add_entity projection catchup skipped: %s", exc)
+    projected = await _projected_entity_id(pg_pool, tenant_id, name, entity_type)
+    if projected is not None and projected != result["entity_id"]:
+        result["entity_id"] = projected
+    return result
 
 
 async def add_relation(
@@ -78,5 +137,44 @@ async def add_relation(
         weight=weight,
         metadata=metadata or {},
     )
+    # Read models must be current BEFORE validation: add_entity just ahead
+    # of this call projected its row, and the relations FK targets that
+    # projected id space.
+    from corpus_kb.projections.catchup import advance_all_projections
+
+    try:
+        await advance_all_projections(pg_pool, cmd.tenant_id)
+    except Exception as exc:  # fails open: infra-unavailable keeps the model
+        _log.warning("add_relation projection catchup skipped: %s", exc)
+    try:
+        view_rows = await pg_pool.fetch(
+            "SELECT count(*)::int AS n FROM entities WHERE tenant_id = $1",
+            uuid_arg(tenant_id, "tenant_id"),
+        )
+        view = bool(view_rows) and int(view_rows[0]["n"]) > 0
+    except Exception as exc:
+        _log.warning("entity projection view unavailable: %s", exc)
+        view = False  # no view: validation degrades to the legacy contract
+    missing = [
+        label
+        for label, entity_id in (
+            ("source_entity_id", source_entity_id),
+            ("target_entity_id", target_entity_id),
+        )
+        if view and not await _entity_exists(pg_pool, tenant_id, entity_id)
+    ]
+    if missing:
+        from corpus_kb.config import ConfigError
+
+        raise ConfigError(
+            f"{', '.join(missing)} not in the projected entities table. "
+            "add_entity now returns the PROJECTED id; re-create the relation "
+            "with ids from its envelope."
+        )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_relation(cmd)
+    result = handler.handle_add_relation(cmd)
+    try:
+        await advance_all_projections(pg_pool, cmd.tenant_id)
+    except Exception as exc:
+        _log.warning("add_relation post-write catchup skipped: %s", exc)
+    return result
