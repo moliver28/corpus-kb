@@ -258,6 +258,8 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if mix_errors:
         raise ValueError(mix_errors[0])
 
+    from corpus_kb.config_gates import matryoshka_mrl_error
+
     mrl_error = matryoshka_mrl_error(config)
     if mrl_error is not None:
         raise ValueError(mrl_error)
@@ -368,41 +370,6 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_UI_OPEN",
     }
 )
-
-
-def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
-    """U32 cross-field gate on the two-stage matryoshka search arm.
-
-    ``retrieval.matryoshka_enabled: true`` front-slices stored embeddings to
-    ``matryoshka_dim`` and re-ranks at full dimension. That is only sound
-    when the embedder is Matryoshka-trained (``embedding.mrl_trained:
-    true``); truncating a non-MRL model (nomic-embed-text) silently
-    degrades retrieval. Returns the refusal message for the invalid
-    combination, or None when the arm is off or the model declared
-    MRL-trained. ``load_config`` raises the message as a config error, so
-    the arm cannot activate silently; type checking of the two keys is
-    owned by ``validate_configs.validate_runtime_config``. The legacy
-    ``search.matryoshka_enabled`` spelling is normalized by the alias
-    layer before this gate runs.
-    """
-    retrieval = config.get("retrieval")
-    embedding = config.get("embedding")
-    if not isinstance(retrieval, dict) or not isinstance(embedding, dict):
-        return None
-    # Truthiness, matching the runtime consumers (QueryHandler /
-    # ingest_common read the key through bool()): a quoted "true" or 1 in a
-    # hand-edited YAML must trip the gate, not slip past `is not True`.
-    if not retrieval.get("matryoshka_enabled"):
-        return None
-    if embedding.get("mrl_trained") is True:
-        return None
-    return (
-        "retrieval.matryoshka_enabled: true requires embedding.mrl_trained: true — "
-        "two-stage matryoshka retrieval front-slices embeddings, which is only "
-        "sound for Matryoshka-trained models (qwen3-embedding is MRL-trained; "
-        "nomic-embed-text is NOT). Switch the embedding model first, or set "
-        "retrieval.matryoshka_enabled: false."
-    )
 
 
 # Backend-mix refusals (storage-portability program §11 rule 15 string
