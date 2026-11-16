@@ -486,7 +486,11 @@ _sources_floor
 _vocabularies_and_op
 _routing_axes
 _progression_fields
-_progression_graph
+_dataflow_fields
+_dataflow_graph
+# derive_edges is the cross-plan contract surface for issue 440 (graph
+# depth); tests/test_method_register_dataflow.py exercises it.
+derive_edges
 _table_fields
 _semver
 _rules_present

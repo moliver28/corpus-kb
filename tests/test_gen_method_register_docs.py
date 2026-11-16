@@ -100,24 +100,26 @@ def test_routing_lines_evidence_uses_annotated_primary_source() -> None:
 
 
 def test_progression_lines_skip_rows_without_fields() -> None:
-    assert block._progression_lines(_full_method(), {"05": "TF-IDF keyphrase scan"}) == []
+    assert block._progression_lines(_full_method(), {"05": "TF-IDF keyphrase scan"}, {}, {}) == []
 
 
 def test_progression_lines_render_rung_and_concepts() -> None:
     method = _full_method()
     method["difficulty"] = "novice"
     method["concepts"] = ["term_weighting", "classification"]
-    lines = block._progression_lines(method, {})
+    lines = block._progression_lines(method, {}, {}, {})
     assert lines[0] == "  - Difficulty: `novice`."
     assert lines[1] == "  - Teaches: `term_weighting`, `classification`."
     assert len(lines) == 2
 
 
 def test_progression_lines_name_linked_methods() -> None:
-    method = _full_method()
-    method["prerequisites"] = ["04"]
-    method["next"] = ["16", "17"]
-    lines = block._progression_lines(method, {"04": "Dictionary rules", "16": "Frozen head"})
+    lines = block._progression_lines(
+        _full_method(),
+        {"04": "Dictionary rules", "16": "Frozen head"},
+        {"05": ["04"]},
+        {"05": ["16", "17"]},
+    )
     assert lines[0] == "  - Requires: `04` Dictionary rules."
     assert lines[1] == "  - Next: `16` Frozen head, `17`."
 
@@ -127,10 +129,38 @@ def test_progression_lines_ignore_empty_link_lists() -> None:
     method = _full_method()
     method["difficulty"] = "novice"
     method["concepts"] = ["term_weighting"]
-    method["prerequisites"] = []
-    method["next"] = []
-    lines = block._progression_lines(method, {})
+    lines = block._progression_lines(method, {}, {"05": []}, {"05": []})
     assert len(lines) == 2
+
+
+def test_progression_lines_render_derived_links() -> None:
+    """The derived ladder views ride in; the row carries no links itself."""
+    method = _full_method()
+    lines = block._progression_lines(method, {}, {"05": ["04"]}, {"05": ["16", "17"]})
+    assert any(line.startswith("  - Requires: `04`.") for line in lines)
+    assert any(line.startswith("  - Next: `16`, `17`.") for line in lines)
+
+
+def test_progression_lines_chunk_long_next_lists() -> None:
+    """A long derived list renders as several bullets within the 20-word cap."""
+    names = {
+        "01": "Alpha method with a very long registered name here",
+        "02": "Beta method with a very long registered name here",
+        "03": "Gamma method with a very long registered name here",
+    }
+    lines = block._progression_lines(
+        _full_method(),
+        names,
+        {},
+        {"05": ["01", "02", "03", "04", "05", "06"]},
+    )
+    next_lines = [line for line in lines if line.startswith("  - Next:")]
+    assert len(next_lines) > 1, next_lines
+    for line in next_lines:
+        assert len(line.split()) <= 20, line
+    joined = " ".join(next_lines)
+    for mid in ("01", "02", "03", "04", "05", "06"):
+        assert f"`{mid}`" in joined, mid
 
 
 # ---------------------------------------------------------------------------
@@ -205,13 +235,13 @@ def _register_payload() -> dict[str, Any]:
     method["implementation_status"] = "implemented_new"
     method["op"] = "keyphrases_extract"
     return {
-        "register_version": "3.2.0",
+        "register_version": "3.3.0",
         "methods": [method],
     }
 
 
 def test_build_block_ends_with_the_backend_proof() -> None:
-    generated = block.build_block(_register_payload())
+    generated = block.build_block(_register_payload(), {}, {})
     proof_at = generated.index("## Backend proof")
     end_at = generated.index(block.END_MARKER)
     assert proof_at < end_at

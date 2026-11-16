@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from corpus_kb.analysis.method_register import MethodRegister
+from corpus_kb.analysis.method_register_dataflow import ARTIFACT_TYPES
 from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.analysis.method_register_progression import (
     DIFFICULTY_LEVELS,
@@ -146,7 +147,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "3.2.0"
+    assert register.register_version == "3.3.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -189,7 +190,7 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "3.2.0"
+    assert register.register_version == "3.3.0"
     assert len(register.methods) == 30
 
 
@@ -759,15 +760,15 @@ def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
 
 def test_register_version_bumped_for_progression_schema(register: MethodRegister) -> None:
     """The routing fields bumped the register to 3.0.0, W1 progression to 3.1.0,
-    and the W2 table contracts to 3.2.0 (surfaces cache per version)."""
-    assert register.register_version == "3.2.0"
+    the W2 table contracts to 3.2.0, and the dataflow fields to 3.3.0."""
+    assert register.register_version == "3.3.0"
 
 
 # ---------------------------------------------------------------------------
 # Progression axes (novice-UX program, wave 1)
 # ---------------------------------------------------------------------------
 
-PROGRESSION_FIELD_NAMES = ("difficulty", "concepts", "prerequisites", "next")
+PROGRESSION_FIELD_NAMES = ("difficulty", "concepts")
 
 
 def test_progression_vocab_tuples_are_pinned() -> None:
@@ -832,81 +833,6 @@ def test_concept_count_cap() -> None:
         MethodRegister.model_validate(_single_register(record))
 
 
-def test_link_id_shape_rejected() -> None:
-    record = _mutate(_valid_record(), prerequisites=["4"])
-    with pytest.raises(ValueError, match="zero-padded"):
-        MethodRegister.model_validate(_single_register(record))
-    record = _mutate(_valid_record(), next=["31"])
-    with pytest.raises(ValueError, match="31"):
-        MethodRegister.model_validate(_single_register(record))
-
-
-def test_self_prerequisite_rejected() -> None:
-    record = _mutate(_valid_record(), id="15", prerequisites=["15"])
-    with pytest.raises(ValueError, match="its own"):
-        MethodRegister.model_validate(_single_register(record))
-
-
-def test_self_next_rejected() -> None:
-    record = _mutate(_valid_record(), id="15", next=["15"])
-    with pytest.raises(ValueError, match="its own"):
-        MethodRegister.model_validate(_single_register(record))
-
-
-def test_dangling_prerequisite_rejected() -> None:
-    """A prerequisite must name a registered method id."""
-    record = _mutate(_valid_record(), id="15", prerequisites=["99"])
-    with pytest.raises(ValueError, match="99"):
-        MethodRegister.model_validate(_single_register(record))
-
-
-def test_dangling_next_rejected() -> None:
-    record = _mutate(_valid_record(), id="04", next=["99"])
-    with pytest.raises(ValueError, match="99"):
-        MethodRegister.model_validate(_single_register(record))
-
-
-def test_prerequisite_cycle_rejected() -> None:
-    """Two methods cannot each require the other."""
-    first = _mutate(_valid_record(), id="04", name="A", prerequisites=["15"])
-    second = _mutate(_valid_record(), id="15", name="B", prerequisites=["04"])
-    with pytest.raises(ValueError, match="cycle"):
-        MethodRegister.model_validate(_mini_register(first, second))
-
-
-def test_next_cycle_rejected() -> None:
-    first = _mutate(_valid_record(), id="15", name="A", next=["16"])
-    second = _mutate(_valid_record(), id="16", name="B", next=["15"])
-    with pytest.raises(ValueError, match="cycle"):
-        MethodRegister.model_validate(_mini_register(first, second))
-
-
-def test_known_progression_pair_round_trips() -> None:
-    """A prerequisite edge and its inverse next edge validate and dump cleanly."""
-    first = _mutate(
-        _valid_record(),
-        id="04",
-        name="A",
-        difficulty="novice",
-        concepts=["keyword_rules"],
-        next=["15"],
-    )
-    second = _mutate(
-        _valid_record(),
-        id="15",
-        name="B",
-        difficulty="intermediate",
-        concepts=["classification", "term_weighting"],
-        prerequisites=["04"],
-    )
-    register = MethodRegister.model_validate(_mini_register(first, second))
-    dump = register.model_dump(mode="json")
-    again = MethodRegister.model_validate(dump)
-    assert again == register
-    assert register.methods[1].prerequisites == ["04"]
-    assert register.methods[0].next == ["15"]
-
-
 def test_progression_populated_on_every_row(register: MethodRegister) -> None:
     """Every real row carries a rung and taught concepts within the bounds."""
     for record in register.methods:
@@ -914,10 +840,6 @@ def test_progression_populated_on_every_row(register: MethodRegister) -> None:
         assert record.concepts, f"{record.id} concepts"
         assert all(concept in TEACHING_CONCEPTS for concept in record.concepts)
         assert len(record.concepts) <= 5, f"{record.id} concept count"
-        for link in (record.prerequisites or []) + (record.next or []):
-            assert link in EXPECTED_EXISTING_OPS or link in EXPECTED_NEW_OPS, (
-                f"{record.id} names unplanned method {link}"
-            )
 
 
 def test_difficulty_ladder_uses_all_three_rungs(register: MethodRegister) -> None:
@@ -925,25 +847,65 @@ def test_difficulty_ladder_uses_all_three_rungs(register: MethodRegister) -> Non
     assert seen == set(DIFFICULTY_LEVELS)
 
 
-def test_prerequisite_targets_exist_and_are_first_builds(register: MethodRegister) -> None:
-    """Prerequisites point at labeling or classification builds (the data producers)."""
-    for record in register.methods:
-        for target in record.prerequisites or []:
-            target_row = next(row for row in register.methods if row.id == target)
-            assert target_row.op in ("labeling_build", "classification_build"), (
-                f"{record.id} requires {target} ({target_row.op}); prerequisites must "
-                "produce stored data."
-            )
+# ---------------------------------------------------------------------------
+# Dataflow axes (derived ladder, issue 439)
+# ---------------------------------------------------------------------------
 
 
-def test_next_edges_stay_groundable(register: MethodRegister) -> None:
-    """Every next target is an implemented method; none is not_planned."""
+def test_unknown_produced_artifact_rejected() -> None:
+    record = _mutate(_valid_record(), produces=["vibes"])
+    with pytest.raises(ValueError, match="produces"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_duplicate_produces_rejected() -> None:
+    record = _mutate(_valid_record(), produces=["labels", "labels"])
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_produces_cap_is_five() -> None:
+    record = _mutate(
+        _valid_record(),
+        produces=["labels", "topics", "scores", "codes", "flags", "keyphrases"],
+    )
+    with pytest.raises(ValueError, match="1 to 5"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_empty_consumes_is_valid() -> None:
+    record = _mutate(_valid_record(), consumes=[])
+    register = MethodRegister.model_validate(_single_register(record))
+    assert register.methods[0].consumes == []
+
+
+def test_after_id_shape_and_self_rejected() -> None:
+    for bad in (["4"], ["31"], ["15"]):
+        record = _mutate(_valid_record(), id="15", after=bad)
+        with pytest.raises(ValueError):
+            MethodRegister.model_validate(_single_register(record))
+
+
+def test_after_cap_is_five() -> None:
+    record = _mutate(_valid_record(), after=[f"{i:02d}" for i in range(1, 7)])
+    with pytest.raises(ValueError, match="up to 5"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_hand_link_fields_are_gone() -> None:
+    record = MethodRegister.model_validate(_single_register(_valid_record())).methods[0]
+    assert "prerequisites" not in record.model_dump()
+    assert "next" not in record.model_dump()
+
+
+def test_dataflow_fields_populated_on_every_row(register: MethodRegister) -> None:
+    """Every real row declares its artifacts within the authoring bounds."""
     for record in register.methods:
-        for target in record.next or []:
-            target_row = next(row for row in register.methods if row.id == target)
-            assert target_row.implementation_status != "not_planned", (
-                f"{record.id} suggests {target}, which is not planned."
-            )
+        assert record.produces, f"{record.id} produces"
+        assert all(artifact in ARTIFACT_TYPES for artifact in record.produces)
+        assert len(record.produces) <= 5
+        assert all(artifact in ARTIFACT_TYPES for artifact in (record.consumes or []))
+        assert len(record.after or []) <= 5
 
 
 # ---------------------------------------------------------------------------

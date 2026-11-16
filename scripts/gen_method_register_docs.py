@@ -31,6 +31,9 @@ from typing import Any
 
 import yaml
 
+from corpus_kb.analysis.method_register_dataflow import ladder_next, ladder_prerequisites
+from corpus_kb.analysis.method_register_loader import load_method_register
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _method_docs_block import END_MARKER, START_MARKER, build_block
@@ -47,13 +50,26 @@ def load_register(project_root: Path) -> dict[str, Any]:
     return raw
 
 
+def ladder_views(project_root: Path) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """The derived ladder maps, keyed by method id (one validated load)."""
+    register = load_method_register(
+        {"analysis": {"method_register_path": str(project_root / REGISTER_REL)}}
+    )
+    methods = register.methods
+    return (
+        {row.id: ladder_prerequisites(methods, row.id) for row in methods},
+        {row.id: ladder_next(methods, row.id) for row in methods},
+    )
+
+
 def regenerate(project_root: Path, check: bool) -> int:
     """Rewrite the generated block, or report drift under --check."""
     docs_path = project_root / DOCS_REL
     text = docs_path.read_text(encoding="utf-8")
     start = text.index(START_MARKER)
     end = text.index(END_MARKER) + len(END_MARKER)
-    generated = build_block(load_register(project_root))
+    prereqs_by_id, next_by_id = ladder_views(project_root)
+    generated = build_block(load_register(project_root), prereqs_by_id, next_by_id)
     updated = text[:start] + generated + text[end:]
     if check:
         if text == updated:

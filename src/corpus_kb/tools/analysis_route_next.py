@@ -1,11 +1,11 @@
 """The ``next_methods`` envelope key for the question router (novice-UX W3c).
 
 A resolved answer hands the novice their next run: up to three register
-rows the chosen method's ``next:`` chain points at, easiest first. The
+rows the chosen method's derived ladder points at, easiest first. The
 order is ascending difficulty (novice, intermediate, advanced), ties
 break by method id; the cap matches the suggestions chips. Each item is
 ``{method_id, title, why, run}``: the register id, the register name
-verbatim, one plain sentence over the chain edge and the target's
+verbatim, one plain sentence over the ladder edge and the target's
 difficulty, and the ``corpus-kb`` command.
 
 The command derives from ``surface_registry``'s ``cli_path`` — the one
@@ -14,7 +14,7 @@ no row for ``ingest_text``, so one fallback entry bridges that gap
 (mirroring the doctor branch's ``OP_CLI``; reconcile on merge). A
 target with no command at all is skipped, never guessed.
 
-Presence follows the run, not the chain: a degraded or ambiguous answer
+Presence follows the run, not the ladder: a degraded or ambiguous answer
 carries ``[]`` — the router did not decide, so it does not hand-hold.
 The key is always present, so ``[]`` is an honest shape, never a
 silently dropped key.
@@ -23,6 +23,7 @@ silently dropped key.
 from __future__ import annotations
 
 from ..analysis.method_register import MethodRecord, MethodRegister
+from ..analysis.method_register_dataflow import ladder_next
 from ..analysis.method_register_progression import DIFFICULTY_LEVELS
 from ..surface_registry import SURFACES
 
@@ -74,15 +75,15 @@ def _why(target: MethodRecord) -> str:
 
 
 def next_methods_for(register: MethodRegister, record: MethodRecord | None) -> list[dict[str, str]]:
-    """The chosen row's chain as envelope items, easiest first, capped.
+    """The chosen row's ladder view as envelope items, easiest first, capped.
 
     Targets the register cannot resolve or cannot turn into a command
     are skipped; the rest sort by ascending difficulty then id.
     """
-    if record is None or not record.next:
+    if record is None:
         return []
     items: list[tuple[int, str, dict[str, str]]] = []
-    for method_id in record.next:
+    for method_id in ladder_next(register.methods, record.id):
         target = _row_for(register, method_id)
         if target is None:
             continue

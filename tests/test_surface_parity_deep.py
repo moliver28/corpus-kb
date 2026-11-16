@@ -115,6 +115,7 @@ import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
+from corpus_kb.analysis.method_register_dataflow import ladder_next
 from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
@@ -3012,8 +3013,7 @@ async def test_analysis_route_next_methods_parity(parity_env: dict[str, Any]) ->
     )
 
     register = load_method_register({})
-    chosen = next(row for row in register.methods if row.id == "29")
-    expected = list(chosen.next or [])[:3]
+    expected = ladder_next(register.methods, "29")[:3]
     assert expected == [], "the leg method must author no chain (honest empty list)"
 
     for name, envelope in (

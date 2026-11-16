@@ -1,12 +1,9 @@
 """The analysis method register: 30 NLP methods as validated data.
 
 The register YAML (``analysis.method_register_path``, default
-``config/analysis_methods.yaml``) is the single source of truth. It
-carries the owner's research document as data. Descriptive axes are
-surfaced verbatim; they are never scored (the document forbids
-invented ratings). Import ``rank_methods`` from
-``method_register_rubric``; the routing, progression, and table
-checks live in their own modules.
+``config/analysis_methods.yaml``) is the single source of truth.
+Import ``rank_methods`` from ``method_register_rubric``; routing,
+progression, dataflow, and table checks live in their own modules.
 """
 
 from __future__ import annotations
@@ -16,10 +13,11 @@ from typing import Self
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from corpus_kb.analysis.method_register_progression import (
-    validate_progression_fields,
-    validate_progression_graph,
+from corpus_kb.analysis.method_register_dataflow import (
+    validate_dataflow_fields,
+    validate_dataflow_graph,
 )
+from corpus_kb.analysis.method_register_progression import validate_progression_fields
 from corpus_kb.analysis.method_register_routing import validate_routing_axes
 from corpus_kb.analysis.method_register_tables import OutputTable, validate_table_fields
 
@@ -83,8 +81,8 @@ class MethodRecord(BaseModel):
     op: str | None = None
     sources: list[str]
 
-    # Routing axes (analysis-routing program, wave 1). All optional; the
-    # vocabularies and the checks live in ``method_register_routing``.
+    # Routing axes (analysis-routing program, wave 1). All optional;
+    # vocabularies and checks live in ``method_register_routing``.
     task_type: str | None = None
     comparison_structure: str | None = None
     output_form: str | None = None
@@ -97,16 +95,17 @@ class MethodRecord(BaseModel):
     suggests: list[str] | None = None
 
     # Progression axes (novice-UX program, wave 1). All optional; the
-    # difficulty rungs, the teaching concepts, and the graph checks live
-    # in ``method_register_progression``.
+    # rungs and the concept checks live in ``method_register_progression``.
     difficulty: str | None = None
     concepts: list[str] | None = None
-    prerequisites: list[str] | None = None
-    next: list[str] | None = None
+
+    # Dataflow axes (issue 439); checks live in ``method_register_dataflow``.
+    produces: list[str] | None = None
+    consumes: list[str] | None = None
+    after: list[str] | None = None
 
     # Table contract (novice-UX program, wave 2). Optional; the column
-    # types, the order keys, and the content checks live in
-    # ``method_register_tables``.
+    # types, order keys, and checks live in ``method_register_tables``.
     output_table: OutputTable | None = None
 
     @field_validator("id")
@@ -179,8 +178,14 @@ class MethodRecord(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _dataflow_fields(self) -> Self:
+        """Dataflow-field checks; runs after the progression checks."""
+        validate_dataflow_fields(self)
+        return self
+
+    @model_validator(mode="after")
     def _table_fields(self) -> Self:
-        """Table-contract checks; runs after the progression checks."""
+        """Table-contract checks; runs after the dataflow checks."""
         validate_table_fields(self)
         return self
 
@@ -195,12 +200,7 @@ class SourceDocument(BaseModel):
 
 
 class MethodRegister(BaseModel):
-    """The register header plus the method rows.
-
-    The model enforces unique ids only; ``load_method_register`` enforces
-    the complete 01-30 ledger on a loaded file. Subsets stay valid so the
-    rubric is testable on small synthetic registers.
-    """
+    """The register header plus the method rows (unique ids enforced here)."""
 
     model_config = {"extra": "forbid"}
 
@@ -234,9 +234,9 @@ class MethodRegister(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _progression_graph(self) -> Self:
-        """Register-level progression checks: known link ids, no cycles."""
-        validate_progression_graph(self.methods)
+    def _dataflow_graph(self) -> Self:
+        """Register-level dataflow checks: after targets exist, no cycles."""
+        validate_dataflow_graph(self.methods)
         return self
 
 

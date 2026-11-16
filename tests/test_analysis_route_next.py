@@ -1,11 +1,11 @@
 """The ``next_methods`` envelope key: derivation, order, caps, honesty.
 
-The register's ``next:`` chain is the only source: the envelope copies
-register names verbatim, orders targets by ascending difficulty then id,
-caps at three, and hands the novice a ``corpus-kb`` command per target.
-The CLI hints derive from ``surface_registry`` (the same source the
-doctor journey pins), so the guard test fails when a register op gains
-no hint. Degraded and ambiguous answers carry ``[]`` — the key is always
+The derived ladder is the only source: the envelope copies register
+names verbatim, orders targets by ascending difficulty then id, caps at
+three, and hands the novice a ``corpus-kb`` command per target. The CLI
+hints derive from ``surface_registry`` (the same source the doctor
+journey pins), so the guard test fails when a register op gains no
+hint. Degraded and ambiguous answers carry ``[]`` — the key is always
 present, and an empty list never pretends a next step exists.
 """
 
@@ -41,16 +41,10 @@ from tests.test_analysis_route_tools import (
 def test_orders_by_difficulty_then_id() -> None:
     """Authored order never wins: easiest first, ties break by id."""
     register = _register(
-        _record("01", "C method", op="duplicates_screen", difficulty="advanced"),
-        _record("02", "A method", op="duplicates_screen", difficulty="novice"),
-        _record("03", "B method", op="duplicates_screen", difficulty="intermediate"),
-        _record(
-            "05",
-            "Cluster method",
-            op="clusters_inspect",
-            difficulty="intermediate",
-            next_=["03", "02", "01"],
-        ),
+        _record("01", "C method", op="duplicates_screen", difficulty="advanced", after=["05"]),
+        _record("02", "A method", op="duplicates_screen", difficulty="novice", after=["05"]),
+        _record("03", "B method", op="duplicates_screen", difficulty="intermediate", after=["05"]),
+        _record("05", "Cluster method", op="clusters_inspect", difficulty="intermediate"),
     )
     items = next_methods_for(register, register.methods[3])
     assert [item["method_id"] for item in items] == ["02", "03", "01"]
@@ -60,16 +54,10 @@ def test_caps_at_three_after_ordering() -> None:
     """Four targets, three items: the cap drops the hardest last row."""
     register = _register(
         *[
-            _record(id_, f"M {id_}", op="duplicates_screen", difficulty="novice")
+            _record(id_, f"M {id_}", op="duplicates_screen", difficulty="novice", after=["05"])
             for id_ in ("01", "02", "03", "04")
         ],
-        _record(
-            "05",
-            "Cluster method",
-            op="clusters_inspect",
-            difficulty="intermediate",
-            next_=["01", "02", "03", "04"],
-        ),
+        _record("05", "Cluster method", op="clusters_inspect", difficulty="intermediate"),
     )
     items = next_methods_for(register, register.methods[4])
     assert len(items) == _NEXT_CAP == 3
@@ -79,15 +67,9 @@ def test_caps_at_three_after_ordering() -> None:
 def test_skips_targets_without_a_run_hint() -> None:
     """A human-led target has no command to run, so it never rides."""
     register = _register(
-        _record("01", "Led method"),
-        _record("04", "Run method", op="duplicates_screen", difficulty="novice"),
-        _record(
-            "05",
-            "Cluster method",
-            op="clusters_inspect",
-            difficulty="intermediate",
-            next_=["04", "01"],
-        ),
+        _record("01", "Led method", after=["05"]),
+        _record("04", "Run method", op="duplicates_screen", difficulty="novice", after=["05"]),
+        _record("05", "Cluster method", op="clusters_inspect", difficulty="intermediate"),
     )
     items = next_methods_for(register, register.methods[2])
     assert [item["method_id"] for item in items] == ["04"]
@@ -96,14 +78,8 @@ def test_skips_targets_without_a_run_hint() -> None:
 def test_items_carry_register_name_why_and_cli_hint() -> None:
     """The item fields copy the register; the run hint is the CLI path."""
     register = _register(
-        _record("04", "Run method", op="duplicates_screen", difficulty="novice"),
-        _record(
-            "05",
-            "Cluster method",
-            op="clusters_inspect",
-            difficulty="intermediate",
-            next_=["04"],
-        ),
+        _record("04", "Run method", op="duplicates_screen", difficulty="novice", after=["05"]),
+        _record("05", "Cluster method", op="clusters_inspect", difficulty="intermediate"),
     )
     items = next_methods_for(register, register.methods[1])
     item = items[0]
@@ -117,15 +93,15 @@ def test_items_carry_register_name_why_and_cli_hint() -> None:
 def test_why_drops_the_level_clause_when_difficulty_is_unset() -> None:
     """An unrated target states the edge without a level it cannot back."""
     register = _register(
-        _record("04", "Run method", op="duplicates_screen"),
-        _record("05", "Cluster method", op="clusters_inspect", next_=["04"]),
+        _record("04", "Run method", op="duplicates_screen", after=["05"]),
+        _record("05", "Cluster method", op="clusters_inspect"),
     )
     items = next_methods_for(register, register.methods[1])
     assert items[0]["why"] == "Build on this method with Run method."
 
 
 def test_no_next_chain_is_an_empty_list() -> None:
-    """A chosen row without ``next`` yields [] — never a made-up step."""
+    """A chosen row with no ladder followers yields [] — never a made-up step."""
     register = _register(_record("05", "Quiet method", op="duplicates_screen"))
     assert next_methods_for(register, register.methods[0]) == []
 
@@ -133,9 +109,9 @@ def test_no_next_chain_is_an_empty_list() -> None:
 def test_unrated_targets_sort_last() -> None:
     """An unrated difficulty carries no promise, so it rides last."""
     register = _register(
-        _record("01", "Unrated method", op="duplicates_screen"),
-        _record("04", "Rated method", op="duplicates_screen", difficulty="advanced"),
-        _record("05", "Cluster method", op="clusters_inspect", next_=["04", "01"]),
+        _record("01", "Unrated method", op="duplicates_screen", after=["05"]),
+        _record("04", "Rated method", op="duplicates_screen", difficulty="advanced", after=["05"]),
+        _record("05", "Cluster method", op="clusters_inspect"),
     )
     items = next_methods_for(register, register.methods[2])
     assert [item["method_id"] for item in items] == ["04", "01"]
@@ -193,8 +169,8 @@ async def _run(
 async def test_resolved_degraded_envelope_holds_an_empty_list() -> None:
     """The live fixture route is degraded; an empty list stays honest.
 
-    Method 29 authors no ``next`` chain, so even a resolved run would
-    hold []; the degraded status holds [] regardless of the chain.
+    Method 29 has no ladder followers, so even a resolved run would
+    hold []; the degraded status holds [] regardless of the ladder.
     """
     result = await _run()
     assert result["status"] == "degraded"
@@ -209,16 +185,9 @@ async def test_resolved_envelope_lists_the_chain(monkeypatch: pytest.MonkeyPatch
     degraded phrase path.
     """
     register = _register(
-        _record("02", "A method", op="duplicates_screen", difficulty="novice"),
-        _record("03", "B method", op="duplicates_screen", difficulty="advanced"),
-        _record(
-            "05",
-            "Cluster method",
-            [_TIE_A],
-            op="clusters_inspect",
-            difficulty="intermediate",
-            next_=["03", "02"],
-        ),
+        _record("02", "A method", op="duplicates_screen", difficulty="novice", after=["05"]),
+        _record("03", "B method", op="duplicates_screen", difficulty="advanced", after=["05"]),
+        _record("05", "Cluster method", [_TIE_A], op="clusters_inspect", difficulty="intermediate"),
     )
     monkeypatch.setattr(
         "corpus_kb.tools.analysis_route_tools._router_embedder", lambda _cfg: _SplitEmbedder()
@@ -244,8 +213,9 @@ async def test_ambiguous_envelope_holds_an_empty_list(
             "Run method",
             op="duplicates_screen",
             difficulty="novice",
+            after=["05"],
         ),
-        _record("05", "Cluster method", [_TIE_A], op="clusters_inspect", next_=["04"]),
+        _record("05", "Cluster method", [_TIE_A], op="clusters_inspect"),
     )
     monkeypatch.setattr(
         "corpus_kb.tools.analysis_route_tools._router_embedder", lambda _cfg: _FlatEmbedder()
@@ -263,16 +233,15 @@ async def test_override_envelope_carries_the_override_chain(
 ) -> None:
     """An analyst override hand-holds from the override row's chain."""
     register = _register(
+        _record("01", "Codebook method", [_TIE_B], op="duplicates_screen", difficulty="novice"),
         _record(
-            "01",
-            "Codebook method",
-            [_TIE_B],
+            "02",
+            "Next method",
             op="duplicates_screen",
-            difficulty="novice",
-            next_=["02"],
+            difficulty="intermediate",
+            after=["01"],
         ),
-        _record("02", "Next method", op="duplicates_screen", difficulty="intermediate"),
-        _record("05", "Cluster method", [_TIE_A], op="clusters_inspect", next_=["04"]),
+        _record("05", "Cluster method", [_TIE_A], op="clusters_inspect"),
         _record("04", "Led method", op="duplicates_screen", difficulty="novice"),
     )
     monkeypatch.setattr(
@@ -300,11 +269,10 @@ async def test_repeat_run_is_byte_identical_with_a_chain(
             [_TIE_A, "Which cluster structure fits these records?"],
             op="clusters_inspect",
             difficulty="intermediate",
-            next_=["02", "03", "04"],
         ),
-        _record("02", "A method", op="duplicates_screen", difficulty="novice"),
-        _record("03", "B method", op="duplicates_screen", difficulty="intermediate"),
-        _record("04", "C method", op="duplicates_screen", difficulty="advanced"),
+        _record("02", "A method", op="duplicates_screen", difficulty="novice", after=["05"]),
+        _record("03", "B method", op="duplicates_screen", difficulty="intermediate", after=["05"]),
+        _record("04", "C method", op="duplicates_screen", difficulty="advanced", after=["05"]),
     )
     monkeypatch.setattr(
         "corpus_kb.tools.analysis_route_tools._router_embedder", lambda _cfg: _SplitEmbedder()
@@ -332,11 +300,11 @@ def test_live_chains_stay_under_twenty_words() -> None:
 
 
 def test_live_chains_order_by_difficulty_then_id() -> None:
-    """The live register's chains match the derivation's stated order."""
+    """The live register's derived chains ride easiest-first."""
     register = load_method_register({})
     levels = {"novice": 0, "intermediate": 1, "advanced": 2}
     by_id = {row.id: row for row in register.methods}
     for row in register.methods:
-        chain = row.next or []
+        chain = [str(item["method_id"]) for item in next_methods_for(register, row)]
         expected = sorted(chain, key=lambda mid: (levels.get(by_id[mid].difficulty or "", 9), mid))
-        assert chain == expected, f"{row.id}: authored order {chain} vs derivation order {expected}"
+        assert chain == expected, f"{row.id}: derived order {chain} vs stated order {expected}"

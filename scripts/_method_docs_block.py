@@ -1,12 +1,8 @@
 """The generated method-table block for docs/ANALYSIS-METHODS.md.
 
-Render-only helpers for ``gen_method_register_docs.py`` (the CLI lives
-there; this module holds the block builder so both files stay under the
-250-line cap). ``build_block`` emits everything between the
-``amr-register:generated`` markers: the register table, the per-method
-guidance bullets (validation, claims, progression, routing, table
-contract), and the wave-2 Backend proof section. Plain English
-throughout (ASD-STE100).
+Render-only helpers for ``gen_method_register_docs.py`` (one module per
+file so both stay under the 250-line cap). ``build_block`` emits the
+register table, the guidance bullets, and the Backend proof section.
 """
 
 from __future__ import annotations
@@ -51,16 +47,10 @@ _ROUTING_AXES_FIELDS = (
     "cost_tier",
 )
 
-_ROUTING_PROSE_FIELDS = (
-    ("Watch for", "failure_modes"),
-    ("Limits", "scope_limits"),
-)
+_ROUTING_PROSE_FIELDS = (("Watch for", "failure_modes"), ("Limits", "scope_limits"))
 
-_PROGRESSION_FIELDS = ("difficulty", "concepts", "prerequisites", "next")
-
-# The wave-2 parity statement: which op families the DuckDB gate proves,
-# the graph reads, and the one declared numeric drift (the coding tables'
-# numeric -> DOUBLE mirror; values can differ in far decimals).
+# The wave-2 parity statement: the DuckDB-proven op families and the one
+# declared numeric drift (the coding tables' DOUBLE mirror).
 _BACKEND_PROOF = [
     "",
     "## Backend proof",
@@ -79,47 +69,60 @@ _BACKEND_PROOF = [
 ]
 
 
-def _progression_lines(method: dict[str, Any], names: dict[str, str]) -> list[str]:
+def _progression_lines(
+    method: dict[str, Any],
+    names: dict[str, str],
+    prereqs_by_id: dict[str, list[str]],
+    next_by_id: dict[str, list[str]],
+) -> list[str]:
     """The progression bullets for one method (novice-UX program, wave 1).
 
-    Renders nothing when the row carries no progression fields (all four
-    are optional), so old registers and test fixtures still generate
-    cleanly. Each present field renders one line; concepts and method-id
-    links backtick their tokens (the code-token convention).
+    The rung and the taught concepts come from the row; the Requires and
+    Next bullets come from the derived ladder views, keyed by method id.
+    Links backtick their tokens (the code-token convention).
     """
-    present = [name for name in _PROGRESSION_FIELDS if method.get(name) not in (None, [])]
-    if not present:
-        return []
     lines: list[str] = []
     if method.get("difficulty"):
         lines.append(f"  - Difficulty: {_code(method['difficulty'])}.")
     concepts = method.get("concepts") or []
     if concepts:
         lines.append(f"  - Teaches: {', '.join(_code(concept) for concept in concepts)}.")
-    prereqs = method.get("prerequisites") or []
+    prereqs = prereqs_by_id.get(method["id"]) or []
     if prereqs:
-        needs = ", ".join(_link_text(link, names) for link in prereqs)
-        lines.append(f"  - Requires: {needs}.")
-    nxt = method.get("next") or []
+        lines += _link_bullets("Requires", prereqs, names)
+    nxt = next_by_id.get(method["id"]) or []
     if nxt:
-        steps = ", ".join(_link_text(link, names) for link in nxt)
-        lines.append(f"  - Next: {steps}.")
+        lines += _link_bullets("Next", nxt, names)
     return lines
 
 
-def _link_text(link: str, names: dict[str, str]) -> str:
-    """One method-id link as `id` plus the registered name."""
-    name = names.get(link)
-    return f"{_code(link)} {name}" if name else _code(link)
+# One bullet spends one word on the label; each sentence stays inside the
+# 20-word plain-language cap with margin for the period.
+_LINK_BULLET_WORD_BUDGET = 17
+
+
+def _link_bullets(label: str, links: list[str], names: dict[str, str]) -> list[str]:
+    """Render id links as bullets; each bullet stays one short sentence."""
+    lines: list[str] = []
+    current: list[str] = []
+    words = 0
+    for link in links:
+        text = f"{_code(link)} {names[link]}" if link in names else _code(link)
+        if current and words + len(text.split()) > _LINK_BULLET_WORD_BUDGET:
+            lines.append(f"  - {label}: {', '.join(current)}.")
+            current, words = [], 0
+        current.append(text)
+        words += len(text.split())
+    lines.append(f"  - {label}: {', '.join(current)}.")
+    return lines
 
 
 def _routing_lines(method: dict[str, Any]) -> list[str]:
     """The routing-axes bullets for one method (analysis-routing program).
 
-    Renders nothing when the row carries no routing axes (all fields are
-    optional), so old registers and test fixtures still generate cleanly.
-    A row with SOME axes but not all six is an authoring bug: it names the
-    method id and stops, instead of rendering a half-filled block.
+    Renders nothing when the row carries no routing axes. A row with
+    SOME axes but not all six names the method id and stops, instead of
+    rendering a half-filled block.
     """
     present = [name for name in _ROUTING_AXES_FIELDS if method.get(name)]
     if not present:
@@ -132,8 +135,8 @@ def _routing_lines(method: dict[str, Any]) -> list[str]:
     axes = (
         f"  - Routing axes: task {_code(method['task_type'])}, comparison "
         f"{_code(method['comparison_structure'])}, output {_code(method['output_form'])}, "
-        f"evidence {_code(method['evidence_basis'])}, rigor "
-        f"{_code(method['statistical_rigor'])}, cost tier {_code(method['cost_tier'])}."
+        f"evidence {_code(method['evidence_basis'])}, "
+        f"rigor {_code(method['statistical_rigor'])}, cost tier {_code(method['cost_tier'])}."
     )
     lines = [axes]
     for label, field_name in _ROUTING_PROSE_FIELDS:
@@ -158,12 +161,8 @@ def _routing_lines(method: dict[str, Any]) -> list[str]:
 def _table_lines(method: dict[str, Any]) -> list[str]:
     """The table-contract bullets for one method (novice-UX program, wave 2).
 
-    Renders nothing when the row declares no table, so envelope-only ops
-    and test fixtures stay clean. The first bullet names the columns in
-    order (with the unit when present), the result order, and the
-    rounding; the rest carry the tie rule, the denominators, and the
-    caveats. The reserved ``model_rank`` order entry reads as plain
-    text: the rows keep the producing model's reply order.
+    Renders nothing when the row declares no table. The reserved
+    ``model_rank`` order entry keeps the producing model's reply order.
     """
     table = method.get("output_table")
     if not table:
@@ -197,7 +196,11 @@ def _table_lines(method: dict[str, Any]) -> list[str]:
     return lines
 
 
-def build_block(register: dict[str, Any]) -> str:
+def build_block(
+    register: dict[str, Any],
+    prereqs_by_id: dict[str, list[str]],
+    next_by_id: dict[str, list[str]],
+) -> str:
     """The generated markdown: the register table plus guidance bullets."""
     methods: list[dict[str, Any]] = register["methods"]
     names = {method["id"]: method["name"] for method in methods}
@@ -237,7 +240,7 @@ def build_block(register: dict[str, Any]) -> str:
             f"  - Cautions: {_prose(method['robustness_caveat'])} "
             f"Bias: {_prose(method['bias_risk'])}"
         )
-        lines += _progression_lines(method, names)
+        lines += _progression_lines(method, names, prereqs_by_id, next_by_id)
         lines += _routing_lines(method)
         lines += _table_lines(method)
     lines += _BACKEND_PROOF
