@@ -1,0 +1,5 @@
+{"duration": 120, "first_attempt": true, "method_id": "02", "outcome": "ok", "schema_version": "1", "session_ordinal": 1, "success": true}
+{"duration": 240, "first_attempt": true, "method_id": "04", "outcome": "ok", "schema_version": "1", "session_ordinal": 1, "success": true}
+{"duration": 900, "first_attempt": true, "method_id": "16", "outcome": "ok", "schema_version": "1", "session_ordinal": 1, "success": true}
+{"duration": 40, "first_attempt": false, "method_id": "02", "outcome": "database_unavailable", "schema_version": "1", "session_ordinal": 2, "success": false}
+this line is not json {

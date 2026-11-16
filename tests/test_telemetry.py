@@ -287,11 +287,6 @@ def _flow_env(tmp_path: Path, enabled: bool, monkeypatch: pytest.MonkeyPatch) ->
         "database": {"backend": "duckdb"},
     }
     monkeypatch.setattr(cli_ingest, "_load_config", lambda: cfg)
-
-    class _Pool:
-        async def close(self) -> None:
-            return None
-
     monkeypatch.setattr(cli_ingest, "_open_pool", _fake_open_pool)
     return tmp_path
 
@@ -388,4 +383,65 @@ def test_flow_keyphrases_discriminates_variant(
     )
     lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert json.loads(lines[0])["method_id"] == "07"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: the consistency report script
+# ---------------------------------------------------------------------------
+
+
+def test_report_is_deterministic_on_the_fixture() -> None:
+    from scripts.telemetry_report import consistency_report
+
+    one = consistency_report("tests/fixtures/telemetry")
+    two = consistency_report("tests/fixtures/telemetry")
+    assert one == two
+
+
+def test_report_mentions_corrupted_lines() -> None:
+    from scripts.telemetry_report import consistency_report
+
+    text = consistency_report("tests/fixtures/telemetry")
+    assert "skipped" in text
+
+
+def test_report_never_writes(tmp_path: Path) -> None:
+    from scripts.telemetry_report import consistency_report
+
+    before = sorted(p.name for p in tmp_path.iterdir())
+    consistency_report("tests/fixtures/telemetry")
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+
+
+def test_report_header_names_gaps_and_order_source() -> None:
+    from scripts.telemetry_report import consistency_report
+
+    text = consistency_report("tests/fixtures/telemetry")
+    assert "derive_edges" in text  # F3: the ladder order source is named
+    assert "ingest_text" in text  # the declared socket no-event gap
+    assert "null" in text  # the shared-op attribution caveat
+
+
+def test_report_flags_concept_divergence() -> None:
+    from scripts.telemetry_report import consistency_report
+
+    text = consistency_report("tests/fixtures/telemetry")
+    # concepts_fixture: 05 succeeds on its first attempt, 15 fails its
+    # first attempt; both teach term_weighting -> gap 1.0 > 0.5.
+    assert "term_weighting" in text
+
+
+def test_ladder_order_is_total_and_deterministic() -> None:
+    from scripts.telemetry_report import _ladder_order
+
+    register = _register_for_tests()
+    order = _ladder_order(register.methods)
+    assert sorted(order) == sorted(record.id for record in register.methods)
+    assert order == _ladder_order(register.methods)
+
+
+def _register_for_tests() -> object:
+    from corpus_kb.analysis.method_register_loader import load_method_register
+
+    return load_method_register()
 

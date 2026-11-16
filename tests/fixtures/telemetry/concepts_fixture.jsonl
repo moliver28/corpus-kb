@@ -1,0 +1,2 @@
+{"duration": 60, "first_attempt": true, "method_id": "05", "outcome": "ok", "schema_version": "1", "session_ordinal": 1, "success": true}
+{"duration": 15, "first_attempt": true, "method_id": "15", "outcome": "dependency_missing", "schema_version": "1", "session_ordinal": 1, "success": false}
