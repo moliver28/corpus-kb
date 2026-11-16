@@ -41,14 +41,14 @@ def _consents_fn() -> Callable[[], list[tuple[str, bool]]]:
     return install.collect_model_consents
 
 
-def _compose_pull_fn() -> Callable[[str, bool, bool], int]:
+def _compose_pull_fn() -> Callable[..., int]:
     """Resolve ``setup_compose_pull`` from the install module (patch seam)."""
     from corpus_kb._setup import install
 
     return install.setup_compose_pull
 
 
-def _pull_models_fn() -> Callable[[bool, list[tuple[str, bool]]], int]:
+def _pull_models_fn() -> Callable[..., int]:
     """Resolve ``setup_pull_models`` from the install module (patch seam)."""
     from corpus_kb._setup import install
 
