@@ -16,7 +16,10 @@
 # Ollama install/pull steps are path-gated: the `changes` job detects
 # embedding-surface changes and the test legs + ui-e2e skip the install,
 # pull, and verify steps when nothing changed (the suite's documented
-# degraded zero-vector mode). The warning-ratchet leg keeps pulls
+# degraded zero-vector mode). Operators can arm the steps by hand too:
+# dispatch this workflow and set the live_ollama input to true. The
+# default stays false, so push and PR runs arm the steps by the path
+# gate only. The warning-ratchet leg keeps pulls
 # UNCONDITIONAL: its pytest_warnings ceiling was measured with models
 # pulled, so an unpulled env is not a proven-identical measurement.
 #
@@ -33,6 +36,14 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # Manual escape hatch: dispatch with live_ollama set to true to run
+  # the live-Ollama legs even when no embedding-surface path matches.
+  workflow_dispatch:
+    inputs:
+      live_ollama:
+        description: "Run the live Ollama steps even when no path filter matches."
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -68,6 +79,10 @@ jobs:
     outputs:
       ollama_code: ${{ steps.filter.outputs.ollama_code }}
       docker_code: ${{ steps.filter.outputs.docker_code }}
+      # ollama_live is the gate the live-Ollama steps consume: the path
+      # filter OR the manual live_ollama dispatch input. A dispatched run
+      # has no event diff, so the input decides there on its own.
+      ollama_live: ${{ steps.filter.outputs.ollama_code == 'true' || inputs.live_ollama == true }}
     steps:
       # Full history: paths-filter resolves push-event diffs against the
       # before commit locally; pull-request events go through the API.
@@ -676,7 +691,8 @@ jobs:
   #
   # All Ollama steps in the test legs are path-gated on embedding-surface
   # changes (the `changes` job). On untouched PRs the steps are skipped
-  # and the suite runs in its documented degraded zero-vector mode.
+  # and the suite runs in its documented degraded zero-vector mode. A
+  # manual dispatch can arm them too: set the live_ollama input to true.
   #
   # Windows-specific fixes:
   #   - python-magic-bin installed to fix "access violation" crash from
@@ -786,7 +802,7 @@ jobs:
         # plus qwen3:4b) differs from the test legs' three embedding
         # models. The cache kills the two 2.5 GB registry pulls on
         # every gated run (zero-drift F5).
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -797,7 +813,7 @@ jobs:
         # job degrades exactly like the pytest suite: the demo load falls
         # back to zero-vector embeddings and the ask accepts the honest
         # degraded answer (its LLM endpoint points at a closed port).
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
@@ -825,7 +841,7 @@ jobs:
         # evidence-list ask) as a green run. The gate map row in
         # docs/research/harness-zero-drift-program.md states the rule:
         # a skipped REQUIRED run is INVALID, not a pass.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           ollama pull qwen3-embedding:4b
           ollama pull qwen3:4b
@@ -935,7 +951,7 @@ jobs:
 
       - name: Cache Ollama models
         # Path-gated: pointless to restore when nothing below pulls.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -948,7 +964,7 @@ jobs:
         # Path-gated (embedding-surface changes only). Skipped steps mean
         # the suite runs in its documented degraded zero-vector mode: the
         # requires_ollama legs skip and the embedder falls back.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
@@ -959,7 +975,7 @@ jobs:
         # continue-on-error: tests that can degrade to zero-vector fallback
         # still run when a pull fails; live-model tests (research embed
         # proof) fail loudly instead, which is the honest signal.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         continue-on-error: true
         run: |
           # Three attempts per model with a pause: the Ollama registry
@@ -984,7 +1000,7 @@ jobs:
       - name: Verify Ollama
         # Path-gated: this loop exists only to confirm the install/pull
         # steps above, which are skipped on non-embedding PRs.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -1094,7 +1110,7 @@ jobs:
         # nomic-embed-text name on purpose (zero-drift F3) — the old
         # caches hold a model the schema cannot ingest, so they must
         # miss once and be replaced with the shipped 2560-dim model.
-        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_live == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ format('{0}\ollama\models', env.APPDATA) }}
@@ -1105,7 +1121,7 @@ jobs:
         # a cache hit after the first gated run, so the leg stays fast.
         # The models dir on macOS is ~/.ollama/models (same layout the
         # ubuntu test leg caches).
-        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_live == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -1117,7 +1133,7 @@ jobs:
         # brew install is used instead of curl | sh because the install.sh
         # script fails on GitHub Actions macOS runners (exit code 1).
         # See RCA: .omo/plans/ci-rca.md
-        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_live == 'true'
         run: |
           brew install ollama
           ollama serve > /tmp/ollama.log 2>&1 &
@@ -1133,7 +1149,7 @@ jobs:
         # installer hasn't finished in 2 minutes, we kill it and proceed.
         # GITHUB_PATH is set so subsequent steps can find ollama.exe.
         # Path-gated (embedding-surface changes only).
-        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_live == 'true'
         continue-on-error: true
         shell: powershell
         run: |
@@ -1169,14 +1185,14 @@ jobs:
         # continue-on-error: true because ollama may not be installed
         # (Windows install may have failed). Tests use zero-vector
         # fallback when the model is unavailable.
-        if: needs.changes.outputs.ollama_code == 'true'
+        if: needs.changes.outputs.ollama_live == 'true'
         continue-on-error: true
         run: ollama pull ${{ env.OLLAMA_MODEL }}
 
       - name: Verify Ollama (macOS)
         # Path-gated: this loop exists only to confirm the install/pull
         # steps above, which are skipped on non-embedding PRs.
-        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_live == 'true'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -1192,7 +1208,7 @@ jobs:
         # steps above, which are skipped on non-embedding PRs.
         # continue-on-error: true — if Ollama isn't running, tests
         # proceed in degraded mode (zero-vector embeddings)
-        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_live == 'true'
         continue-on-error: true
         shell: powershell
         run: |
