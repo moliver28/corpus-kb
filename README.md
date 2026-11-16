@@ -83,9 +83,9 @@ First time on a terminal? `corpus-kb quickstart` walks you from zero to
 a first search. The step-by-step quickstart is in
 [docs/getting-started.md](docs/getting-started.md).
 
-Prefer Docker? A NAS (Synology) or any Docker host can run the whole app
-with one compose command: [docs/INSTALL.md](docs/INSTALL.md), section
-"Run the whole app in Docker".
+Prefer Docker? A NAS or any Docker host can run the whole app with one
+compose command. See "Run the whole app in Docker" in
+[docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 

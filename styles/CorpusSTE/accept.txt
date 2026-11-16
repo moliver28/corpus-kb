@@ -220,3 +220,4 @@ launchd
 launchctl
 LaunchAgent
 plist
+Synology
