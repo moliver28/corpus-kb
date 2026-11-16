@@ -19,9 +19,10 @@ Steps, each bounded with one result line:
   6. Doctor: ``compose exec -T app corpus-kb doctor`` exit 0.
   7. Round trip: ``ingest-text`` a marker document, then ``search --json``
      and assert the marker text comes back. Zero-vector degraded mode is
-     the expected shape here (no Ollama in CI): the lexical arm returns
-     the hit and the envelope reports it. The ollama profile stays OFF —
-     CI never pulls models.
+     the expected shape here (no Ollama in CI): ingest exits 1 with the
+     honest ``partial`` envelope while the chunks store, and the lexical
+     search arm returns the hit. The ollama profile stays OFF — CI never
+     pulls models.
   8. Teardown: ``compose --profile app down -v --remove-orphans`` exit 0.
 
 Exit code 1 on the first failed step with its one-line reason. Output is
@@ -133,18 +134,66 @@ def poll_health() -> None:
     sys.exit(1)
 
 
-def exec_app(*argv: str, timeout: float = EXEC_TIMEOUT_S) -> subprocess.CompletedProcess[str]:
+def exec_app(
+    *argv: str,
+    timeout: float = EXEC_TIMEOUT_S,
+    label: str | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     """One `docker compose exec -T app <argv>` call."""
     return run_step(
-        f"exec app: {argv[0]}",
+        label or f"exec app: {argv[0]}",
         compose_args(["--profile", "app"], "exec", "-T", "app", *argv),
         timeout,
+        check=check,
     )
 
 
 def round_trip() -> None:
-    """Ingest the marker doc, then assert search returns it."""
-    exec_app("corpus-kb", "ingest-text", MARKER_TEXT, "--source", MARKER)
+    """Ingest the marker doc, then assert search returns it.
+
+    Degraded honesty: with no Ollama in the container, chunk embeddings
+    are all-zero, which is the fatal-marker shape, so ``ingest-text``
+    exits 1 with envelope status ``partial`` — that is the EXPECTED
+    result here as long as the chunks stored (``pg_chunk_count > 0``)
+    and the failure is the embedding arm. Anything else (``error``,
+    zero chunks) fails the gate.
+    """
+    proc = exec_app(
+        "corpus-kb",
+        "ingest-text",
+        MARKER_TEXT,
+        "--source",
+        MARKER,
+        "--json",
+        label="exec app: ingest-text (degraded partial is expected)",
+        check=False,
+    )
+    envelope: dict[str, object] | None = None
+    try:
+        parsed = json.loads(proc.stdout)
+        if isinstance(parsed, dict):
+            envelope = parsed
+    except json.JSONDecodeError:
+        pass
+    if envelope is None:
+        print("[docker-smoke] ingest: FAIL (no JSON envelope on stdout)")
+        print(f"[docker-smoke] ingest stdout tail:\n{proc.stdout[-2000:]}")
+        sys.exit(1)
+    status = str(envelope.get("status"))
+    raw_count = envelope.get("pg_chunk_count")
+    chunk_count = int(raw_count) if isinstance(raw_count, (int, float)) else 0
+    if status == "success" and chunk_count > 0:
+        print(f"[docker-smoke] ingest: ok (success, {chunk_count} chunks stored)")
+    elif status == "partial" and chunk_count > 0 and envelope.get("degraded") is True:
+        print(
+            f"[docker-smoke] ingest: ok (partial, {chunk_count} chunks stored, "
+            "embedding arm degraded — the honest no-Ollama shape)"
+        )
+    else:
+        print(f"[docker-smoke] ingest: FAIL (status={status}, chunks={chunk_count})")
+        print(f"[docker-smoke] envelope: {json.dumps(envelope)[:1000]}")
+        sys.exit(1)
     proc = exec_app("corpus-kb", "search", MARKER, "--json")
     try:
         payload = json.loads(proc.stdout)
