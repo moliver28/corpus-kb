@@ -143,7 +143,8 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Difficulty: `novice`.
   - Teaches: `keyword_rules`.
   - Requires: `12` Embedding clustering (including interactive clustering), `18` Zero-shot NLI classification.
-  - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM, `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
+  - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
+  - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `lexical`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Negation and context flip matches; counts never prove implicit meaning.
   - Limits: Rule matches find explicit mentions; implicit meaning needs reading or models.
@@ -335,7 +336,8 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: A fixed encoder cannot learn distinctions it does not represent. Bias: Training examples and pretrained representations both shape the decisions.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM, `19` Programmatic weak supervision (Snorkel).
+  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM.
+  - Requires: `19` Programmatic weak supervision (Snorkel).
   - Next: `17` SetFit few-shot classification, `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: A fixed encoder cannot learn distinctions it does not represent.
@@ -350,7 +352,8 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Few examples may not cover category diversity. Noisy examples harm adaptation. Bias: Small training sets can amplify analyst-selected examples.
   - Difficulty: `advanced`.
   - Teaches: `classification`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM, `16` Frozen embeddings with a linear classifier.
+  - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM.
+  - Requires: `16` Frozen embeddings with a linear classifier.
   - Next: `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Noisy or analyst-chosen few examples can amplify bias.

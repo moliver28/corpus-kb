@@ -141,6 +141,28 @@ def test_progression_lines_render_derived_links() -> None:
     assert any(line.startswith("  - Next: `16`, `17`.") for line in lines)
 
 
+def test_progression_lines_chunk_long_next_lists() -> None:
+    """A long derived list renders as several bullets within the 20-word cap."""
+    names = {
+        "01": "Alpha method with a very long registered name here",
+        "02": "Beta method with a very long registered name here",
+        "03": "Gamma method with a very long registered name here",
+    }
+    lines = block._progression_lines(
+        _full_method(),
+        names,
+        {},
+        {"05": ["01", "02", "03", "04", "05", "06"]},
+    )
+    next_lines = [line for line in lines if line.startswith("  - Next:")]
+    assert len(next_lines) > 1, next_lines
+    for line in next_lines:
+        assert len(line.split()) <= 20, line
+    joined = " ".join(next_lines)
+    for mid in ("01", "02", "03", "04", "05", "06"):
+        assert f"`{mid}`" in joined, mid
+
+
 # ---------------------------------------------------------------------------
 # Table-contract bullets + backend proof block (novice-UX program, wave 2)
 # ---------------------------------------------------------------------------
