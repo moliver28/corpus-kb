@@ -9,6 +9,7 @@ sets is restored afterwards, so no global leaks into other tests.
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -291,3 +292,55 @@ def test_main_without_host_keeps_config_untouched(monkeypatch: Any) -> None:
     sw.main(["--transport", "http", "--port", "8010"])
 
     assert seen["cfg"] is None
+
+
+async def test_run_all_starts_and_stops_every_service(monkeypatch: Any) -> None:
+    """run_all binds uvicorn, runs the projections, and stops everything."""
+    import uvicorn
+
+    served: dict[str, Any] = {}
+
+    class FakeServer:
+        def __init__(self, config: Any) -> None:
+            served["config"] = config
+
+        async def serve(self) -> None:
+            served["served"] = True
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+
+        async def start(self) -> None:
+            self.started = True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    async def cancelled_projection(tenant: Any, reader: Any) -> None:
+        raise asyncio.CancelledError
+
+    socket = FakeSocket()
+    services: dict[str, Any] = {
+        "config": {"server": {"host": "127.0.0.1", "port": 8019}},
+        "socket_server": socket,
+        "http_app": object(),
+        "ui_mounted": False,
+        "embed_projection": SimpleNamespace(run=cancelled_projection),
+        "docs_projection": SimpleNamespace(run=cancelled_projection),
+        "event_reader": object(),
+        "pool": None,
+        "gateway": SimpleNamespace(),
+    }
+    monkeypatch.setattr(uvicorn, "Config", lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr(uvicorn, "Server", FakeServer)
+    import corpus_kb.queue.autorun as autorun
+
+    monkeypatch.setattr(autorun, "start_queue_autorun", lambda pool, config: None)
+    monkeypatch.delenv("CORPUS_KB_UI_OPEN", raising=False)
+
+    await sw.run_all(services)
+
+    assert socket.started and socket.stopped
+    assert served["served"] is True

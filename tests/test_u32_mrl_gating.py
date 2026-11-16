@@ -148,3 +148,10 @@ class TestValidateConfigs:
         embedding["mrl_trained"] = True
         retrieval["matryoshka_enabled"] = True
         assert validate_configs.validate_runtime_config(config) == []
+
+
+def test_mrl_gate_is_silent_without_both_sections() -> None:
+    """Missing retrieval/embedding sections: the gate never trips."""
+    assert matryoshka_mrl_error({}) is None
+    assert matryoshka_mrl_error({"retrieval": {"matryoshka_enabled": True}}) is None
+    assert matryoshka_mrl_error({"embedding": {"mrl_trained": False}}) is None
