@@ -20,6 +20,9 @@ from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
+from corpus_kb.telemetry import emit as _emit_event
+from corpus_kb.telemetry.attribution import METHOD_FOR_OP as _METHOD_FOR_OP
+from corpus_kb.telemetry.attribution import method_id_for_op as _method_id_for_op
 
 
 async def _pool() -> Any:
@@ -31,6 +34,7 @@ async def _pool() -> Any:
 async def _respond(
     handler: Callable[..., Awaitable[dict[str, Any]]],
     kwargs: dict[str, Any],
+    method_id: str | None = None,
 ) -> JSONResponse:
     """One handler call + the shared status mapping (the family rule).
 
@@ -38,10 +42,18 @@ async def _respond(
     must behave the same on HTTP as on MCP and the CLI (issue #325).
     Every catalogue handler accepts the house ``config`` parameter, so
     the pass-through is uniform; handlers that read no config ignore it.
+    ``method_id`` (issue #442) names the register method for the opt-in
+    telemetry event; ``None`` writes nothing.
     """
     from corpus_kb.config import load_config
 
-    result = await handler(await _pool(), config=load_config(), **kwargs)
+    pool = await _pool()
+    cfg = load_config()
+
+    async def call() -> dict[str, Any]:
+        return await handler(pool, config=cfg, **kwargs)
+
+    result = await _emit_event(call, method_id=method_id, config=cfg)
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
 
@@ -71,10 +83,12 @@ async def keyphrases_extract_route(request: Request) -> JSONResponse:
     from corpus_kb.tools.keyphrase_tools import keyphrases_extract
 
     body = await parse_body(request)
+    variant = str(body.get("variant", "tfidf"))
     return await _respond(
         keyphrases_extract,
-        {
-            "variant": str(body.get("variant", "tfidf")),
+        method_id=_method_id_for_op("keyphrases_extract", {"variant": variant}),
+        kwargs={
+            "variant": variant,
             "limit": opt_int(body.get("limit"), 20, name="limit"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -90,7 +104,8 @@ async def lexical_classify_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         lexical_classify,
-        {
+        method_id=_METHOD_FOR_OP["lexical_classify"],
+        kwargs={
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -105,7 +120,8 @@ async def neighbors_classify_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         neighbors_classify,
-        {
+        method_id=_METHOD_FOR_OP["neighbors_classify"],
+        kwargs={
             "k": opt_int(body.get("k"), 5, name="k"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -121,7 +137,8 @@ async def centroids_classify_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         centroids_classify,
-        {
+        method_id=_METHOD_FOR_OP["centroids_classify"],
+        kwargs={
             "abstain_margin": opt_float(body.get("abstain_margin"), 0.05, name="abstain_margin"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -139,7 +156,8 @@ async def clusters_inspect_route(request: Request) -> JSONResponse:
     sample_cap = body.get("sample_cap")
     return await _respond(
         clusters_inspect,
-        {
+        method_id=_METHOD_FOR_OP["clusters_inspect"],
+        kwargs={
             "min_cluster_size": opt_int(min_size, None, name="min_cluster_size"),
             "sample_cap": opt_int(sample_cap, None, name="sample_cap"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -155,7 +173,8 @@ async def duplicates_screen_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         duplicates_screen,
-        {
+        method_id=_METHOD_FOR_OP["duplicates_screen"],
+        kwargs={
             "threshold": opt_float(body.get("threshold"), 0.98, name="threshold"),
             "limit": opt_int(body.get("limit"), 100, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -171,7 +190,8 @@ async def outliers_rank_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         outliers_rank,
-        {
+        method_id=_METHOD_FOR_OP["outliers_rank"],
+        kwargs={
             "k": opt_int(body.get("k"), 10, name="k"),
             "limit": opt_int(body.get("limit"), 20, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -189,7 +209,8 @@ async def nli_classify_route(request: Request) -> JSONResponse:
     model = body.get("model")
     return await _respond(
         nli_classify,
-        {
+        method_id=_METHOD_FOR_OP["nli_classify"],
+        kwargs={
             "labels": [str(label) for label in labels] if labels is not None else [],
             "chunk_ids": body.get("chunk_ids"),
             "limit": opt_int(body.get("limit"), 50, name="limit"),
@@ -208,7 +229,8 @@ async def contradictions_screen_route(request: Request) -> JSONResponse:
     model = body.get("model")
     return await _respond(
         contradictions_screen,
-        {
+        method_id=_METHOD_FOR_OP["contradictions_screen"],
+        kwargs={
             "candidate_k": opt_int(body.get("candidate_k"), 5, name="candidate_k"),
             "limit": opt_int(body.get("limit"), 50, name="limit"),
             "model": str(model) if model is not None else None,
@@ -226,7 +248,8 @@ async def sentiment_screen_route(request: Request) -> JSONResponse:
     limit = body.get("limit")
     return await _respond(
         sentiment_screen,
-        {
+        method_id=_METHOD_FOR_OP["sentiment_screen"],
+        kwargs={
             "chunk_ids": body.get("chunk_ids"),
             "limit": opt_int(limit, None, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
@@ -242,7 +265,8 @@ async def active_learn_next_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     return await _respond(
         active_learn_next,
-        {
+        method_id=_METHOD_FOR_OP["active_learn_next"],
+        kwargs={
             "strategy": str(body.get("strategy", "margin")),
             "batch": opt_int(body.get("batch"), 10, name="batch"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),

@@ -16,6 +16,8 @@ from typing import Any, TypedDict
 import typer
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+from corpus_kb.telemetry import emit as emit_event
+from corpus_kb.telemetry.attribution import method_id_for_op
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -103,8 +105,17 @@ async def flow(
     handler: Callable[..., Awaitable[dict[str, object]]] = getattr(module, op_name)
     cfg = cli_ingest._load_config()
     pool = await cli_ingest._open_pool(cfg)
+
+    # Opt-in telemetry (issue #442): one event per register-op run when
+    # telemetry.enabled is on; method_id None (non-register ops) writes
+    # nothing. The envelope and the error path stay untouched.
+    async def call() -> dict[str, object]:
+        return await handler(pool, cfg, **kwargs)
+
     try:
-        result = await handler(pool, cfg, **kwargs)
+        result = await emit_event(
+            call, method_id=method_id_for_op(op_name, kwargs), config=cfg
+        )
     except CorpusError as exc:
         print(f"ERROR: {exc}")
         remediation = getattr(exc, "remediation", None)

@@ -238,3 +238,154 @@ def _run(awaitable: object) -> object:
 
     return asyncio.run(awaitable)  # type: ignore[arg-type]
 
+
+# ---------------------------------------------------------------------------
+# Task 3: the attribution table and the four adapter call sites
+# ---------------------------------------------------------------------------
+
+
+def test_attribution_map_names_all_18_ops() -> None:
+    from corpus_kb.telemetry.attribution import METHOD_FOR_OP
+
+    assert set(METHOD_FOR_OP) == {
+        "analyze_run", "labeling_build", "topics_build", "keyphrases_extract",
+        "clusters_inspect", "centroids_classify", "neighbors_classify", "lexical_classify",
+        "classification_build", "nli_classify", "active_learn_next", "search", "ask",
+        "ingest_text", "sentiment_screen", "contradictions_screen", "duplicates_screen",
+        "outliers_rank",
+    }
+    assert METHOD_FOR_OP["clusters_inspect"] == "12"
+    assert METHOD_FOR_OP["outliers_rank"] == "30"
+
+
+def test_shared_ops_are_declared_null() -> None:
+    from corpus_kb.telemetry.attribution import METHOD_FOR_OP
+
+    for op in ("analyze_run", "labeling_build", "topics_build", "classification_build"):
+        assert METHOD_FOR_OP[op] is None
+
+
+def test_method_id_for_op_discriminates_keyphrases_variant() -> None:
+    from corpus_kb.telemetry.attribution import method_id_for_op
+
+    assert method_id_for_op("keyphrases_extract", {"variant": "tfidf"}) == "05"
+    assert method_id_for_op("keyphrases_extract", {"variant": "embedding"}) == "06"
+    assert method_id_for_op("keyphrases_extract", {"variant": "llm"}) == "07"
+    assert method_id_for_op("keyphrases_extract", {}) == "05"  # spec default (F13)
+    assert method_id_for_op("keyphrases_extract", {"variant": "nope"}) is None
+    assert method_id_for_op("clusters_inspect", {}) == "12"
+    assert method_id_for_op("sentiment_screen", {"chunk_ids": [1]}) is None
+    assert method_id_for_op("ingest_directory", {}) is None  # not a register op
+
+
+def _flow_env(tmp_path: Path, enabled: bool, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Patch the cli_ingest seams so flow() runs against fakes."""
+    from corpus_kb.cli import cli_ingest
+
+    cfg: dict[str, object] = {
+        "telemetry": {"enabled": enabled, "log_dir": str(tmp_path)},
+        "database": {"backend": "duckdb"},
+    }
+    monkeypatch.setattr(cli_ingest, "_load_config", lambda: cfg)
+
+    class _Pool:
+        async def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(cli_ingest, "_open_pool", _fake_open_pool)
+    return tmp_path
+
+
+async def _fake_open_pool(_cfg: dict[str, object]) -> object:
+    class _Pool:
+        async def close(self) -> None:
+            return None
+
+    return _Pool()
+
+
+def test_flow_records_one_line_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio as _asyncio
+
+    from corpus_kb.cli._plumbing import flow
+    from corpus_kb.tools import cluster_tools
+
+    async def fake_clusters_inspect(
+        _pool: object, _cfg: object, **_kwargs: object
+    ) -> dict[str, object]:
+        return {"status": "success"}
+
+    monkeypatch.setattr(cluster_tools, "clusters_inspect", fake_clusters_inspect)
+    _flow_env(tmp_path, True, monkeypatch)
+    exit_code = _asyncio.run(
+        flow(
+            "cluster_tools",
+            "clusters_inspect",
+            {},
+            False,
+            lambda _result, _json: None,
+        )
+    )
+    assert exit_code == 0
+    lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["method_id"] == "12"
+
+
+def test_flow_records_nothing_when_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio as _asyncio
+
+    from corpus_kb.cli._plumbing import flow
+    from corpus_kb.tools import cluster_tools
+
+    async def fake_clusters_inspect(
+        _pool: object, _cfg: object, **_kwargs: object
+    ) -> dict[str, object]:
+        return {"status": "success"}
+
+    monkeypatch.setattr(cluster_tools, "clusters_inspect", fake_clusters_inspect)
+    _flow_env(tmp_path, False, monkeypatch)
+    exit_code = _asyncio.run(
+        flow(
+            "cluster_tools",
+            "clusters_inspect",
+            {},
+            False,
+            lambda _result, _json: None,
+        )
+    )
+    assert exit_code == 0
+    assert not (tmp_path / "events.jsonl").exists()
+
+
+def test_flow_keyphrases_discriminates_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio as _asyncio
+
+    from corpus_kb.cli._plumbing import flow
+    from corpus_kb.tools import keyphrase_tools
+
+    async def fake_keyphrases(
+        _pool: object, _cfg: object, **_kwargs: object
+    ) -> dict[str, object]:
+        return {"status": "success"}
+
+    monkeypatch.setattr(keyphrase_tools, "keyphrases_extract", fake_keyphrases)
+    _flow_env(tmp_path, True, monkeypatch)
+    _asyncio.run(
+        flow(
+            "keyphrase_tools",
+            "keyphrases_extract",
+            {"variant": "llm"},
+            False,
+            lambda _result, _json: None,
+        )
+    )
+    lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert json.loads(lines[0])["method_id"] == "07"
+
