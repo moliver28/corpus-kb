@@ -4,3 +4,6 @@ tests/fixtures/refi_qda/*.xsd -text
 
 # Init scripts are COPYed into the Linux image; a CRLF copy breaks bash.
 docker/postgres/initdb/*.sh text eol=lf
+# Container scripts must check out LF byte-for-byte; CRLF breaks sh inside
+# the image the same way the schema fixtures above break provenance.
+docker/app/entrypoint.sh -text
