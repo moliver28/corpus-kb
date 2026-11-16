@@ -160,6 +160,9 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "observability.enabled": bool,
     "observability.otlp_endpoint": str,
     "observability.service_name": str,
+    # -- telemetry (issue #442, src/corpus_kb/telemetry/) --------------------
+    "telemetry.enabled": bool,
+    "telemetry.log_dir": str,
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})

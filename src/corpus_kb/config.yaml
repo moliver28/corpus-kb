@@ -661,3 +661,16 @@ ingest:
     temperature: 0.0
     fixture_dir: tests/fixtures/contextual_recorded
     live_fallback: false
+
+# Opt-in local event log (issue #442, src/corpus_kb/telemetry/). Off by
+# default: every analysis op runs green and writes nothing while enabled
+# is false. When on, the op adapters append one JSONL line per run to
+# events.jsonl — method id, outcome class, duration, and session counters
+# only. No content, no queries, no network. scripts/telemetry_report.py
+# reads the folder and confirms the derived ladder for human review; it
+# never writes register rows, rungs, or order. log_dir stays a portable
+# string: a relative value resolves under installer.data_dir at load
+# time, never against the working directory.
+telemetry:
+  enabled: false
+  log_dir: telemetry_logs

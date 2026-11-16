@@ -113,9 +113,10 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
         ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
+        ("telemetry", "enabled"): "CORPUS_KB_TELEMETRY_ENABLED",
     }
 
-    bool_keys = {"verify_image_signature", "openai_compat"}
+    bool_keys = {"verify_image_signature", "openai_compat", "enabled"}
     int_keys = {"dimensions", "port"}
     float_keys = {"timeout_s"}
 
@@ -290,6 +291,15 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if analysis_error is not None:
         raise ValueError(analysis_error)
 
+    # Opt-in telemetry (issue #442): telemetry.enabled must be a real bool
+    # and telemetry.log_dir a non-empty string AT LOAD
+    # (telemetry/settings.py owns the rules and the remediation text).
+    from corpus_kb.telemetry.settings import telemetry_settings_error
+
+    telemetry_error = telemetry_settings_error(config)
+    if telemetry_error is not None:
+        raise ValueError(telemetry_error)
+
     # Browser UI gates AT LOAD: ui.spa.* values must be sane
     # (ui_spa_settings_error owns the rules and the remediation text).
     ui_error = ui_spa_settings_error(config)
@@ -364,6 +374,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_INSTALL_DATA_DIR",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
+        "CORPUS_KB_TELEMETRY_ENABLED",
         "CORPUS_KB_SNAPSHOT_PERIOD",
         "CORPUS_KB_TEST_DB",
         "CORPUS_KB_TEXTBOOK_GOLDEN_DIR",
@@ -897,6 +908,15 @@ def get_default_config() -> dict[str, object]:
                 "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
             },
         },
+        # Opt-in local event log (issue #442): OFF by default. Events carry
+        # method id, outcome class, duration, and session counters only. No
+        # content, no queries, no network. The log_dir leaf stays portable
+        # (F18): a relative value resolves under installer.data_dir at load
+        # time, never against the process working directory.
+        "telemetry": {
+            "enabled": False,
+            "log_dir": "telemetry_logs",
+        },
     }
     _apply_typed_module_defaults(config)
     return config
@@ -971,6 +991,11 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.analysis.settings import ANALYSIS_CONFIG_DEFAULTS
 
     config.setdefault("analysis", _detached_defaults(ANALYSIS_CONFIG_DEFAULTS))
+    # Opt-in telemetry (issue #442; telemetry/settings.py is the typed
+    # reader): the event-log block, dormant behind enabled: false.
+    from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
+
+    config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:
