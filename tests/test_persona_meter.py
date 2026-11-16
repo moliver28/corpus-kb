@@ -11,9 +11,11 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from corpus_kb.analysis.method_register_loader import load_method_register
 from scripts.persona_meter import HEALTHY_STATE, WALK_CONFIG, run_walk, visit_order, walk_phases
-from scripts.persona_ratchet import compare_reports
+from scripts.persona_ratchet import compare_reports, read_baselines
 from scripts.persona_report import build_report
 
 FIXTURES = Path(__file__).resolve().parents[0] / "fixtures" / "persona_meter"
@@ -177,3 +179,27 @@ def test_compare_fails_on_an_undeclared_report_field():
     live = {"methods": {"02": {"phrase_resolution_steps": 3, "bogus_field": 7}}}
     failures = compare_reports(base, live, schema)
     assert len(failures) == 1 and "02" in failures[0] and "bogus_field" in failures[0]
+
+
+def test_baseline_block_points_at_the_fixture_pair(tmp_path):
+    baselines = tmp_path / "quality-baselines.json"
+    baselines.write_text(
+        json.dumps(
+            {
+                "persona_meter": {
+                    "report_path": "tests/fixtures/persona_meter/report.v1.json",
+                    "schema_path": "tests/fixtures/persona_meter/schema.v1.json",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    block = read_baselines(baselines)
+    assert block["report_path"].endswith("report.v1.json")
+
+
+def test_baseline_reader_rejects_a_missing_block(tmp_path):
+    baselines = tmp_path / "quality-baselines.json"
+    baselines.write_text(json.dumps({"files_over_250": 1}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="persona_meter"):
+        read_baselines(baselines)
