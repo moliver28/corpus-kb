@@ -1,7 +1,7 @@
 """MCP tools for SQL queries over the RAG data.
 
 Tool:
-- sql_query: Run SQL queries via DuckDB over LanceDB tables
+- sql_query: Run SQL queries over the corpus DuckDB
 """
 
 from __future__ import annotations

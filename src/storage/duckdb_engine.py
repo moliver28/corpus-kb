@@ -1,19 +1,19 @@
 """Persistent DuckDB relational database engine.
 
 Provides a full relational SQL layer — file-backed, with defined schemas,
-CRUD operations, and auto-sync from LanceDB vector store. Replaces the
+CRUD operations over the single DuckDB store. Provides the
 previous in-memory read-only query layer.
 
 Schema:
-  - documents:  Mirrors LanceDB documents table with extracted metadata
-  - chunks:     Mirrors LanceDB chunks table for SQL joins
+  - documents:  Relational metadata for SQL joins
+  - chunks:     Chunk indices for SQL joins (standalone mode)
   - tags:       Structured tag system (name + color)
   - document_tags: Many-to-many doc-tag mapping
   - metadata:   Flexible key-value store for arbitrary document metadata
 
 Design:
   - Persistent DuckDB file (not :memory:) — survives restarts
-  - Auto-sync from LanceDB on startup and configurable interval
+  - store maintenance hook (FTS rebuild) on sync_database
   - Full SQL support: SELECT, INSERT, UPDATE, DELETE, CTEs, JOINs
   - Safety rails on write operations (no DROP TABLE, no unbounded DELETE)
   - Hybrid vector+SQL queries via LanceDB's native SQL filtering
@@ -30,24 +30,30 @@ from typing import Any, Optional
 import duckdb
 
 
-def _now() -> str:
-    return datetime.utcnow().isoformat()
-
-
 def _resolve_path(path: str) -> str:
     return str(Path(path).expanduser().resolve())
 
 
 class DuckDBEngine:
-    """Persistent relational SQL engine over LanceDB-backed RAG data.
+    """Relational SQL layer (tags, metadata, ad-hoc SQL) over the corpus database.
 
-    Usage:
-        engine = DuckDBEngine("./data")
-        engine.execute("SELECT * FROM documents WHERE source_type = 'code'")
-        engine.sync_from_lancedb(lancedb_store)  # auto-populate
+    Two modes:
+      - attached (recommended): pass `store=` to share the DuckDBStore's
+        connection. documents/chunks/schema management belongs to the store.
+      - standalone: pass storage_path to open its own corpus.db and create
+        the legacy relational-only schema (used by unit tests).
     """
 
-    def __init__(self, storage_path: str, db_name: str = "corpus.db"):
+    def __init__(self, storage_path: Optional[str] = None, db_name: str = "corpus.db",
+                 store=None):
+        if store is not None:
+            self.store = store
+            self.conn = store.conn
+            self.storage_path = store.db_path
+            self._ensure_aux_schema()
+            return
+        if storage_path is None:
+            raise ValueError("DuckDBEngine needs either storage_path or store=")
         self.storage_path = _resolve_path(storage_path)
         os.makedirs(self.storage_path, exist_ok=True)
         db_path = os.path.join(self.storage_path, db_name)
@@ -59,7 +65,7 @@ class DuckDBEngine:
     # ------------------------------------------------------------------
 
     def _ensure_schema(self):
-        """Create relational tables if they don't exist."""
+        """Create relational tables if they don't exist (standalone mode)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 doc_id          TEXT PRIMARY KEY,
@@ -91,6 +97,10 @@ class DuckDBEngine:
                 FOREIGN KEY (doc_id) REFERENCES documents(doc_id)
             )
         """)
+        self._ensure_aux_schema()
+
+    def _ensure_aux_schema(self):
+        """Tags, document_tags, metadata: needed in both modes."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS tags (
                 tag_id          INTEGER PRIMARY KEY,
@@ -125,80 +135,22 @@ class DuckDBEngine:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_document_tags_tag_id ON document_tags(tag_id)")
 
     # ------------------------------------------------------------------
-    # Sync from LanceDB
+    # Store maintenance (replaces the old LanceDB sync)
     # ------------------------------------------------------------------
 
-    def sync_from_lancedb(self, lancedb_store) -> dict:
-        """Sync documents and chunks from LanceDB into relational tables.
+    def sync_from_store(self, store) -> dict:
+        """Single-store architecture: data is already in DuckDB.
 
-        Call after ingestion to keep relational tables in sync.
-        Returns counts of synced rows.
+        Kept as a maintenance hook for tools that called sync_database.
+        Rebuilds the FTS index and returns current counts.
         """
-        doc_count = 0
-        chunk_count = 0
-
-        try:
-            docs = lancedb_store.list_documents()
-            for doc in docs:
-                meta = doc.get("metadata", "{}")
-                if isinstance(meta, str):
-                    try:
-                        meta = json.loads(meta)
-                    except (json.JSONDecodeError, TypeError):
-                        meta = {}
-                if not isinstance(meta, dict):
-                    meta = {}
-
-                self.conn.execute("""
-                    INSERT OR REPLACE INTO documents
-                        (doc_id, source, source_type, chunk_count,
-                         file_size, language, created_at, metadata_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    doc["doc_id"],
-                    doc.get("source", ""),
-                    doc.get("source_type", "text"),
-                    doc.get("chunk_count", 0),
-                    meta.get("size_bytes"),
-                    meta.get("language"),
-                    doc.get("created_at", _now()),
-                    json.dumps(meta),
-                ])
-                doc_count += 1
-
-            chunks_data = lancedb_store.chunks_table.search().limit(100000).to_list()
-            for c in chunks_data:
-                heading = c.get("heading_path")
-                if isinstance(heading, list):
-                    heading = json.dumps(heading)
-
-                self.conn.execute("""
-                    INSERT OR REPLACE INTO chunks
-                        (chunk_id, doc_id, chunk_index, source_type,
-                         chunk_type, entity_name, heading_path, file_path,
-                         start_line, end_line, char_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    c["chunk_id"],
-                    c.get("doc_id", ""),
-                    c.get("chunk_index", 0),
-                    c.get("source_type", "text"),
-                    c.get("chunk_type", "paragraph"),
-                    c.get("entity_name"),
-                    heading,
-                    c.get("file_path"),
-                    c.get("start_line"),
-                    c.get("end_line"),
-                    len(c.get("text", "")),
-                    c.get("created_at", _now()),
-                ])
-                chunk_count += 1
-
-        except Exception as e:
-            return {"documents_synced": doc_count, "chunks_synced": chunk_count,
-                    "error": str(e)}
-
-        return {"documents_synced": doc_count, "chunks_synced": chunk_count}
+        store.ensure_fts_index()
+        stats = store.get_stats()
+        return {
+            "documents_synced": stats.total_documents,
+            "chunks_synced": stats.total_chunks,
+            "status": "single-store (DuckDB); nothing to mirror",
+        }
 
     # ------------------------------------------------------------------
     # SQL execute (read + write with safety)

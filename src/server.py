@@ -51,7 +51,7 @@ def create_server(config: dict | None = None) -> FastMCP:
     """Create and configure the Corpus-KB MCP server."""
     cfg = config or load_config()
 
-    storage_path = cfg.get("storage", {}).get("path", "./data/lancedb")
+    storage_path = cfg.get("storage", {}).get("path", "./data")
     graph_path = cfg.get("graph", {}).get("db_path", "./data/graph.db")
     graph_backend = cfg.get("graph", {}).get("backend", "sqlite")
     chunking_config = cfg.get("chunking", {})
@@ -61,21 +61,21 @@ def create_server(config: dict | None = None) -> FastMCP:
     # Initialize layers
     # ------------------------------------------------------------------
 
-    from storage.lancedb_store import LanceDBStore
+    from storage.duckdb_store import DuckDBStore
     from storage.duckdb_engine import DuckDBEngine
     from storage.graph_store import create_graph_store
     from chunking.detector import FileTypeDetector
     from chunking.hierarchy import HierarchyResolver
     from rag.embedder import OllamaEmbedder
 
-    # Storage
+    # Storage: one DuckDB file holds documents, chunks, embeddings, FTS
     embed_dim = embedding_config.get("dimensions", 768)
-    store = LanceDBStore(storage_path, dimensions=embed_dim)
-
-    # Relational database — persistent DuckDB with defined schemas
     database_config = cfg.get("database", {})
     db_name = database_config.get("filename", "corpus.db")
-    duckdb = DuckDBEngine(storage_path, db_name=db_name)
+    store = DuckDBStore(os.path.join(storage_path, db_name), dimensions=embed_dim)
+
+    # Relational layer (tags, metadata, ad-hoc SQL) over the same file
+    duckdb = DuckDBEngine(store=store)
     auto_sync = database_config.get("auto_sync", True)
 
     # Graph
@@ -109,10 +109,10 @@ def create_server(config: dict | None = None) -> FastMCP:
         batch_size=embedding_config.get("batch_size", 32),
     )
 
-    # Auto-sync existing data from LanceDB into relational tables
+    # Single-store: FTS index maintenance instead of LanceDB mirror
     if auto_sync:
         try:
-            duckdb.sync_from_lancedb(store)
+            duckdb.sync_from_store(store)
         except Exception:
             pass  # Non-blocking — first-run edge case
 
@@ -196,9 +196,7 @@ system for agentic code editors via MCP.
         if not doc:
             return f"Document not found: {doc_id}"
 
-        chunks = store.chunks_table.search().where(
-            f"doc_id = '{doc_id}'"
-        ).limit(10000).to_list()
+        chunks = store.list_chunks(doc_id)
 
         parts = [
             f"# Document: {doc.get('source', 'unknown')}\n",

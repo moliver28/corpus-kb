@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 from rag.embedder import OllamaEmbedder
 from rag.hybrid_search import HybridSearcher
 from rag.reranker import Reranker
@@ -19,7 +19,7 @@ from utils.models import SearchResult
 
 def register_tools(
     mcp,
-    store: LanceDBStore,
+    store: DuckDBStore,
     embedder: OllamaEmbedder,
 ):
     """Register all search tools with the MCP server."""

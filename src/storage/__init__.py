@@ -1,9 +1,9 @@
-from .lancedb_store import LanceDBStore
+from .duckdb_store import DuckDBStore
 from .duckdb_engine import DuckDBEngine
 from .graph_store import GraphStore, SQLiteGraphStore, create_graph_store
 
 __all__ = [
-    "LanceDBStore",
+    "DuckDBStore",
     "DuckDBEngine",
     "GraphStore",
     "SQLiteGraphStore",

@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 from storage.duckdb_engine import DuckDBEngine
 from storage.graph_store import GraphStore
 from chunking.detector import FileTypeDetector, detect_file_type
@@ -25,7 +25,7 @@ def _ingest_single_file(
     file_path: str,
     detector: FileTypeDetector,
     embedder: OllamaEmbedder,
-    store: LanceDBStore,
+    store: DuckDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
     database: Optional[DuckDBEngine] = None,
@@ -82,7 +82,7 @@ def _ingest_single_file(
     # Auto-populate relational database
     if database is not None:
         try:
-            database.sync_from_lancedb(store)
+            database.sync_from_store(store)
         except Exception:
             pass  # Non-blocking
 
@@ -101,7 +101,7 @@ def _ingest_text(
     file_type: Optional[str],
     detector: FileTypeDetector,
     embedder: OllamaEmbedder,
-    store: LanceDBStore,
+    store: DuckDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
     database: Optional[DuckDBEngine] = None,
@@ -138,7 +138,7 @@ def _ingest_text(
     # Auto-populate relational database
     if database is not None:
         try:
-            database.sync_from_lancedb(store)
+            database.sync_from_store(store)
         except Exception:
             pass  # Non-blocking
 
@@ -154,7 +154,7 @@ def register_tools(
     mcp,
     detector: FileTypeDetector,
     embedder: OllamaEmbedder,
-    store: LanceDBStore,
+    store: DuckDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
     database: Optional[DuckDBEngine] = None,

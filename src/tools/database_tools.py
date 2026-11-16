@@ -10,7 +10,7 @@ Tools:
   - get_document_tags: List tags on a document
   - set_metadata:     Set a metadata key-value pair
   - get_metadata:     Retrieve metadata by key and/or document
-  - sync_database:    Manually trigger LanceDB → relational sync
+  - sync_database:    Maintenance hook: rebuild FTS index, return counts
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ from __future__ import annotations
 from typing import Optional
 
 from storage.duckdb_engine import DuckDBEngine
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 
 
-def register_tools(mcp, engine: DuckDBEngine, lancedb_store: LanceDBStore):
+def register_tools(mcp, engine: DuckDBEngine, store_obj: DuckDBStore):
     """Register all database tools with the MCP server."""
 
     @mcp.tool()
@@ -157,12 +157,12 @@ def register_tools(mcp, engine: DuckDBEngine, lancedb_store: LanceDBStore):
 
     @mcp.tool()
     def sync_database() -> dict:
-        """Sync data from LanceDB vector store into relational tables.
+        """Maintenance: rebuild FTS index and return store counts.
 
         Call this after ingesting documents to make relational queries up to date.
         The sync is idempotent — call it anytime.
         """
-        return engine.sync_from_lancedb(lancedb_store)
+        return engine.sync_from_store(store_obj)
 
     @mcp.tool()
     def query_document_stats() -> dict:

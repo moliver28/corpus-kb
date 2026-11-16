@@ -45,7 +45,7 @@ class Chunk:
     end_line: Optional[int] = None
     created_at: str = field(default_factory=_now)
 
-    def to_lance(self) -> dict:
+    def to_row(self) -> dict:
         d = asdict(self)
         # Ensure metadata is JSON string if it's a dict
         if isinstance(d.get("metadata"), dict):
@@ -53,16 +53,17 @@ class Chunk:
         return d
 
     @classmethod
-    def from_lance(cls, data: dict) -> "Chunk":
+    def from_row(cls, data: dict) -> "Chunk":
         if isinstance(data.get("metadata"), str):
             data["metadata"] = json.loads(data["metadata"])
         if isinstance(data.get("heading_path"), str):
             data["heading_path"] = json.loads(data["heading_path"])
         if isinstance(data.get("scope_chain"), str):
             data["scope_chain"] = json.loads(data["scope_chain"])
-        # Remove lanceDB internal fields
+        # Remove search-internal fields
         data.pop("_distance", None)
         data.pop("_relevance", None)
+        data.pop("_score", None)
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
@@ -76,7 +77,7 @@ class Document:
     chunk_count: int = 0
     created_at: str = field(default_factory=_now)
 
-    def to_lance(self) -> dict:
+    def to_row(self) -> dict:
         d = asdict(self)
         if isinstance(d.get("metadata"), dict):
             d["metadata"] = json.dumps(d["metadata"])
@@ -126,7 +127,7 @@ class Relation:
 
 @dataclass
 class Version:
-    """A table version entry (from LanceDB)."""
+    """A store version entry (DuckDB op log)."""
     version: int
     timestamp: str
     tag: Optional[str] = None

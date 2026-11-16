@@ -82,7 +82,7 @@ def get_default_config() -> dict[str, Any]:
             "port": 8010,
         },
         "storage": {
-            "path": str(Path.cwd() / "data" / "lancedb"),
+            "path": str(Path.cwd() / "data"),
         },
         "graph": {
             "backend": "sqlite",

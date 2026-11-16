@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 from storage.graph_store import GraphStore
 
 
-def register_tools(mcp, store: LanceDBStore, graph: GraphStore):
+def register_tools(mcp, store: DuckDBStore, graph: GraphStore):
     """Register all version/tag tools with the MCP server."""
 
     @mcp.tool()

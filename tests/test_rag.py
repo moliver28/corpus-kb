@@ -71,7 +71,7 @@ class TestOllamaEmbedder:
 
 @pytest.fixture
 def tmp_store(tmp_path):
-    from storage.lancedb_store import LanceDBStore
+    from storage.duckdb_store import DuckDBStore
     db_path = tmp_path / "lancedb"
     yield LanceDBStore(str(db_path))
 
@@ -112,7 +112,7 @@ class TestHybridSearcher:
 
     def test_rrf_fuse_single_list(self, tmp_store, embedder):
         """RRF with one list should maintain order."""
-        from storage.lancedb_store import LanceDBStore
+        from storage.duckdb_store import DuckDBStore
         results = [
             SearchResult(chunk_id="a", text="a", score=0.9, source="test"),
             SearchResult(chunk_id="b", text="b", score=0.8, source="test"),
@@ -123,7 +123,7 @@ class TestHybridSearcher:
 
     def test_rrf_fuse_two_lists(self, tmp_store, embedder):
         """Items appearing in both lists should get priority."""
-        from storage.lancedb_store import LanceDBStore
+        from storage.duckdb_store import DuckDBStore
         list_a = [
             SearchResult(chunk_id="a", text="a", score=0.9, source="test"),
             SearchResult(chunk_id="b", text="b", score=0.8, source="test"),
@@ -151,7 +151,7 @@ class TestHybridSearcher:
         When:  _rrf_fuse() is called
         Then:  TOC chunks should be filtered out (before fix fails, after fix passes)
         """
-        from storage.lancedb_store import LanceDBStore
+        from storage.duckdb_store import DuckDBStore
 
         # Create test chunks: one content chunk, one TOC chunk
         content_chunk = SearchResult(

@@ -1,6 +1,6 @@
 """Hybrid search — vector + full-text + Reciprocal Rank Fusion.
 
-Orchestrates multi-modal search across LanceDBStore and merges results
+Orchestrates multi-modal search across DuckDBStore and merges results
 using RRF (Reciprocal Rank Fusion). Supports configurable weights for
 vector vs. FTS contribution.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 from utils.models import SearchResult
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ class HybridSearcher:
 
     def __init__(
         self,
-        store: LanceDBStore,
+        store: DuckDBStore,
         embedder: "OllamaEmbedder",  # noqa: F821
         k_vector: int = 20,
         k_fts: int = 20,
@@ -73,7 +73,7 @@ class HybridSearcher:
                                       source_type=source_type,
                                       file_path=file_path)
 
-        # 3. Merge via RRF using LanceDBStore's implementation
+        # 3. Merge via RRF using DuckDBStore's implementation
         merged = self.store._rrf_fuse(vector_results, fts_results, k=self.rrf_k,
                                       relevance_floor=relevance_floor,
                                       excluded_chunk_types=excluded_chunk_types)
@@ -108,7 +108,7 @@ class HybridSearcher:
         source_type: Optional[str] = None,
         file_path: Optional[str] = None,
     ) -> Optional[dict]:
-        """Build filter dict for LanceDB search."""
+        """Build filter dict for store search."""
         filters: dict[str, str] = {}
 
         if source_type:

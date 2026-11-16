@@ -9,7 +9,7 @@ server:
 
 storage:
   path: ~/.corpus-kb
-  lancedb_uri: ~/.corpus-kb/lancedb
+  db_filename: corpus.db
   graph_db: ~/.corpus-kb/graph.db
 
 database:

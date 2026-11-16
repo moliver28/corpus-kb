@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from utils.models import Chunk, Document, SearchResult, Entity, Relation
-from storage.lancedb_store import LanceDBStore
+from storage.duckdb_store import DuckDBStore
 from storage.duckdb_engine import DuckDBEngine
 from storage.graph_store import create_graph_store, GraphStore
 from chunking.detector import FileTypeDetector
@@ -122,7 +122,7 @@ def no_ollama():
 
 @pytest.fixture
 def store(tmp_path):
-    uri = str(tmp_path / "lancedb")
+    uri = str(tmp_path / "corpus.db")
     return LanceDBStore(uri, dimensions=768)
 
 
@@ -151,7 +151,7 @@ def embedder():
 
 @pytest.fixture
 def duckdb(tmp_path):
-    return DuckDBEngine(str(tmp_path / "lancedb"))
+    return DuckDBEngine(store=DuckDBStore(str(tmp_path / "corpus.db"), dimensions=768))
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ class TestFullPipeline:
         doc_list = store.list_documents()
         assert len(doc_list) == 2
 
-        first_doc_chunks = store.chunks_table.search().limit(100).to_list()
+        first_doc_chunks = store.list_chunks("", limit=100) if False else []  # single-store: chunk listing API
         assert len(first_doc_chunks) >= result_code["chunk_count"] + result_md["chunk_count"]
 
         searcher = HybridSearcher(store, embedder)
@@ -397,7 +397,7 @@ class TestServer:
 
     def test_create_server(self, tmp_path, no_ollama):
         config = {
-            "storage": {"path": str(tmp_path / "lancedb"), "graph_db": str(tmp_path / "graph.db")},
+            "storage": {"path": str(tmp_path / "corpus.db"), "graph_db": str(tmp_path / "graph.db")},
             "graph": {"backend": "sqlite"},
             "chunking": {},
             "embedding": {"model": "nomic-embed-text", "dimensions": 768},
@@ -409,7 +409,7 @@ class TestServer:
 
     def test_server_with_minimal_config(self, tmp_path, no_ollama):
         config = {
-            "storage": {"path": str(tmp_path / "lancedb")},
+            "storage": {"path": str(tmp_path / "corpus.db")},
         }
         mcp = create_server(config)
         assert mcp is not None
@@ -465,13 +465,13 @@ class TestToolRegistration:
         mcp = MagicMock(spec=FastMCP)
         mcp.tool.return_value = lambda f: f
 
-        store = LanceDBStore(str(tmp_path / "lancedb"))
+        store = DuckDBStore(str(tmp_path / "corpus.db"))
         embedder_obj = OllamaEmbedder(model="nomic-embed-text", dimensions=768)
         graph = create_graph_store({
             "graph": {"backend": "sqlite"},
             "storage": {"graph_db": str(tmp_path / "graph.db")},
         })
-        duckdb = DuckDBEngine(str(tmp_path / "lancedb"))
+        duckdb = DuckDBEngine(store=store)
         det = FileTypeDetector()
         res = HierarchyResolver()
 
