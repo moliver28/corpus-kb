@@ -47,6 +47,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "embedding.mrl_trained": bool,
     "embedding.late_chunking": bool,
     "embedding.query_instruction": bool,
+    # Named embedding levers (preset -> model/dimensions/batch_size fill,
+    # explicit keys win). Enum-checked at resolve time (load_config raises
+    # on unknown names), so no here-only enum needed.
+    "embedding.preset": str,
     "storage.vector_type": str,
     "ingestion.default": str,
     "ingestion.strategies": dict,

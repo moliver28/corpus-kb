@@ -192,6 +192,12 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     """
     config = get_default_config()
 
+    # embedding.preset ("levers") resolution: only keys ABSENT from the
+    # user's file are filled from the preset, so explicit model /
+    # dimensions / batch_size always win. Set before env overrides so
+    # CORPUS_KB_EMBEDDING_* keeps highest precedence.
+    file_embedding_keys: set[str] = set()
+
     config_path: Path | None = None
     if path:
         config_path = Path(path)
@@ -203,11 +209,17 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if config_path is not None and config_path.exists():
         with config_path.open() as f:
             file_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        file_embedding_keys.update(
+            (file_config.get("embedding") or {}).keys()  # type: ignore[arg-type]
+        )
         _deep_update(config, file_config)
     elif (Path.cwd() / "config.yaml").exists():
         cwd_config = Path.cwd() / "config.yaml"
         with cwd_config.open() as f:
             file_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        file_embedding_keys.update(
+            (file_config.get("embedding") or {}).keys()  # type: ignore[arg-type]
+        )
         _deep_update(config, file_config)
     else:
         import importlib.resources as resources
@@ -235,6 +247,25 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 f"Config overlay {overlay_path} must hold a YAML mapping of settings."
             )
         _deep_update(config, overlay_config)
+
+    # embedding.preset resolution (named levers, see dimensions.EMBEDDING_PRESETS).
+    # Fills only keys the user did NOT set, then removes the control key so no
+    # downstream reader sees an unknown "preset" field.
+    emb_cfg = cast(dict[str, object], config.get("embedding"))
+    preset_name = emb_cfg.pop("preset", None)
+    if preset_name:
+        from corpus_kb.dimensions import EMBEDDING_PRESETS
+
+        preset = EMBEDDING_PRESETS.get(str(preset_name))
+        if preset is None:
+            raise ConfigError(
+                f"Unknown embedding.preset: {preset_name!r} "
+                f"(known: {sorted(EMBEDDING_PRESETS)})"
+            )
+        for key, value in preset.items():
+            if key not in file_embedding_keys:
+                emb_cfg[key] = value
+        emb_cfg["preset_name"] = str(preset_name)
 
     # Legacy namespace aliases (search.* / ingest.hierarchy.* / contextual.*):
     # copied into the canonical keys when the canonical key is absent, with a
@@ -538,6 +569,11 @@ def get_default_config() -> dict[str, object]:
             "ontology_path": "config/ontology.yaml",
         },
         "embedding": {
+            # embedding.preset: the named-lever control key (fast/balanced/
+            # quality). The shipped default is "balanced" (= the code
+            # defaults below, so no behavior change); load_config pops it
+            # and fills only file-silent keys.
+            "preset": "balanced",
             # ollama serves the 4B embedder; pgml cannot host a model of
             # this size.
             "provider": "ollama",

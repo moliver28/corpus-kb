@@ -19,6 +19,7 @@ server:
 
 embedding:
   # ollama serves the 4B embedder; pgml cannot host a model of this size.
+  preset: balanced
   provider: ollama
   fallback_provider: ollama
   model: qwen3-embedding:4b

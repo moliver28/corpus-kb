@@ -32,3 +32,32 @@ RESEARCH_EMBEDDING_DIMENSIONS = 1024
 # (storage/llamaindex_backend.py). It sits below the research width,
 # so a nomic embedder abstains from research writes.
 NOMIC_EMBEDDING_DIMENSIONS = 768
+
+# Named embedding presets ("levers"): one key in embedding.preset picks
+# the model + vector width + batch_size tradeoff. Keys not set in the
+# user's config file are filled from the preset; explicit keys win.
+# fast     = qwen3-embedding:0.6b, 1024d (MRL front-slice native width):
+#            quarter the vector bytes of the default, clear quality
+#            step over nomic-embed.
+# balanced = qwen3-embedding:4b, 2560d: the shipped default embedder.
+# quality  = qwen3-embedding:8b-q8_0, 4096d (MTEB top; biggest memory
+#            and per-chunk bytes).
+# All three are MRL-trained (front-slice + L2 renorm is sound), so the
+# research arm's 1024-d slice stays valid for every preset.
+EMBEDDING_PRESETS: dict[str, dict[str, object]] = {
+    "fast": {
+        "model": "qwen3-embedding:0.6b",
+        "dimensions": 1024,
+        "batch_size": 64,
+    },
+    "balanced": {
+        "model": "qwen3-embedding:4b",
+        "dimensions": EMBEDDING_DIMENSIONS,
+        "batch_size": 32,
+    },
+    "quality": {
+        "model": "qwen3-embedding:8b-q8_0",
+        "dimensions": 4096,
+        "batch_size": 128,
+    },
+}

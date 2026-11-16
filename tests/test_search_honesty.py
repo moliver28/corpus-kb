@@ -999,6 +999,8 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "queue.poll_seconds": int,
         "queue.stale_lease_seconds": int,
         "queue.max_attempts": int,
+        # Embedding named-lever control key (W: preset fast/balanced/quality).
+        "embedding.preset": str,
         "graph_policy.mode": str,
         "graph.duckdb_graph_backend": str,
     } == RUNTIME_CONFIG_KEYS
