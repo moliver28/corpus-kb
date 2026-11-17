@@ -51,9 +51,14 @@ class _Projections:
 
 async def startup_duckdb(cfg: dict[str, Any], conn_str: str) -> dict[str, Any]:
     """Start the full server stack on one DuckDB file behind the gateway."""
+    from corpus_kb._setup.version_guard import assert_store_supported
     from corpus_kb.domain.application import get_app
     from corpus_kb.storage.duckdb_rag import DuckDbRagBackend
     from corpus_kb.storage.gateway import DuckDbGateway
+
+    # Boot guard (W5-a): a store NEWER than this code refuses, typed,
+    # before the gateway opens; a fresh or older file proceeds unchanged.
+    await assert_store_supported(conn_str, "duckdb")
 
     gateway = await DuckDbGateway.connect(conn_str)
     # The event store is the SQLite recorder file BESIDE the .duckdb file —

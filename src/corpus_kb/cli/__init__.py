@@ -9,23 +9,15 @@ from __future__ import annotations
 import typer
 
 # Zero-drift Wave 3B split: the research/coding/codebook commands live in
-# cli_research* / cli_coding (the 250-line limit per file), the shared CLI
-# plumbing in cli_support (_run_async, the approval boundary,
-# the canonical tenant id from contracts.model). None of them imports
-# corpus_kb.cli, so these imports stay acyclic. cli.py re-exports the moved
-# helper names so tests and cli_release keep their import paths.
+# cli_research* / cli_coding, the shared CLI plumbing in cli_support. None
+# of them imports corpus_kb.cli, so these imports stay acyclic; cli.py
+# re-exports the moved helper names so tests and cli_release keep paths.
 from corpus_kb.cli.cli_coding import codebook_app, coding_app
 
-# Stage-5 ingest front door (top-level corpus-kb ingest / ingest-status /
-# ingest-reembed): the commands live in cli_ingest.py, which imports
-# corpus_kb.cli only lazily (inside functions), so this import is acyclic.
+# Stage-5 ingest front door (top-level ingest commands; lazy corpus_kb.cli import).
 from corpus_kb.cli.cli_ingest import register as register_ingest_commands
 
-# Operation inventory (Wave 2 zero-drift): `corpus-kb operations` emits the
-# machine-readable catalogue (contracts/) — surfaces, params, envelope keys,
-# error map — plus, with --openapi, the generated HTTP spec. cli_operations
-# never imports corpus_kb.cli (it registers via the function below), so this
-# import is acyclic.
+# Operation inventory (Wave 2): `corpus-kb operations` emits the catalogue.
 from corpus_kb.cli.cli_operations import register as register_operations
 
 # Release lifecycle group (U5, P7): the commands live in cli_release.py (the
@@ -191,6 +183,12 @@ register_demo_kb(app)
 from corpus_kb.cli.cli_migrate import register as register_migrate_data  # noqa: E402
 
 register_migrate_data(app)
+
+# Self-update front door (W5-a): the recorded lifecycle exemption like
+# cli_migrate (one handler in _setup/update_run.py, no registry op).
+from corpus_kb.cli.cli_update import register as register_update  # noqa: E402
+
+register_update(app)
 
 
 def _version_callback(value: bool) -> None:

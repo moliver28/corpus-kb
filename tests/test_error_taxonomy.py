@@ -40,7 +40,9 @@ from corpus_kb.errors import (
     MigrationMissingError,
     NoMethodMatchesError,
     NotFoundError,
+    PackageNotPublishedError,
     QuestionTooShortError,
+    StoreNewerError,
     ValidationError,
     WriteRefusedError,
     error_status,
@@ -57,6 +59,8 @@ TAXONOMY = [
     DatabaseUnavailableError,
     MigrationMissingError,
     DependencyMissingError,
+    StoreNewerError,
+    PackageNotPublishedError,
     InternalError,
 ]
 

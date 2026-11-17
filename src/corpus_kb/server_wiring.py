@@ -335,11 +335,7 @@ async def startup(
     _setup_tracing(cfg)
 
     # 1. Database backend: read ONCE, then wire per ecosystem (program §3.4).
-    #    The asyncpg pool exists only on the Postgres path and the event
-    #    store is keyed on (backend, DSN). The remaining handlers are still
-    #    Postgres-only (phases D/E own those ports), so a duckdb selection
-    #    is refused here — typed, with the fix — instead of failing deep
-    #    inside a pool-only handler.
+    #    A duckdb selection is refused here — typed — not deep in a pool-only handler.
     db_cfg = cfg.get("database", {})
     conn_str = db_cfg.get("connection_string", "") or os.environ.get("CORPUS_KB_DATABASE_URL", "")
     if not conn_str:
@@ -349,9 +345,7 @@ async def startup(
         )
     backend = str(db_cfg.get("backend") or "postgres")
     if backend == "duckdb":
-        # Research ecosystem on the gateway (phase E sp-research-port):
-        # SQLite event store + gateway-built projections; handlers whose
-        # port has not landed stay unwired and fail typed per route.
+        # Research ecosystem on the gateway (phase E sp-research-port).
         from corpus_kb.server_wiring_duckdb import startup_duckdb
 
         return await startup_duckdb(cfg, conn_str)
@@ -360,6 +354,12 @@ async def startup(
             "The server backend must be postgres or duckdb.",
             remediation="Set database.backend to postgres or duckdb.",
         )
+
+    # Boot guard (W5-a): a store NEWER than this code refuses, typed,
+    # before anything wires; older or fresh stores proceed unchanged.
+    from corpus_kb._setup.version_guard import assert_store_supported
+
+    await assert_store_supported(conn_str, backend)
 
     pool = await initialize_postgres_pool(conn_str)
 
