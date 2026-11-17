@@ -3,19 +3,28 @@
 ONE definition of the steps the batch composer (``ask/composer.py``) and
 the streaming twin (``ask/streaming.py``) both run, so the two shapes
 make the SAME retrieval call, apply the SAME citation rule, and produce
-the SAME verification verdicts. No generation lives here — the composer
-owns the generation seam; this module owns everything on both sides of
-it.
+the SAME verification verdicts. Verification runs per claim against ONLY
+the chunks the claim cites, and claims that share one citation set share
+one judge call.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from difflib import SequenceMatcher
 from typing import Protocol, cast
 from uuid import UUID
 
 from corpus_kb.domain.models import SearchQuery, SearchResult
 from corpus_kb.handlers.query_integrity import SearchEnvelope
+
+EntailFn = Callable[..., tuple[str, float]]
+BatchEntailFn = Callable[..., list[tuple[str, float]]]
+
+# A claim with no [n] markers may still match the answer sentence it came
+# from. Below this overlap bar the match is a guess, so the claim falls
+# back to the full evidence block (the honest default).
+SENTENCE_MATCH_MIN_RATIO = 0.5
 
 
 class SearchHandler(Protocol):
@@ -72,38 +81,151 @@ def abstain() -> dict[str, object]:
 def verify_claims(
     judge: object, answer: str, sources: list[dict[str, object]]
 ) -> dict[str, object]:
-    """Decompose + entail per claim; abstain without a judge or claims.
+    """Decompose + entail each claim against its cited chunks only.
 
-    Mirrors the judge's own never-raises contract: a broken judge yields
-    an abstention, never a fabricated groundedness score.
+    The [n] markers name the chunks a claim is answerable from, so the
+    entailment call sends only those texts instead of the whole evidence
+    block. A claim with no markers inherits the citations of the answer
+    sentence it matches best; a claim that cites nothing falls back to
+    the full block. Claims that share one citation set share one judge
+    call, and verdicts always come back in claim order. Mirrors the
+    judge's never-raises contract: a broken judge yields an abstention,
+    never a fabricated groundedness score.
     """
     if judge is None:
         return abstain()
     decompose = getattr(judge, "decompose", None)
-    entail = getattr(judge, "entail", None)
-    if not callable(decompose) or not callable(entail):
+    raw_entail = getattr(judge, "entail", None)
+    raw_batch = getattr(judge, "entail_batch", None)
+    entail_fn = cast("EntailFn | None", raw_entail if callable(raw_entail) else None)
+    batch_fn = cast("BatchEntailFn | None", raw_batch if callable(raw_batch) else None)
+    if not callable(decompose) or (entail_fn is None and batch_fn is None):
         return abstain()
-    entail_fn = cast("Callable[..., tuple[str, float]]", entail)
     try:
         claims = decompose(answer)
     except Exception:
         return abstain()
     if not isinstance(claims, list) or not claims:
         return abstain()
-    cited = [str(source["text"]) for source in sources]
-    verdicts: list[dict[str, object]] = []
-    for claim in claims:
-        try:
-            label, confidence = entail_fn(str(claim), cited)
-        except Exception:
-            label, confidence = "unsupported", 0.0
-        verdicts.append({"claim": str(claim), "label": str(label), "confidence": float(confidence)})
+    claim_texts = [str(claim) for claim in claims]
+    kept = _cited_sentences(answer, len(sources))
+    cited_sets = [_claim_citations(claim, kept, len(sources)) for claim in claim_texts]
+    groups: dict[tuple[int, ...], list[int]] = {}
+    for position, refs in enumerate(cited_sets):
+        groups.setdefault(refs, []).append(position)
+    verdicts: list[dict[str, object]] = [
+        {"claim": claim, "label": "unsupported", "confidence": 0.0} for claim in claim_texts
+    ]
+    for refs, positions in groups.items():
+        evidence = _evidence_slice(refs, sources)
+        labels = _judge_group(batch_fn, entail_fn, [claim_texts[p] for p in positions], evidence)
+        for position, (label, confidence) in zip(positions, labels, strict=False):
+            verdicts[position] = {
+                "claim": claim_texts[position],
+                "label": label,
+                "confidence": confidence,
+            }
     entailed = sum(1 for verdict in verdicts if verdict["label"] == "entailed")
     return {
         "groundedness": entailed / len(verdicts),
         "verdicts": verdicts,
         "abstained": False,
     }
+
+
+def _cited_sentences(answer: str, n_sources: int) -> list[dict[str, object]]:
+    """The answer's cited sentences, via the ONE citation rule (the same
+    ``cite_sentences`` filter that built the answer re-derives them)."""
+    from corpus_kb.research.notebook import cite_sentences
+
+    return cite_sentences(answer, n_sources)
+
+
+def _claim_citations(claim: str, kept: list[dict[str, object]], n_sources: int) -> tuple[int, ...]:
+    """The validated evidence indexes one claim is answerable from: its
+    own [n] markers first (invalid ones ignored), else the citations of
+    the sentence it matches best. Empty means "cites nothing".
+    """
+    from corpus_kb.research.notebook import cite_sentences
+
+    refs: set[int] = set()
+    for piece in cite_sentences(claim, n_sources):
+        raw = piece.get("citations")
+        if isinstance(raw, list):
+            refs.update(int(index) for index in raw)
+    if refs:
+        return tuple(sorted(refs))
+    best = _sentence_citations(claim, kept)
+    return tuple(best) if best else ()
+
+
+def _sentence_citations(claim: str, sentences: list[dict[str, object]]) -> list[int] | None:
+    """The best-matching answer sentence's citations, or None below the
+    SENTENCE_MATCH_MIN_RATIO bar (a guessed mapping would quietly widen
+    or narrow a claim's evidence). Ties keep the earliest sentence."""
+    best: list[int] | None = None
+    best_ratio = SENTENCE_MATCH_MIN_RATIO
+    for sentence in sentences:
+        ratio = SequenceMatcher(None, claim.lower(), str(sentence["text"]).lower()).ratio()
+        if ratio > best_ratio or (best is None and ratio >= best_ratio):
+            best_ratio = max(best_ratio, ratio)
+            raw = sentence.get("citations")
+            best = [int(index) for index in raw] if isinstance(raw, list) else []
+    return best
+
+
+def _evidence_slice(refs: tuple[int, ...], sources: list[dict[str, object]]) -> list[str]:
+    """The cited chunks' texts; the full block when a claim cites nothing."""
+    if not refs:
+        return [str(source["text"]) for source in sources]
+    return [str(sources[index - 1]["text"]) for index in refs if 0 < index <= len(sources)]
+
+
+def _judge_group(
+    batch_fn: BatchEntailFn | None,
+    entail_fn: EntailFn | None,
+    claims: list[str],
+    evidence: list[str],
+) -> list[tuple[str, float]]:
+    """One citation group's verdicts: batch when offered, per claim otherwise.
+
+    Both paths honor the never-raises contract: a failure anywhere, or a
+    batch answer with the wrong length, degrades the affected claims to
+    ("unsupported", 0.0). The result is always one verdict per claim,
+    in the group's claim order.
+    """
+    if batch_fn is not None:
+        try:
+            results = batch_fn(list(claims), list(evidence))
+        except Exception:
+            results = None
+        if isinstance(results, list) and len(results) == len(claims):
+            return [_normalize_pair(entry) for entry in results]
+        return [("unsupported", 0.0)] * len(claims)
+    if entail_fn is None:
+        return [("unsupported", 0.0)] * len(claims)
+    verdicts: list[tuple[str, float]] = []
+    for claim in claims:
+        try:
+            label, confidence = entail_fn(claim, evidence)
+        except Exception:
+            label, confidence = "unsupported", 0.0
+        verdicts.append(_normalize_pair((label, confidence)))
+    return verdicts
+
+
+def _normalize_pair(entry: object) -> tuple[str, float]:
+    """One duck-typed verdict, hardened against junk into an honest pair."""
+    if isinstance(entry, (tuple, list)) and len(entry) == 2:
+        label, confidence = entry
+        try:
+            score = float(str(confidence))
+        except (TypeError, ValueError):
+            return "unsupported", 0.0
+        if not 0.0 <= score <= 1.0:
+            score = 0.0
+        return str(label), score
+    return "unsupported", 0.0
 
 
 async def verify_with_span(
