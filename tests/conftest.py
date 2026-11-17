@@ -37,6 +37,22 @@ def _pin_local_tests_package() -> None:
 _pin_local_tests_package()
 
 
+def _bound_eventsourcing_pool_timeout() -> None:
+    """Bound the eventsourcing pool acquire wait through its env knob.
+
+    The eventsourcing Postgres store builds a psycopg pool whose acquire
+    wait defaults to 30 seconds. A host can answer on the database port
+    and never complete the handshake. Every app construction then parks
+    for the full default, and the suite hangs (issue #429). The bound
+    turns that wait into a typed psycopg_pool.PoolTimeout quickly. The
+    value matches the asyncpg timeout the pg_pool fixture already uses.
+    """
+    os.environ.setdefault("POSTGRES_CONNECT_TIMEOUT", "5")
+
+
+_bound_eventsourcing_pool_timeout()
+
+
 # Markers are registered in ONE place: [tool.pytest.ini_options].markers in
 # pyproject.toml (issue 235). This hook only SKIPS on the capability checks.
 
@@ -103,24 +119,45 @@ def _ollama_base_url() -> str:
     return str(base) if base else "http://localhost:11434"
 
 
+def _ollama_model() -> str:
+    """The configured Ollama model name (``embedding.model``)."""
+    from corpus_kb.config import load_config
+
+    try:
+        embedding = load_config().get("embedding")
+    except Exception:
+        return "qwen3-embedding:4b"
+    model = embedding.get("model") if isinstance(embedding, dict) else None
+    return str(model) if model else "qwen3-embedding:4b"
+
+
 @functools.lru_cache(maxsize=1)
 def _ollama_available() -> bool:
-    """One cached ``/api/version`` probe against the configured Ollama.
+    """One cached ``/api/tags`` probe against the configured Ollama.
 
     The ``requires_ollama`` marker (issue #340) skips live-model legs on a
     host where Ollama is down, instead of letting them fail on unreachable
-    embeds. The probe is cached, so one HTTP hit serves the whole session.
-    The probe rides the tests/live_services.py guard: a base that is not a
-    loopback service answers "not available" (skip), never a remote hit.
+    embeds. Since issue #429 the probe also checks the configured model: a
+    port that answers but does not serve ``embedding.model`` dead-ends
+    every embed call, so it counts as not ready. The probe is cached, so
+    one HTTP hit serves the whole session. The probe rides the
+    tests/live_services.py guard: a base that is not a loopback service
+    answers "not available" (skip), never a remote hit.
     """
-    from tests.live_services import loopback_probe_status
+    from tests.live_services import loopback_probe_json, model_names
 
-    status = loopback_probe_status(_ollama_base_url(), "/api/version", timeout=2.0)
-    return status == 200
+    body = loopback_probe_json(_ollama_base_url(), "/api/tags", timeout=2.0)
+    if body is None:
+        return False
+    return _ollama_model() in model_names(body)
 
 
 def _ollama_skip_reason() -> str:
-    return f"Ollama is not reachable at {_ollama_base_url()}. This test is marked requires_ollama."
+    return (
+        f"Ollama is not usable at {_ollama_base_url()}. "
+        f"Pull the configured model with: ollama pull {_ollama_model()}. "
+        "This test is marked requires_ollama."
+    )
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:

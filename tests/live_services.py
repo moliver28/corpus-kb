@@ -16,25 +16,25 @@ import socket
 import urllib.request
 from urllib.parse import urlsplit
 
-__all__ = ["loopback_probe_status"]
+__all__ = ["loopback_probe_json", "loopback_probe_status", "model_names"]
 
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
 
 
-def loopback_probe_status(
+def _guarded_probe(
     base: str,
     path: str,
     *,
     method: str = "GET",
     payload: dict[str, object] | None = None,
     timeout: float,
-) -> int | None:
-    """The HTTP status of one probe request, or ``None`` when not usable.
+) -> tuple[int, bytes] | None:
+    """One guarded probe request; ``(status, body)`` or ``None``.
 
     ``path`` starts with a slash and stays inside the validated origin.
     ``payload`` rides as one JSON body. ``None`` covers a refused base
-    and a failed request; callers answer "skip".
+    and a failed request (urllib folds non-2xx answers into ``OSError``).
     """
     try:
         parsed = urlsplit(base)
@@ -63,6 +63,53 @@ def loopback_probe_status(
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status
+            return response.status, response.read()
     except OSError:
         return None
+
+
+def loopback_probe_status(
+    base: str,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, object] | None = None,
+    timeout: float,
+) -> int | None:
+    """The HTTP status of one probe request, or ``None`` when not usable."""
+    outcome = _guarded_probe(base, path, method=method, payload=payload, timeout=timeout)
+    if outcome is None:
+        return None
+    return outcome[0]
+
+
+def loopback_probe_json(base: str, path: str, *, timeout: float) -> object | None:
+    """The JSON body of one guarded GET, or ``None`` when not usable.
+
+    A base that fails the guard, a failed request, a non-200 answer, or
+    an unreadable body all answer ``None``. Callers treat that as "the
+    service is not usable here".
+    """
+    outcome = _guarded_probe(base, path, timeout=timeout)
+    if outcome is None or outcome[0] != 200:
+        return None
+    try:
+        return json.loads(outcome[1].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+
+
+def model_names(body: object) -> set[str]:
+    """Model names off an ``/api/tags`` payload; unreadable shapes yield {}."""
+    if not isinstance(body, dict):
+        return set()
+    models = body.get("models")
+    if not isinstance(models, list):
+        return set()
+    names: set[str] = set()
+    for entry in models:
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            if isinstance(name, str):
+                names.add(name)
+    return names
