@@ -17,8 +17,11 @@ ENTITY_SPECS: dict[str, _Spec] = {
         "list_entities",
         opts=(
             _Opt("entity_type", "str"),
-            _Opt("limit", "int", 100),
-            _Opt("offset", "int", 0),
+            # Counts ride raw on purpose: the shared window-count guard
+            # (tools._count_input) owns the canonical rule, so the socket
+            # arm answers the same typed message the other surfaces answer.
+            _Opt("limit", "raw"),
+            _Opt("offset", "raw"),
         ),
     ),
 }

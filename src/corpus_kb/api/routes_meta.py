@@ -71,14 +71,19 @@ async def list_documents(request: Request) -> JSONResponse:
 
 @route_errors
 async def list_entities(request: Request) -> JSONResponse:
-    """GET /api/entities — list entities, optionally filtered by type."""
+    """GET /api/entities — list entities, optionally filtered by type.
+
+    Counts ride the shared window-count guard (tools._count_input), so
+    the HTTP arm answers the same typed rule the other surfaces answer.
+    """
     from corpus_kb.handlers.query_wiring import get_query_handler
+    from corpus_kb.tools._count_input import limit_arg, offset_arg
 
     query = ListEntitiesQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=request.query_params.get("entity_type"),
-        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
-        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
+        limit=limit_arg(request.query_params.get("limit")),
+        offset=offset_arg(request.query_params.get("offset")),
     )
     handler = get_query_handler()
     results = await handler.handle_list_entities(query)
