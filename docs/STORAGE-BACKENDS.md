@@ -85,6 +85,10 @@ Every commit fsyncs the write-ahead log. Many tiny autocommit writes pay that co
 
 DuckDB shows a progress bar when no terminal is attached. Server code turns it off after connect (`storage/duckdb_gateway.py`, `storage/graph_factory.py`). Leave it off; the bar only adds log noise.
 
+### The read pool
+
+Reads run on a small pool of duplicated cursors (`storage/duckdb_read_pool.py`, issue #471). A cursor attaches to the open database instance, so the file keeps exactly one owner. Writes and transaction scopes keep the primary connection. A read outside a scope sees committed data only. A read inside a scope sees that scope's own writes. A failed read closes its cursor; the pool regrows it.
+
 ### Memory
 
 DuckDB caps query memory (`memory_limit`) and spills to disk under it. Large blocking operators at scale are its documented failure mode. Stay inside the ~100k-chunk ceiling; grow into Postgres instead.
@@ -138,6 +142,7 @@ The storage seam lives in `src/corpus_kb/storage/`. The modules most people touc
 | `graph_factory.py` | Builds the graph store from `graph.backend` config |
 | `age_graph_store.py` | Apache AGE openCypher graph store |
 | `duckdb_gateway.py` | DuckDB file-driver gateway |
+| `duckdb_read_pool.py` | Bounded read-cursor pool over the gateway's open instance |
 | `duckpgq.py` | DuckPGQ graph traversal (opt-in behind `graph.duckdb_graph_backend`) |
 | `duckdb_rag.py` | DuckDB `RagBackend` arm over the `SqlGateway` |
 | `rag_backend.py` | The `RagBackend` Protocol (LlamaIndex and DuckDB arms implement it) |

@@ -643,3 +643,9 @@ session_ordinal
 # reads the in-process dropped-write flag; the reader is the telemetry
 # test, outside the vulture gate's src-only scan.
 suppression_flag
+
+# DuckDB read-pool introspection hooks (issue #471): the pool's health
+# counters are read by tests/test_duckdb_read_pool.py; vulture scans
+# src/ only and cannot see that reach.
+live
+closed_count
