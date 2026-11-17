@@ -8,8 +8,9 @@ orchestrators and the ``install_module.*`` test patches keep working.
 Patch seam: the tests patch ``corpus_kb._setup.install.confirm`` /
 ``install.setup_compose_pull`` / ``install.setup_pull_models`` /
 ``install._verify_postgres_image`` and drive setup end to end. Those
-collaborators therefore resolve through the install module at CALL
-time (the ``_*_fn`` helpers mirror ``setup_stack._confirm_fn``).
+collaborators resolve through the install module at CALL time, through
+the dynamic resolver in ``setup_common`` (the ``_*_fn`` helpers mirror
+``setup_stack._confirm_fn``).
 """
 
 from __future__ import annotations
@@ -22,44 +23,35 @@ from io import StringIO
 from typing import TYPE_CHECKING, Any, TextIO
 
 from corpus_kb._setup.install_state import save_install_state
+from corpus_kb._setup.setup_common import install_surface
 
 if TYPE_CHECKING:
-    from corpus_kb._setup.install import _SetupPlan
+    from corpus_kb._setup.setup_plan import _SetupPlan
 
 
 def _confirm_fn() -> Callable[[str], bool]:
     """Resolve ``confirm`` from the install module (test patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.confirm
+    return install_surface().confirm
 
 
 def _consents_fn() -> Callable[[], list[tuple[str, bool]]]:
     """Resolve ``collect_model_consents`` from the install module (patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.collect_model_consents
+    return install_surface().collect_model_consents
 
 
 def _compose_pull_fn() -> Callable[..., int]:
     """Resolve ``setup_compose_pull`` from the install module (patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.setup_compose_pull
+    return install_surface().setup_compose_pull
 
 
 def _pull_models_fn() -> Callable[..., int]:
     """Resolve ``setup_pull_models`` from the install module (patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.setup_pull_models
+    return install_surface().setup_pull_models
 
 
 def _verify_image_fn() -> Callable[[str, bool], None]:
     """Resolve ``_verify_postgres_image`` from the install module (patch seam)."""
-    from corpus_kb._setup import install
-
-    return install._verify_postgres_image
+    return install_surface()._verify_postgres_image
 
 
 class _StageRouter(io.TextIOBase):

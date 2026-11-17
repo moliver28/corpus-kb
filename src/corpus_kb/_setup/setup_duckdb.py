@@ -27,6 +27,7 @@ from typing import Any
 
 from corpus_kb._setup.config_writeback import config_write_target, write_database_pair
 from corpus_kb._setup.migrate import run_migrations
+from corpus_kb._setup.setup_common import install_surface
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, events_sidecar_path
 
 #: The default analytics file, relative to the working directory.
@@ -182,7 +183,7 @@ def print_duckdb_plan(dsn: str, sidecar: str, config_path: Path, extra_needed: b
 
 async def setup_duckdb_cmd(config: dict[str, Any], dry_run: bool, dsn_arg: str = "") -> int:
     """The ``setup --backend duckdb`` flow (§9: setup without Docker)."""
-    from corpus_kb._setup import install  # the confirm seam (tests patch install.confirm)
+    install = install_surface()  # the confirm seam (tests patch install.confirm)
 
     dsn = resolve_duckdb_dsn(config, dsn_arg)
     try:

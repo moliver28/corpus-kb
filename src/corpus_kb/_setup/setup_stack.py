@@ -9,7 +9,8 @@ keep working.
 Patch seam: the tests patch ``corpus_kb._setup.install.confirm`` /
 ``install.check_extensions`` and then call some of these functions
 DIRECTLY (tests/test_f3_fixes.py). Consumers therefore resolve those two
-collaborators through the install module at CALL time.
+collaborators through the install module at CALL time, through the
+dynamic resolver in ``setup_common``.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from corpus_kb._setup import setup_assets
+from corpus_kb._setup.setup_common import install_surface
 from corpus_kb._setup.setup_steps import (
     EXTENSION_REMEDIATION,
     EXTENSIONS,
@@ -33,16 +35,12 @@ DEFAULT_POSTGRES_IMAGE = "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
 
 def _confirm_fn() -> Callable[[str], bool]:
     """Resolve ``confirm`` from the install module (test patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.confirm
+    return install_surface().confirm
 
 
 def _check_extensions_fn() -> Callable[[str], Awaitable[ExtensionMap | None]]:
     """Resolve ``check_extensions`` from the install module (test patch seam)."""
-    from corpus_kb._setup import install
-
-    return install.check_extensions
+    return install_surface().check_extensions
 
 
 def _find_compose_command() -> str | None:

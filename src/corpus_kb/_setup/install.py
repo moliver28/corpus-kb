@@ -19,6 +19,11 @@ historical ``install.<name>`` surface (CLI wiring, tests that patch
   setup_stack.py      docker stack, image verification, extension/model steps
   doctor_report.py    doctor text report + doctor --json report
   setup_pull_pair.py  stdout router + the concurrent pull pair stages
+
+The setup leaves resolve the patched collaborators through
+``setup_common.install_surface``, which loads this module dynamically.
+That keeps the module graph acyclic (issue #472). The ``_SetupPlan``
+record lives in ``setup_plan.py``.
 """
 
 from __future__ import annotations
@@ -34,7 +39,6 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any
 
 import psutil
@@ -61,7 +65,7 @@ from corpus_kb._setup.profiles import (
     _detect_gpu_vram_gb,
     load_installer_profiles,
 )
-from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+from corpus_kb._setup.setup_plan import _SetupPlan, setup_print_dry_run_steps
 from corpus_kb._setup.setup_pull_pair import _run_pull_pair, _verify_image_before_pulls
 from corpus_kb._setup.setup_pulls import (
     collect_model_consents,
@@ -284,20 +288,6 @@ async def _run_phase(
         completed.append(name)
         save_install_state(state, config)
     return exit_code
-
-
-@dataclass
-class _SetupPlan:
-    """Resolved context for one ``corpus-kb setup`` run (checkpointed)."""
-
-    state: dict[str, Any]
-    completed: list[str]
-    conn_str: str
-    profile: str
-    recommended_model: str
-    compose_cmd: str | None
-    postgres_image: str
-    skip_image_verify: bool
 
 
 def _prepare_setup_plan(config: dict[str, Any], fresh: bool, skip_image_verify: bool) -> _SetupPlan:
