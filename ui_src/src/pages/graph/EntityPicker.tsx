@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/graph";
 import { isEntitiesEnvelope } from "./shapes";
@@ -59,11 +60,11 @@ export default function EntityPicker({
     setPicked(null);
   }
 
-  // One GET on mount, one more per reload bump (a fresh write makes a
-  // new entity pickable); useOp's run holds a stable identity.
-  useEffect(() => {
+  // One read at mount time, one more per reload bump (a fresh write
+  // makes a new entity pickable).
+  useMountRead(() => {
     void run(undefined, { limit: String(ENTITY_CAP + 1), offset: "0" });
-  }, [run, reloadKey]);
+  }, reloadKey);
 
   // The server search rides the keystrokes, debounced; clearing the box
   // is the first-window list again.

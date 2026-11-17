@@ -1,11 +1,11 @@
 import { Card, Skeleton } from "antd";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
 import TopicsTable from "../../components/TopicsTable";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/review";
 import { isTopicsEnvelope, topicRows } from "./shapes";
@@ -16,13 +16,8 @@ import { isTopicsEnvelope, topicRows } from "./shapes";
  */
 export default function TopicsCard() {
   const topics = useOp("topics-list");
-  const { run: topicsRun } = topics;
 
-  // One GET on mount. useOp's run holds a stable identity, so the
-  // [topicsRun] dependency never re-fires the effect.
-  useEffect(() => {
-    void topicsRun();
-  }, [topicsRun]);
+  useMountRead(topics.run);
 
   function refresh(): void {
     topics.reset();

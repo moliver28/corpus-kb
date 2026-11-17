@@ -1,12 +1,13 @@
 import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/review";
 import AssignmentsTable from "./AssignmentsTable";
@@ -30,17 +31,12 @@ export default function ReviewQueueCard() {
   const [decided, setDecided] = useState(false);
 
   const assignments = useOp("coding-assignments");
-  const { run: assignmentsRun } = assignments;
   // One manifest row per decision kind (both post /api/review/execute);
   // the body's decision value stays the server's contract either way.
   const accept = useOp("review-accept");
   const overrideOp = useOp("review-override");
 
-  // One GET on mount. useOp's run holds a stable identity, so the
-  // [assignmentsRun] dependency never re-fires the effect.
-  useEffect(() => {
-    void assignmentsRun();
-  }, [assignmentsRun]);
+  useMountRead(assignments.run);
 
   function refresh(): void {
     assignments.reset();

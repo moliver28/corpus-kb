@@ -1,9 +1,10 @@
 import { Button, Card, Table, Tabs, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { dateText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/analyze";
 import LabelingGoldPanel from "./LabelingGoldPanel";
@@ -73,9 +74,7 @@ function LabelsPane() {
     reset();
     void run();
   }, [run, reset]);
-  useEffect(() => {
-    void run();
-  }, [run]);
+  useMountRead(run);
   const result = labels.result;
   return (
     <OpBody result={result} ok={result !== null && isLabelsEnvelope(result.data)} retry={load} opId="labeling-list">
@@ -109,9 +108,7 @@ function LfsPane() {
     reset();
     void run();
   }, [run, reset]);
-  useEffect(() => {
-    void run();
-  }, [run]);
+  useMountRead(run);
   const result = lfs.result;
   return (
     <OpBody result={result} ok={result !== null && isLfsEnvelope(result.data)} retry={load} opId="labeling-lfs">

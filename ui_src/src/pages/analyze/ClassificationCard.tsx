@@ -1,10 +1,11 @@
 import { Button, Card, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { percentText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/analyze";
 import { isPredictionsEnvelope } from "./shapes";
@@ -61,9 +62,7 @@ export default function ClassificationCard() {
     reset();
     void run();
   }, [run, reset]);
-  useEffect(() => {
-    void run();
-  }, [run]);
+  useMountRead(run);
   const result = predictions.result;
   const data = result !== null && isPredictionsEnvelope(result.data) ? result.data : null;
   let body: ReactNode = null;
