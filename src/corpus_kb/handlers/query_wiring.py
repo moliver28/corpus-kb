@@ -53,9 +53,7 @@ def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> Any:
         # accessors), so a static class import would close a cycle.
         import importlib
 
-        handler_cls = importlib.import_module(
-            "corpus_kb.handlers.query_handler"
-        ).QueryHandler
+        handler_cls = importlib.import_module("corpus_kb.handlers.query_handler").QueryHandler
         _query_handler = handler_cls(pool)
     return _query_handler
 

@@ -1,6 +1,18 @@
-import { expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { test } from "@playwright/test";
+
+// A card scoped by its own title node, never by the card body text: the
+// old `filter({ hasText })` form matched a case-insensitive substring of
+// the WHOLE card, so "Entities" also matched the "Link two entities"
+// card and assertions polled three cards instead of one (issue #425).
+// The anchored title regex is the exact card heading, so one card
+// matches and the graph legs poll only the table they mean to read.
+function cardByTitle(page: Page, title: RegExp): Locator {
+  return page
+    .locator(".ant-card")
+    .filter({ has: page.locator(".ant-card-head-title").filter({ hasText: title }) });
+}
 
 // The SPA smoke (program Task 9): a REAL corpus-kb server on a
 // throwaway database serves /app/ with the demo corpus preloaded.
@@ -200,8 +212,8 @@ test.describe("SPA smoke on a live server", () => {
     // three minutes, not the suite-wide 15 (P3-5).
     test.setTimeout(180_000);
     await page.goto("/app/#/graph");
-    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
-    const createForm = page.locator(".ant-card").filter({ hasText: "Create an entity" });
+    const entities = cardByTitle(page, /^Entities$/);
+    const createForm = cardByTitle(page, /^Create an entity$/);
     // CREATE: two entities through the form; each ok banner names the
     // save and the window re-reads (the write op is add-entity).
     for (const name of [first, second]) {
@@ -238,7 +250,7 @@ test.describe("SPA smoke on a live server", () => {
     const openPicker = page.locator(
       ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
     );
-    const relation = page.locator(".ant-card").filter({ hasText: "Link two entities" });
+    const relation = cardByTitle(page, /^Link two entities$/);
     // One pick = open the picker, then click the option. The picker
     // re-reads on open, and a read landing mid-click replaces the
     // option node, so one click can pend forever; the bounded retry
@@ -284,7 +296,7 @@ test.describe("SPA smoke on a live server", () => {
     test.setTimeout(180_000);
     const renamed = `${first}-renamed`;
     await page.goto("/app/#/graph");
-    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    const entities = cardByTitle(page, /^Entities$/);
     await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
     await entities.getByPlaceholder("Only this type").press("Enter");
     const row = entities.getByRole("row", { name: new RegExp("^" + first) });
