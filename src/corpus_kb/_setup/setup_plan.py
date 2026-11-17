@@ -1,15 +1,32 @@
-"""Setup dry-run plan printer (zero-drift split of _setup/install.py).
+"""Setup plan record and dry-run printer (zero-drift split of _setup/install.py).
 
 Renders the exact steps ``corpus-kb setup --dry-run`` prints. Pure output:
-no mutation, no subprocess, no database access.
+no mutation, no subprocess, no database access. The ``_SetupPlan`` record
+lives here too (issue #472): ``setup_pull_pair`` annotates with it without
+importing the install module.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from corpus_kb._setup.install_state import DEFAULT_CONFIG_PATH, INSTALL_PHASES
 from corpus_kb._setup.setup_steps import SETUP_REQUIRED_MODELS
+
+
+@dataclass
+class _SetupPlan:
+    """Resolved context for one ``corpus-kb setup`` run (checkpointed)."""
+
+    state: dict[str, Any]
+    completed: list[str]
+    conn_str: str
+    profile: str
+    recommended_model: str
+    compose_cmd: str | None
+    postgres_image: str
+    skip_image_verify: bool
 
 
 def _step(

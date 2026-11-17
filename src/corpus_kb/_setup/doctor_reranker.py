@@ -19,7 +19,7 @@ from typing import Any, cast
 
 import httpx
 
-from corpus_kb._setup.doctor_research import (
+from corpus_kb._setup.doctor_checks import (
     STATUS_OK,
     STATUS_WARN,
     ResearchCheck,

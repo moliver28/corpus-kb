@@ -9,9 +9,9 @@
   "max_file_lines": {
     "scripts/run_ner_promotion.py": 295,
     "src/corpus_kb/_setup/doctor_env.py": 282,
-    "src/corpus_kb/_setup/doctor_research.py": 784,
-    "src/corpus_kb/_setup/install.py": 650,
-    "src/corpus_kb/_setup/setup_steps.py": 366,
+    "src/corpus_kb/_setup/doctor_research.py": 769,
+    "src/corpus_kb/_setup/install.py": 640,
+    "src/corpus_kb/_setup/setup_steps.py": 364,
     "src/corpus_kb/analysis/meta_build.py": 257,
     "src/corpus_kb/analysis/settings.py": 412,
     "src/corpus_kb/api/http.py": 315,

@@ -7,27 +7,36 @@ command plus a doc link - the "not applied (run setup)" pattern extended.
 
 The checks are also reused offline by tests: ``extras_checks`` and
 ``embedder_check`` are pure, and ``db_checks`` takes an open connection.
+
+The shared check record and status values live in ``doctor_checks.py``;
+this module re-exports them, so the historical
+``doctor_research.ResearchCheck`` imports keep working.
 """
 
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
 from typing import Any
 
 import asyncpg
 
+from corpus_kb._setup.doctor_checks import (
+    DOC_GETTING_STARTED,
+    DOC_RESEARCH,
+    SETUP_FIX,
+    STATUS_FAIL,
+    STATUS_INFO,
+    STATUS_OK,
+    STATUS_SKIPPED,
+    STATUS_WARN,
+    ResearchCheck,
+)
 from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.projections.research._common import DEFAULT_TENANT, RESEARCH_PROJECTION_NAME
 from corpus_kb.research.search_settings import (
     MIN_ITERATIVE_SCAN_VERSION,
     parse_pgvector_version,
 )
-
-DOC_GETTING_STARTED = "docs/getting-started.md"
-DOC_RESEARCH = "docs/research.md"
-
-SETUP_FIX = "corpus-kb setup"
 
 # U40/U20: the installed pgvector extension gates iterative-scan support.
 PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
@@ -83,31 +92,7 @@ OPTIONAL_EXTRAS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("ner", ("gliner2",), 'pip install -e ".[ner]"'),
 )
 
-STATUS_OK = "ok"
-STATUS_WARN = "warn"
-STATUS_FAIL = "fail"
-STATUS_INFO = "info"
-STATUS_SKIPPED = "skipped"
-
 DOC_RECONCILIATION = "docs/research/upgrade-reconciliation.md"
-
-
-@dataclass(frozen=True)
-class ResearchCheck:
-    """One doctor research check with its actionable remediation.
-
-    ``embedding_dimensions`` is the structured read of the configured
-    embedding width (issue #183): the detail string stays plain English,
-    machines read the field. ``None`` where the check does not probe a
-    width (or the config leaves it unset).
-    """
-
-    name: str
-    status: str
-    detail: str
-    fix: str = ""
-    doc: str = ""
-    embedding_dimensions: int | None = None
 
 
 def surface_parity_check() -> ResearchCheck:

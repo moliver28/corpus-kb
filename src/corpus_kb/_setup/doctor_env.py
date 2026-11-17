@@ -23,7 +23,7 @@ from typing import Any
 
 import asyncpg
 
-from corpus_kb._setup.doctor_research import (
+from corpus_kb._setup.doctor_checks import (
     DOC_GETTING_STARTED,
     STATUS_FAIL,
     STATUS_OK,
