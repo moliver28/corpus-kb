@@ -77,17 +77,10 @@ async def _serve_stdio() -> None:
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
             "configure database.connection_string in config.yaml."
         )
-    # Boot guard (W5-a): a store schema NEWER than this code refuses to
-    # serve — typed, before the pool opens. A fresh or older store
-    # proceeds unchanged.
+    # Boot guard (W5-a): a store NEWER than this code refuses, typed,
+    # before the pool opens; older or fresh stores proceed unchanged.
     backend = "duckdb" if conn_str.startswith("duckdb:") else "postgres"
-    try:
-        await assert_store_supported(conn_str, backend)
-    except (ConnectionError, OSError, asyncpg.PostgresError) as exc:
-        detail = str(exc) or type(exc).__name__
-        raise DatabaseUnavailableError(
-            f"Cannot reach the database to check the schema version: {detail}"
-        ) from exc
+    await assert_store_supported(conn_str, backend)
     try:
         pool = await open_pool_typed_store(conn_str)
     except Exception as exc:

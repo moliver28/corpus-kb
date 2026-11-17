@@ -89,7 +89,10 @@ def detect_flavor(
     if any(name in env_map for name in _PIPX_ENV_VARS):
         return InstallFlavor.PIPX
     exe = executable if executable is not None else sys.executable
-    if "pipx" in Path(exe).parts:
+    # Segment on BOTH separators: a Windows-style path string must still
+    # split on a POSIX interpreter (and the other way around).
+    segments = Path(exe.replace("\\", "/")).parts
+    if "pipx" in segments:
         return InstallFlavor.PIPX
     return InstallFlavor.PIP
 

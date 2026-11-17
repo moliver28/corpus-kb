@@ -27,7 +27,7 @@ from pathlib import Path
 import asyncpg
 
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
-from corpus_kb.errors import StoreNewerError
+from corpus_kb.errors import DatabaseUnavailableError, StoreNewerError
 
 
 @dataclass(frozen=True)
@@ -140,12 +140,20 @@ async def assert_store_supported(conn_str: str, backend: str) -> StoreVersionRep
 
     The one entry the serve paths call. Dispatches on the backend (or
     the DSN scheme), reads the applied set once, and compares it with
-    the packaged code set.
+    the packaged code set. An unreachable database becomes the typed
+    ``DatabaseUnavailableError`` here, so every serve path answers one
+    failure class without repeating the wrap.
     """
-    if backend == "duckdb" or conn_str.startswith(DUCKDB_DSN_PREFIX):
-        applied = await read_applied_duckdb(conn_str)
-    else:
-        applied = await read_applied_pg(conn_str)
+    try:
+        if backend == "duckdb" or conn_str.startswith(DUCKDB_DSN_PREFIX):
+            applied = await read_applied_duckdb(conn_str)
+        else:
+            applied = await read_applied_pg(conn_str)
+    except (ConnectionError, OSError, asyncpg.PostgresError) as exc:
+        detail = str(exc) or type(exc).__name__
+        raise DatabaseUnavailableError(
+            f"Cannot reach the database to check the schema version: {detail}"
+        ) from exc
     if applied is None:
         return None
     return check_store_not_newer(applied, code_migration_names())

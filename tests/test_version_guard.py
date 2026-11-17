@@ -257,7 +257,7 @@ async def test_duckdb_startup_refuses_a_newer_store(
     import corpus_kb._setup.version_guard as guard
     from corpus_kb.server_wiring_duckdb import startup_duckdb
 
-    async def refuse(_dsn: str) -> StoreVersionReport:
+    async def refuse(_conn: str, _backend: str) -> StoreVersionReport:
         raise StoreNewerError("The store is newer than this code.")
 
     opened: list[str] = []
@@ -265,11 +265,28 @@ async def test_duckdb_startup_refuses_a_newer_store(
     async def must_not_open(*_a: Any, **_kw: Any) -> None:
         opened.append("gateway")
 
-    monkeypatch.setattr(guard, "read_applied_duckdb", refuse)
+    monkeypatch.setattr(guard, "assert_store_supported", refuse)
     monkeypatch.setattr("corpus_kb.storage.gateway.DuckDbGateway.connect", must_not_open)
     with pytest.raises(StoreNewerError):
         await startup_duckdb({"database": {"backend": "duckdb"}}, "duckdb:///stub.duckdb")
     assert opened == [], "the guard must refuse before the gateway opens"
+
+
+async def test_guard_wraps_an_unreachable_database_as_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard boundary owns the wrap: one failure class per serve path."""
+    import corpus_kb._setup.version_guard as guard
+    from corpus_kb.errors import DatabaseUnavailableError
+
+    async def refuse(_dsn: str, **_kw: Any) -> list[str]:
+        raise ConnectionError()  # bare: the wrap must name the type
+
+    monkeypatch.setattr(guard, "read_applied_pg", refuse)
+    with pytest.raises(DatabaseUnavailableError) as excinfo:
+        await guard.assert_store_supported("postgresql://stub", "postgres")
+    assert "check the schema version" in str(excinfo.value)
+    assert "ConnectionError" in str(excinfo.value), "a bare message names its cause"
 
 
 def test_stdio_refuses_a_newer_store_with_exit_three(

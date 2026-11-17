@@ -52,9 +52,7 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "database_unavailable": (503, -32003, 3),
     "migration_missing": (503, -32004, 3),
     "dependency_missing": (503, -32005, 3),
-    # W5-a update/boot-guard failures. A store ahead of the code is a
-    # version conflict (the conflict triple) with the environment exit;
-    # a missing PyPI release is the dependency-missing triple.
+    # W5-a: store_newer = conflict triple; package_not_published = dependency triple.
     "store_newer": (409, -32002, 3),
     "package_not_published": (503, -32005, 3),
     "internal_error": (500, -32603, 1),
