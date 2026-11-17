@@ -54,6 +54,18 @@ _DDL = (
         UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
     )
     """,
+    # Migration 045 (issue #455): the store resolves ids through the alias
+    # table on every read, so the minimal schema carries it too. No FK —
+    # the DuckDB mirror skips it so the 041 rebuild stays replayable.
+    """
+    CREATE TABLE entity_id_aliases (
+        tenant_id VARCHAR NOT NULL,
+        alias_entity_id VARCHAR NOT NULL,
+        entity_id VARCHAR NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (tenant_id, alias_entity_id)
+    )
+    """,
 )
 
 # Diamond: a->b->d, a->c->d, plus the back edge d->a (cycle guard food).

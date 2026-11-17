@@ -98,6 +98,15 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
         " DuckDB 041 rebuilds entities without it. The cascade module owns"
         " the SET NULL action."
     ),
+    # -- entity_id_aliases.entity_id FK (issue #455): only the pg mirror
+    # -- declares it. DuckDB 041 rebuilds entities through DROP TABLE, and
+    # -- a key table here would block that replay (migrations apply twice
+    # -- cleanly). Nothing deletes entities rows, so the action has no
+    # -- runtime role on DuckDB.
+    ("fk", "entity_id_aliases", "entity_id"): (
+        "pg 045 only: DuckDB 045 skips the FK because the 041 entities"
+        " rebuild (DROP TABLE) must stay replayable."
+    ),
 }
 
 
