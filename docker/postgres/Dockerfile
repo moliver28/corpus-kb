@@ -98,7 +98,10 @@ ARG PGVECTOR_VERSION=0.8.6-1.pgdg12+2
 ARG AGE_VERSION=1.7.0~rc0-1.pgdg12+1
 ARG POSTGRESML_VERSION=2.10.0
 
-# Add PGDG apt repository and install pinned pgvector + AGE.
+# Add PGDG apt repository and install pinned pgvector + AGE. curl, gnupg and
+# lsb-release are bootstrap-only tools: the layer purges them after use so the
+# final image does not ship them. The dearmored PGDG key and the sources entry
+# stay, so future apt runs keep working.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release \
@@ -113,6 +116,7 @@ RUN apt-get update \
         postgresql-17-pgvector=${PGVECTOR_VERSION} \
         postgresql-17-age=${AGE_VERSION} \
         libopenblas0 libgomp1 \
+ && apt-get purge -y --auto-remove curl gnupg lsb-release \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy PostgresML artifacts from builder.
