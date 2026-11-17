@@ -19,6 +19,34 @@ if str(_REPO_SRC) not in sys.path:
     sys.path.insert(0, str(_REPO_SRC))
 
 from corpus_kb._setup import install as install_module  # noqa: E402
+from corpus_kb._setup import doctor_journey, doctor_research, doctor_storage  # noqa: E402
+
+
+async def _no_section_checks(*args: object, **kwargs: object) -> list[object]:
+    """Stand-in for the doctor's live research, storage, and journey probes.
+
+    These sections query the resolved DSN. The doctor tests never assert
+    on them, so the stand-in keeps the tests off the network and off any
+    host the caller's shell names.
+    """
+    return []
+
+
+@pytest.fixture(autouse=True)
+def _pinned_doctor_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the DSN and backend the doctor path reads (issue #413).
+
+    ``doctor_cmd`` gives an exported ``CORPUS_KB_DATABASE_URL`` precedence
+    over the config argument (runtime precedence, review F-1), and
+    ``resolved_backend`` reads ``CORPUS_KB_DATABASE_BACKEND`` the same way.
+    A caller shell with either exported changed what the doctor probed and
+    whether the assertions held. The pin makes every test here resolve the
+    same fixed deployment whatever the caller exported.
+    """
+    monkeypatch.setenv(
+        "CORPUS_KB_DATABASE_URL", "postgresql://installer-fixture.invalid/corpus_kb"
+    )
+    monkeypatch.setenv("CORPUS_KB_DATABASE_BACKEND", "postgres")
 
 
 def _minimal_config(data_dir: Path | None = None) -> dict:
@@ -67,6 +95,12 @@ async def test_doctor_gpu_detected() -> None:
         patch.object(install_module, "_detect_gpu_vram_gb", return_value=(8.0, True)),
         patch.object(install_module, "check_postgres", return_value=(True, "PostgreSQL 17")),
         patch.object(install_module, "check_ollama", return_value=(True, "status 200")),
+        # The pinned DSN is a fixture name, never a real server: the deep
+        # probes behind a reachable postgres_ok stay off the network too.
+        patch.object(install_module, "check_extensions", return_value=None),
+        patch.object(doctor_research, "research_checks", _no_section_checks),
+        patch.object(doctor_storage, "storage_checks", _no_section_checks),
+        patch.object(doctor_journey, "journey_checks", _no_section_checks),
     ):
         result = await install_module.doctor_cmd(
             {
@@ -100,7 +134,12 @@ def _doctor_patches(
     stdout_capture: StringIO,
     extensions: dict[str, tuple[bool, str]] | None,
 ) -> tuple:
-    """Common patch stack for doctor extension tests (no live services)."""
+    """Common patch stack for doctor extension tests (no live services).
+
+    The last three entries stand in for the deep probes that query the
+    resolved DSN when the patched ``check_postgres`` answers reachable;
+    without them the tests would probe whatever the pinned DSN names.
+    """
     return (
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install_module.psutil, "virtual_memory", return_value=_Mem(total=4 * 1024**3)),
@@ -108,6 +147,9 @@ def _doctor_patches(
         patch.object(install_module, "_detect_gpu_vram_gb", return_value=(0.0, False)),
         patch.object(install_module, "check_ollama", return_value=(False, "no server")),
         patch.object(install_module, "check_extensions", return_value=extensions),
+        patch.object(doctor_research, "research_checks", _no_section_checks),
+        patch.object(doctor_storage, "storage_checks", _no_section_checks),
+        patch.object(doctor_journey, "journey_checks", _no_section_checks),
     )
 
 
@@ -127,6 +169,9 @@ async def test_doctor_reports_extensions_installed() -> None:
         patches[3],
         patches[4],
         patches[5],
+        patches[6],
+        patches[7],
+        patches[8],
         patch.object(install_module, "check_postgres", return_value=(True, "PostgreSQL 17")),
     ):
         result = await install_module.doctor_cmd(config)
@@ -153,6 +198,9 @@ async def test_doctor_reports_extensions_missing_with_remediation() -> None:
         patches[3],
         patches[4],
         patches[5],
+        patches[6],
+        patches[7],
+        patches[8],
         patch.object(install_module, "check_postgres", return_value=(True, "PostgreSQL 17")),
     ):
         result = await install_module.doctor_cmd(config)
@@ -180,6 +228,9 @@ async def test_doctor_extensions_unknown_when_postgres_unreachable() -> None:
         patches[3],
         patches[4],
         patches[5],
+        patches[6],
+        patches[7],
+        patches[8],
         patch.object(install_module, "check_postgres", return_value=(False, "no server")),
     ):
         result = await install_module.doctor_cmd({"installer": {}})
