@@ -303,6 +303,31 @@ def test_tiny_corpus_umap_kwargs_on_0_6(monkeypatch: pytest.MonkeyPatch) -> None
     assert double.captured["compatibility_layout"] is True
 
 
+def test_two_points_take_pca_even_when_umap_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # umap is importable here, yet two points must still take PCA (#436).
+    double = _install_umap_double(monkeypatch, _Umap05Double())
+    matrix = np.asarray(list(_tiny_rows(2).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "pca_fallback"
+    assert double.captured == {}  # umap never builds a two-point fit
+
+
+def test_seven_points_take_the_pinned_umap_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    double = _install_umap_double(monkeypatch, _Umap05Double())
+    matrix = np.asarray(list(_tiny_rows(7).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "umap"
+    assert double.captured["random_state"] == 42
+    assert double.captured["n_neighbors"] == 6  # min(15, n - 1) at n = 7
+    # The pinned constructor path never sends the tiny-path kwargs.
+    assert double.captured["init"] == "spectral"
+    assert "compatibility_layout" not in double.captured
+
+
 # ---------------------------------------------------------------------------
 # Honest edges and validation
 
