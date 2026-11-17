@@ -234,8 +234,150 @@ async def test_judge_verifies_claims_and_scores_groundedness() -> None:
     assert verify["abstained"] is False
     assert verify["groundedness"] == 0.5
     assert [v["label"] for v in verify["verdicts"]] == ["entailed", "unsupported"]
-    # Entailment sees the evidence texts, not the generated answer.
+    # Entailment sees each claim's cited chunk, not the whole evidence block.
+    assert judge.entail_args[0][1] == ["alpha text"]
+    assert judge.entail_args[1][1] == ["beta text"]
+
+
+# ---------------------------------------------------------------------------
+# Cited-slice entailment + claim batching (the judge token cut)
+# ---------------------------------------------------------------------------
+
+
+class _BatchJudge:
+    """A judge with the batch seam; records every entail_batch call."""
+
+    def __init__(
+        self,
+        claims: list[str],
+        labels: dict[str, str] | None = None,
+        confidence: float = 0.9,
+        broken_length: bool = False,
+    ) -> None:
+        self.claims = claims
+        self.labels = labels or {}
+        self.confidence = confidence
+        self.broken_length = broken_length
+        self.batch_calls: list[tuple[list[str], list[str]]] = []
+
+    def decompose(self, answer: str) -> list[str]:
+        return list(self.claims)
+
+    def entail_batch(self, claims: list[str], cited_texts: list[str]) -> list[tuple[str, float]]:
+        self.batch_calls.append((list(claims), list(cited_texts)))
+        if self.broken_length:
+            return []
+        return [(self.labels.get(claim, "entailed"), self.confidence) for claim in claims]
+
+
+async def test_each_claim_entails_against_only_its_cited_chunks() -> None:
+    """A claim that carries [n] markers is checked against those chunks only."""
+    handler = _FakeHandler(
+        _envelope([_result("alpha text"), _result("beta text"), _result("gamma text")])
+    )
+    llm = _FakeLlm(text="Alpha holds [1]. Beta holds [2].")
+    judge = _FakeJudge(["Alpha holds [1].", "Beta holds [2]."])
+
+    payload = (await compose_answer("q", handler, llm, judge=judge)).to_payload()
+
+    assert judge.entail_args[0][1] == ["alpha text"]
+    assert judge.entail_args[1][1] == ["beta text"]
+    assert payload["result"]["verify"]["abstained"] is False
+
+
+async def test_markerless_claim_inherits_its_sentence_citations() -> None:
+    """A claim without markers maps to the answer sentence it came from."""
+    handler = _FakeHandler(_envelope([_result("alpha text"), _result("beta text")]))
+    llm = _FakeLlm(text="Alpha holds [1]. Beta holds too [2].")
+    judge = _FakeJudge(["Alpha holds."])
+
+    await compose_answer("q", handler, llm, judge=judge)
+
+    assert judge.entail_args[0][1] == ["alpha text"]
+
+
+async def test_unmappable_claim_falls_back_to_the_full_block() -> None:
+    """No markers and no sentence match: the claim sees the whole block."""
+    handler = _FakeHandler(_envelope([_result("alpha text"), _result("beta text")]))
+    llm = _FakeLlm(text="Alpha holds [1].")
+    judge = _FakeJudge(["A remark about unrelated widget pricing."])
+
+    await compose_answer("q", handler, llm, judge=judge)
+
     assert judge.entail_args[0][1] == ["alpha text", "beta text"]
+
+
+async def test_shared_cited_set_joins_one_batch_call() -> None:
+    """Claims citing the same chunks share one entail_batch call."""
+    handler = _FakeHandler(_envelope([_result("alpha text")]))
+    llm = _FakeLlm(text="Alpha holds [1]. Alpha repeats [1].")
+    judge = _BatchJudge(["Alpha holds [1].", "Alpha repeats [1]."])
+
+    payload = (await compose_answer("q", handler, llm, judge=judge)).to_payload()
+
+    assert len(judge.batch_calls) == 1
+    assert judge.batch_calls[0] == (
+        ["Alpha holds [1].", "Alpha repeats [1]."],
+        ["alpha text"],
+    )
+    verify = payload["result"]["verify"]
+    assert [v["label"] for v in verify["verdicts"]] == ["entailed", "entailed"]
+
+
+async def test_distinct_cited_sets_get_separate_calls_but_keep_claim_order() -> None:
+    """One call per distinct citation set; verdicts stay in claim order."""
+    handler = _FakeHandler(_envelope([_result("alpha text"), _result("beta text")]))
+    llm = _FakeLlm(text="Alpha holds [1]. Beta holds [2]. Alpha again [1].")
+    judge = _BatchJudge(
+        ["Alpha holds [1].", "Beta holds [2].", "Alpha again [1]."],
+        labels={"Beta holds [2].": "unsupported"},
+    )
+
+    payload = (await compose_answer("q", handler, llm, judge=judge)).to_payload()
+
+    calls = judge.batch_calls
+    assert [claims for claims, _ in calls] == [
+        ["Alpha holds [1].", "Alpha again [1]."],
+        ["Beta holds [2]."],
+    ]
+    assert [evidence for _, evidence in calls] == [["alpha text"], ["beta text"]]
+    verify = payload["result"]["verify"]
+    assert [v["claim"] for v in verify["verdicts"]] == [
+        "Alpha holds [1].",
+        "Beta holds [2].",
+        "Alpha again [1].",
+    ]
+    assert [v["label"] for v in verify["verdicts"]] == ["entailed", "unsupported", "entailed"]
+    assert verify["groundedness"] == pytest.approx(2 / 3)
+
+
+async def test_broken_batch_response_degrades_the_group_to_unsupported() -> None:
+    """A batch answer with the wrong length degrades honestly, never raises."""
+    handler = _FakeHandler(_envelope([_result("alpha text")]))
+    llm = _FakeLlm(text="Alpha holds [1]. Alpha repeats [1].")
+    judge = _BatchJudge(["Alpha holds [1].", "Alpha repeats [1]."], broken_length=True)
+
+    payload = (await compose_answer("q", handler, llm, judge=judge)).to_payload()
+
+    verify = payload["result"]["verify"]
+    assert verify["abstained"] is False
+    assert verify["groundedness"] == 0.0
+    assert [(v["label"], v["confidence"]) for v in verify["verdicts"]] == [
+        ("unsupported", 0.0),
+        ("unsupported", 0.0),
+    ]
+
+
+async def test_judge_without_batch_seam_still_entails_per_claim() -> None:
+    """A judge that offers only entail keeps the per-claim fallback path."""
+    handler = _FakeHandler(_envelope([_result("alpha text")]))
+    llm = _FakeLlm(text="Alpha holds [1].")
+    judge = _FakeJudge(["Alpha holds [1]."])
+
+    payload = (await compose_answer("q", handler, llm, judge=judge)).to_payload()
+
+    assert judge.entail_args == [("Alpha holds [1].", ["alpha text"])]
+    assert payload["result"]["verify"]["verdicts"][0]["label"] == "entailed"
 
 
 async def test_judge_zero_claims_abstains() -> None:

@@ -4,6 +4,12 @@ Mirrors OllamaEmbedder's structure and degrade-on-failure contract using
 Ollama's .chat() (confirmed available). The judge never raises into a
 caller: any failure yields an empty decomposition or an "unsupported"
 verdict at 0.0 confidence, so verify_answer's abstain path is always safe.
+
+The entailment seams come in two shapes with the same evidence rule
+(ONLY the cited texts, no outside knowledge): :meth:`entail` labels one
+claim per call, :meth:`entail_batch` labels many claims that share one
+evidence slice in ONE call — the batching halves the judge's round
+trips and input tokens on the ask path.
 """
 
 from __future__ import annotations
@@ -23,6 +29,9 @@ logger = logging.getLogger(__name__)
 # cold qwen3:4b load on CPU; slower than that must DEGRADE per the contract
 # below, never hang.
 JUDGE_TIMEOUT_SECONDS = 120.0
+
+# The label vocabulary one entail verdict may use.
+VALID_LABELS = frozenset({"entailed", "contradicted", "unsupported"})
 
 
 class OllamaJudge:
@@ -70,11 +79,7 @@ class OllamaJudge:
                 claim,
             )
             data = json.loads(raw)
-            label = str(data.get("label", "unsupported"))
-            if label not in {"entailed", "contradicted", "unsupported"}:
-                label = "unsupported"
-            confidence = float(data.get("confidence", 0.0))
-            return label, confidence
+            return self._verdict(data if isinstance(data, dict) else None)
         except (
             ConnectionError,
             OSError,
@@ -86,6 +91,58 @@ class OllamaJudge:
             logger.warning("Judge entail unavailable: %s", exc)
             return "unsupported", 0.0
 
+    def entail_batch(self, claims: list[str], cited_texts: list[str]) -> list[tuple[str, float]]:
+        """Label many claims against one evidence slice in ONE chat call.
+
+        Claims that share one evidence slice share one call, so a full
+        ask costs a handful of round trips instead of one per claim. The
+        response is a JSON list whose objects carry the claim number as
+        "n". A claim with a missing or malformed entry degrades to
+        ("unsupported", 0.0) — the same rule a failed single entail
+        follows — and a transport or parse failure degrades the whole
+        batch. Never raises.
+        """
+        evidence = "\n---\n".join(cited_texts)
+        numbered = "\n".join(f"{index}. {claim}" for index, claim in enumerate(claims, 1))
+        try:
+            raw = self._client_chat(
+                "Given ONLY the evidence below (no outside knowledge), label EACH numbered claim "
+                "as one of entailed, contradicted, or unsupported, and give a confidence 0-1 "
+                "for each. Respond with ONLY a JSON list, one object per claim: "
+                '[{"n": 1, "label": "...", "confidence": 0.0}]. '
+                'The "n" key is the claim number.\n\n'
+                f"Evidence:\n{evidence}",
+                f"Claims:\n{numbered}",
+            )
+            entries = _entries_by_claim(json.loads(raw), len(claims))
+            return [self._verdict(entries.get(position)) for position in range(1, len(claims) + 1)]
+        except (
+            ConnectionError,
+            OSError,
+            httpx.TransportError,
+            ResponseError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            logger.warning("Judge entail_batch unavailable: %s", exc)
+            return [("unsupported", 0.0)] * len(claims)
+
+    def _verdict(self, data: dict[str, object] | None) -> tuple[str, float]:
+        """One parsed verdict; missing or malformed fields degrade to
+        the unsupported/0.0 pair the caller can trust."""
+        if not isinstance(data, dict) or not data:
+            return "unsupported", 0.0
+        label = str(data.get("label", "unsupported"))
+        if label not in VALID_LABELS:
+            label = "unsupported"
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            return "unsupported", 0.0
+        if not 0.0 <= confidence <= 1.0:
+            confidence = 0.0
+        return label, confidence
+
     def _client_chat(self, system: str, user: str) -> str:
         response = self._client.chat(
             model=self.model,
@@ -95,5 +152,37 @@ class OllamaJudge:
             ],
             options={"temperature": 0},
         )
-        message = response.get("message", {}) if isinstance(response, dict) else {}
-        return str(message.get("content", "[]"))
+        # ollama>=0.4 returns a ChatResponse object whose message carries
+        # attributes; older dict-shaped responses stay supported.
+        message = getattr(response, "message", None)
+        if message is None and isinstance(response, dict):
+            message = response.get("message")
+        content = getattr(message, "content", None) if message is not None else None
+        if content is None and isinstance(message, dict):
+            content = message.get("content")
+        return str(content) if content is not None else "[]"
+
+
+def _entries_by_claim(data: object, claim_count: int) -> dict[int, dict[str, object]]:
+    """Index one batch response by claim number; junk entries are dropped.
+
+    A number is the int 1..claim_count (a digit string is accepted, since
+    models often quote JSON numbers); out-of-range numbers and entries
+    without a usable number are ignored, and their claims degrade.
+    """
+    entries: dict[int, dict[str, object]] = {}
+    if not isinstance(data, list):
+        return entries
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        number = entry.get("n")
+        if isinstance(number, bool):
+            continue
+        if isinstance(number, int) and 1 <= number <= claim_count:
+            entries[number] = entry
+        elif isinstance(number, str) and number.strip().isdigit():
+            position = int(number.strip())
+            if 1 <= position <= claim_count:
+                entries[position] = entry
+    return entries
