@@ -49,6 +49,8 @@ from _bench_vector_metrics import (
     seeded_unit_vectors,
 )
 
+from corpus_kb.storage.sql_ident import sql_identifier
+
 __all__ = [
     "MIN_MATERIAL_GAIN_RATIO",
     "RECALL_TOLERANCE_POINTS",
@@ -70,6 +72,15 @@ __all__ = [
 _SCAN_MODE_SQL = {
     "relaxed_order": "SET LOCAL hnsw.iterative_scan = 'relaxed_order'",
     "strict_order": "SET LOCAL hnsw.iterative_scan = 'strict_order'",
+}
+# The scratch schema is a repo-owned constant, but DDL grammar cannot take
+# bind parameters. The name passes the shared validation seam first, and the
+# two statements are composed once here. Like _SCAN_MODE_SQL, the map keeps
+# the composed text out of the execute call sites (fixed keys, no variables).
+_SCRATCH_IDENT = sql_identifier(SCRATCH_SCHEMA)
+_SCRATCH_DDL = {
+    "create": f"CREATE SCHEMA IF NOT EXISTS {_SCRATCH_IDENT}",
+    "drop": f"DROP SCHEMA IF EXISTS {_SCRATCH_IDENT} CASCADE",
 }
 LABEL = "local-machine measurement, not CI truth"
 BINARY_QUANTIZATION_NOTE = (
@@ -127,7 +138,7 @@ async def run_bench(cfg: BenchConfig, conn: asyncpg.Connection) -> dict[str, obj
     """Create the scratch corpus, index it three ways, measure, drop."""
     matrix = seeded_unit_vectors(cfg.rows, cfg.dims, cfg.seed)
     queries = seeded_queries(matrix, cfg.probes, cfg.seed)
-    await conn.execute('CREATE SCHEMA IF NOT EXISTS "' + SCRATCH_SCHEMA + '"')
+    await conn.execute(_SCRATCH_DDL["create"])
     try:
         await seed_items(cfg.dims, cfg.rows, conn, matrix)
         indexes = await build_indexes(cfg.dims, conn)
@@ -160,7 +171,7 @@ async def run_bench(cfg: BenchConfig, conn: asyncpg.Connection) -> dict[str, obj
         }
     finally:
         if not cfg.keep:
-            await conn.execute(f'DROP SCHEMA IF EXISTS "{SCRATCH_SCHEMA}" CASCADE')
+            await conn.execute(_SCRATCH_DDL["drop"])
 
 
 def _adoption_gate(
