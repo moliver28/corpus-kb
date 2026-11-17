@@ -533,13 +533,21 @@ jobs:
             ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
 
       - name: Wait for Postgres to be ready
+        # Target the REAL server over TCP (issue #476). A bare pg_isready
+        # probes the unix socket, where the official entrypoint's
+        # TEMPORARY initdb server answers while the baked init scripts
+        # still run — that race broke master once (#475 holds the
+        # retry-triple fix in the verify step below). 127.0.0.1:5432
+        # only answers after the temp server shuts down and the real
+        # one starts, so downstream steps begin after init completes.
+        # The loop stays as a pure safety net.
         run: |
           for i in {1..30}; do
-            if docker exec corpus-kb-postgres pg_isready -U corpus_user -d corpus_kb; then
+            if docker exec corpus-kb-postgres pg_isready -h 127.0.0.1 -p 5432 -U corpus_user -d corpus_kb; then
               echo "Postgres is ready"
               exit 0
             fi
-            echo "Attempt $i/30: Waiting for Postgres..."
+            echo "Attempt $i/30: Waiting for the real (post-initdb) server..."
             sleep 1
           done
           echo "Postgres did not become ready"
