@@ -1,0 +1,137 @@
+# Weekly security triage bot.
+#
+# Complements, does not duplicate: codeql.yml already runs the CodeQL
+# analysis on a Sunday schedule (plus push/PR), and dependency-audit.yml
+# already re-runs the PR audit-deps gate every Monday 06:00 UTC. What
+# neither does is file ONE consolidated, human-readable triage issue per
+# run. This bot runs the audit-deps gate itself (cheap, authoritative),
+# READS the open CodeQL alerts through the API instead of re-running
+# the analysis, and files or updates exactly one issue labeled
+# security-triage + dept:engineering.
+#
+# Issue pattern (reopen-or-update): while an open security-triage issue
+# exists, each run appends its report as a comment; when none is open,
+# a run with findings or scanner limits files a new one. A clean run
+# with no open issue stays silent. Closing the issue ends the thread;
+# the next findings run opens a fresh one. One report per run — never
+# one per finding.
+#
+# NO auto-fix PRs, by design: mechanical dismissal is not sanctioned
+# (mimosa ledger rules), so triage stays human-in-the-loop.
+#
+# Rule-10 ruling: this is a scheduled REPORTER, not a merge gate. It
+# adds no poe target, no CI job, and no enforcement-map row — the same
+# class as dependency-audit.yml's informational legs. It never runs on
+# PRs and gates nothing. Manual runs: workflow_dispatch.
+#
+# Skip-honest: a scanner that cannot run reports the limitation in the
+# triage issue and stays green. Unknown findings are reported as
+# unknown, never as clean.
+name: Security triage (weekly)
+
+on:
+  schedule:
+    # Mondays 07:00 UTC — after dependency-audit.yml (06:00) and the
+    # Sunday CodeQL run; off-peak for the repo's US owners (11 PM
+    # Pacific Sunday).
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+concurrency:
+  # One run at a time repo-wide: the schedule and manual dispatch both
+  # touch the same triage issue, so runs queue instead of racing.
+  group: security-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: "Collect findings, file one triage issue"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (same pin as the audit gates)
+        # Same pin as the audit-deps job in ci.yml and the weekly
+        # dependency-audit.yml: uv audit is a preview feature, so the
+        # audit jobs pin an exact uv version and move it deliberately.
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          version: "0.13.8"
+
+      - name: Install poethepoet
+        run: uv tool install poethepoet
+
+      - name: Run the dependency audit (the audit-deps gate command)
+        # The exact poe audit-deps command from pyproject.toml (uv
+        # audit --locked over the committed uv.lock; ignores in
+        # uv.toml stay in force). Nonzero exit = advisories in the
+        # locked set or an audit error; the captured output says
+        # which. The step itself stays green either way — skip-honest
+        # reporting, the triage issue carries the verdict.
+        run: |
+          set +e
+          poe audit-deps > audit-output.txt 2>&1
+          echo "$?" > audit-exit.txt
+          exit 0
+
+      - name: Read the open CodeQL alerts
+        # Read-only collection of the alerts codeql.yml produced. If
+        # the API call fails (no code scanning on a fork, missing
+        # scope), the failure is recorded as a limitation for the
+        # report instead of reding the run.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/code-scanning/alerts?state=open&tool_name=CodeQL&per_page=100" \
+            > codeql-alerts.json 2> codeql-error.txt
+          echo "$?" > codeql-exit.txt
+          exit 0
+
+      - name: Build the triage report
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          printf '%s\n' "$RUN_URL" > run-url.txt
+          printf '%s\n' "$REF_NAME" > ref-name.txt
+          printf '%s\n' "$SHA" > sha.txt
+          python3 scripts/security_triage_report.py . triage-body.md
+          cat triage-summary.txt
+
+      - name: Append to the open triage issue, or file one on findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create security-triage --color D93F0B \
+            --description "Findings from the weekly security sweep (bot)" \
+            > /dev/null 2>&1 || true
+          open_issue=$(gh issue list --label security-triage --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$open_issue" ]; then
+            gh issue comment "$open_issue" --body-file triage-body.md
+            echo "Report appended to the open triage issue #$open_issue"
+            exit 0
+          fi
+          # No open issue: file a new one only when the sweep has
+          # something to say (advisories, alerts, or a scanner gap).
+          if grep -q "has_report=yes" triage-summary.txt; then
+            gh issue create \
+              --title "Weekly security triage report" \
+              --body-file triage-body.md \
+              --label "security-triage" \
+              --label "dept:engineering"
+            echo "Filed a new triage issue"
+          else
+            echo "Clean sweep and no open triage issue; nothing filed"
+          fi
