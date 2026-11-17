@@ -30,7 +30,7 @@ A `typing.Protocol` method stub has one body token: `...`. CodeQL rule `py/ineff
 
 ### The parser worker queue items
 
-`src/corpus_kb/ingestion/strategies/textbook_worker.py` sends parse windows to a child process over a `multiprocessing.Queue`. One queue item is a local PDF path plus page bounds. The scanner reads the queue named `requests` and its `put` call as HTTP traffic (CWE-918). The module imports no network library, and no URL reaches it. Website URL fetches live in `corpus_kb.web.fetch`, behind the private-address denylist (`allow_private_addresses` is off by default), a robots.txt gate, and a 5 MiB size cap. Evidence: the sealed scan of 2026-11-17 flags `textbook_worker.py:241` at `handle.requests.put(...)`. The module imports only `multiprocessing`, `pickle`, `threading`, and `time`.
+`src/corpus_kb/ingestion/strategies/textbook_worker.py` sends parse windows to a child process over a `multiprocessing.Queue`. One queue item is a local PDF path plus page bounds. The scanner reads the queue named `requests` and its `put` call as HTTP traffic (CWE-918). The module imports no network library, and no URL reaches it. Website URL fetches live in `corpus_kb.web.fetch`. That fetch site applies the private-address denylist, a robots.txt gate, and a 5 MiB size cap. The denylist is on by default (`allow_private_addresses`). Evidence: the sealed scan of 2026-11-17 flags `textbook_worker.py:241` at `handle.requests.put(...)`. The module imports only `multiprocessing`, `pickle`, `threading`, and `time`.
 
 ### Loopback-constant health polls
 
@@ -38,11 +38,11 @@ A `typing.Protocol` method stub has one body token: `...`. CodeQL rule `py/ineff
 
 ### The fixtures recorder fetch entry
 
-`ui_src/scripts/record-fixtures.ts` records envelope fixtures from a running dev server. Its base URL comes from the operator-set `CORPUS_KB_BASE_URL` variable. The recorder caps that value four ways before any fetch: http or https only, no embedded credentials, a loopback host name, and a DNS lookup that must resolve to loopback. Each probe URL must also stay inside the validated origin. Evidence: the checks sit at lines 22-40, the per-probe origin check at lines 62-64; #375 hardened the file, and the scope policy excludes it.
+`ui_src/scripts/record-fixtures.ts` records envelope fixtures from a running dev server. Its base URL comes from the operator-set `CORPUS_KB_BASE_URL` variable. The recorder caps that value in four ways before any fetch. Only the `http:` and `https:` schemes pass. The host must be a loopback name that resolves to a loopback address. The URL must not carry embedded credentials. Each probe URL must also stay inside the validated origin. Evidence: the boundary checks sit at lines 22-40, and the per-probe origin check at lines 62-64. PR #375 hardened the file, and the scope policy excludes it.
 
 ### Localhost test servers
 
-Tests fake network services on loopback to exercise the seams. Those servers live inside the test process on the operator machine and never leave it. The threat model treats tests as operator machines, not product attack surface. Evidence: the test-pattern highs on `tests/test_textbook_worker.py` were routed through guarded seams in #399; the sealed scan of 2026-11-17 flags none of them.
+Tests fake network services on loopback to exercise the seams. Those servers live inside the test process on the operator machine and never leave it. The threat model treats tests as operator machines, not product attack surface. Evidence: PR #399 routed the test-pattern highs on `tests/test_textbook_worker.py` through guarded seams. The sealed scan of 2026-11-17 flags none of them.
 
 ### The mimosa scope policy
 
