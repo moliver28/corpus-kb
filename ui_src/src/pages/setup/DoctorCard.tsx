@@ -1,11 +1,11 @@
 import { Button, Card, Skeleton, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/setup";
 import { allChecks, dimsBelowResearchWidth, envelopeResult, isDoctorResult, stateWord } from "./doctor";
@@ -92,11 +92,7 @@ function DoctorView({ result }: { result: DoctorResult }) {
 export default function DoctorCard() {
   const { run, result, running, reset } = useOp("doctor");
 
-  // One GET on mount. useOp's run holds a stable identity, so the
-  // [run] dependency never re-fires the effect.
-  useEffect(() => {
-    void run();
-  }, [run]);
+  useMountRead(run);
 
   function refresh(): void {
     reset();

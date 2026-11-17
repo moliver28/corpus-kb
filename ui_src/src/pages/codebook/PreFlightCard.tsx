@@ -1,10 +1,10 @@
 import { Card, Skeleton, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/codebook";
 
@@ -42,21 +42,17 @@ export default function PreFlightCard() {
   const projects = useOp("projects-list");
   const versions = useOp("codebooks-list");
   const doctor = useOp("doctor");
-  const { run: projectsRun } = projects;
-  const { run: versionsRun } = versions;
-  const { run: doctorRun } = doctor;
 
-  // One GET each on mount. useOp's run holds a stable identity, so the
-  // dependencies never re-fire the effect.
-  useEffect(() => {
-    void Promise.all([projectsRun(), versionsRun(), doctorRun()]);
-  }, [projectsRun, versionsRun, doctorRun]);
+  // One read per op on mount; the three answers settle together.
+  useMountRead(() => {
+    void Promise.all([projects.run(), versions.run(), doctor.run()]);
+  });
 
   function refresh(): void {
     projects.reset();
     versions.reset();
     doctor.reset();
-    void Promise.all([projectsRun(), versionsRun(), doctorRun()]);
+    void Promise.all([projects.run(), versions.run(), doctor.run()]);
   }
 
   function readRows(result: typeof projects.result): { rows: unknown[]; node: ReactNode } {

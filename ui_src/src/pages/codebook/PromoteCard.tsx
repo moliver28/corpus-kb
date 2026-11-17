@@ -1,11 +1,12 @@
 import { Button, Card, Input, Modal, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/codebook";
 
@@ -51,13 +52,8 @@ export default function PromoteCard() {
 
   const proposals = useOp("codebook-proposals");
   const promote = useOp("codebook-promote");
-  const { run: proposalsRun } = proposals;
 
-  // One GET on mount. useOp's run holds a stable identity, so the
-  // [proposalsRun] dependency never re-fires the effect.
-  useEffect(() => {
-    void proposalsRun();
-  }, [proposalsRun]);
+  useMountRead(proposals.run);
 
   function refresh(): void {
     proposals.reset();

@@ -1,10 +1,11 @@
 import { Select, Typography } from "antd";
 import type { ReactNode } from "react";
-import { useEffect, useId } from "react";
+import { useId } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useMountRead } from "../../hooks/useMountRead";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings/ask";
 import { isProjectsEnvelope } from "./shapes";
@@ -34,11 +35,10 @@ export default function ProjectField({
   const errorId = `${id}-error`;
   const invalid = error !== "";
 
-  // One GET on mount. useOp's run holds a stable identity, so the
-  // effect never re-fires.
-  useEffect(() => {
+  // The mount read asks for the same window as the retry below.
+  useMountRead(() => {
     void run(undefined, { limit: String(PROJECT_CAP) });
-  }, [run]);
+  });
 
   function retry(): void {
     // The retry asks for the same window as the mount read, so the

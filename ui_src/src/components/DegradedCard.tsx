@@ -1,12 +1,13 @@
 import { Card, Skeleton } from "antd";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { OpResult } from "../api/types";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
+import { useMountRead } from "../hooks/useMountRead";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings/app";
 
@@ -67,14 +68,12 @@ export default function DegradedCard({
   const shared = ledger !== undefined;
   const [summary, setSummary] = useState<ReembedSummary | null>(null);
 
-  // One GET on mount (own-read mode only). useOp's run holds a stable
-  // identity, so the [statusRun] dependency never re-fires the effect.
-  useEffect(() => {
-    if (shared) {
-      return;
+  // Own-read mode fires one read at mount time; a shared ledger skips it.
+  useMountRead(() => {
+    if (!shared) {
+      void statusRun();
     }
-    void statusRun();
-  }, [shared, statusRun]);
+  });
 
   function refresh(): void {
     if (ledger !== undefined) {
