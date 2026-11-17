@@ -192,6 +192,14 @@ from corpus_kb.cli.cli_migrate import register as register_migrate_data  # noqa:
 
 register_migrate_data(app)
 
+# Self-update front door (W5-a): cli_update is the recorded lifecycle
+# exemption like cli_migrate (one handler in _setup/update_run.py, one
+# CLI surface, no registry op) and imports corpus_kb.cli nowhere, so
+# this import stays acyclic.
+from corpus_kb.cli.cli_update import register as register_update  # noqa: E402
+
+register_update(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:

@@ -37,6 +37,7 @@ The rest of this page is the manual path from a clone.
 - [Step 7: Start the server](#step-7-start-the-server)
 - [Step 8: Ingest and search](#step-8-ingest-and-search)
 - [Run the whole app in Docker](#run-the-whole-app-in-docker)
+- [Update an existing install](#update-an-existing-install)
 - [Troubleshooting](#troubleshooting)
 - [Next steps](#next-steps)
 
@@ -455,6 +456,31 @@ docker compose --profile app --profile ollama down -v
 
 `down` stops the containers. `-v` deletes the `postgres_data` and
 `ollama_data` volumes. Data deleted this way cannot be recovered.
+
+---
+
+## Update an existing install
+
+`corpus-kb update` plans the update for your install flavor, applies the
+pending migrations, and verifies the store. Always start with the plan:
+
+```bash
+corpus-kb update --dry-run
+```
+
+The plan names the upgrade steps for the flavor it detects. Run those
+steps, then run `corpus-kb update` again without `--dry-run`. That run
+applies the store migrations and prints the restart guidance.
+
+- **Editable (git clone).** Pull the source, reinstall, then update.
+- **pipx.** `pipx upgrade corpus-kb` upgrades from PyPI once the release
+  exists.
+- **Compose.** The plan reports the pinned images. You edit the image
+  pins in `compose.yaml` yourself, then run the compose commands.
+
+The server refuses to start when the store is newer than the code. The
+error names the extra store migrations. Update the app first, or restore
+the store backup. This guard protects your data from partial serve.
 
 ---
 

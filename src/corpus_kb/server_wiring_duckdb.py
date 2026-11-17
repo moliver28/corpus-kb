@@ -51,9 +51,27 @@ class _Projections:
 
 async def startup_duckdb(cfg: dict[str, Any], conn_str: str) -> dict[str, Any]:
     """Start the full server stack on one DuckDB file behind the gateway."""
+    from corpus_kb._setup.version_guard import (
+        check_store_not_newer,
+        code_migration_names,
+        read_applied_duckdb,
+    )
     from corpus_kb.domain.application import get_app
+    from corpus_kb.errors import DatabaseUnavailableError
     from corpus_kb.storage.duckdb_rag import DuckDbRagBackend
     from corpus_kb.storage.gateway import DuckDbGateway
+
+    # Boot guard (W5-a): a store schema NEWER than this code refuses to
+    # serve — typed, before the gateway opens. A fresh or older file
+    # proceeds unchanged.
+    try:
+        applied = await read_applied_duckdb(conn_str)
+    except (ConnectionError, OSError) as exc:
+        raise DatabaseUnavailableError(
+            f"Cannot read the store file to check the schema version: {exc}"
+        ) from exc
+    if applied is not None:
+        check_store_not_newer(applied, code_migration_names())
 
     gateway = await DuckDbGateway.connect(conn_str)
     # The event store is the SQLite recorder file BESIDE the .duckdb file —

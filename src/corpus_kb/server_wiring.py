@@ -361,6 +361,19 @@ async def startup(
             remediation="Set database.backend to postgres or duckdb.",
         )
 
+    # Boot guard (W5-a): a store schema NEWER than this code refuses to
+    # serve — typed, before the pool or any handler exists, so nothing
+    # is wired partially. An older or fresh store proceeds unchanged.
+    from corpus_kb._setup.version_guard import assert_store_supported
+
+    try:
+        await assert_store_supported(conn_str, backend)
+    except (ConnectionError, OSError, asyncpg.PostgresError) as exc:
+        detail = str(exc) or type(exc).__name__
+        raise DatabaseUnavailableError(
+            f"Cannot reach the database to check the schema version: {detail}"
+        ) from exc
+
     pool = await initialize_postgres_pool(conn_str)
 
     handlers = await _wire_handlers(cfg, pool, conn_str, backend)

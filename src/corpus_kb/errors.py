@@ -52,6 +52,11 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "database_unavailable": (503, -32003, 3),
     "migration_missing": (503, -32004, 3),
     "dependency_missing": (503, -32005, 3),
+    # W5-a update/boot-guard failures. A store ahead of the code is a
+    # version conflict (the conflict triple) with the environment exit;
+    # a missing PyPI release is the dependency-missing triple.
+    "store_newer": (409, -32002, 3),
+    "package_not_published": (503, -32005, 3),
     "internal_error": (500, -32603, 1),
     # Legacy ``type(exc).__name__`` strings seen in HTTP envelopes.
     "ValueError": (400, -32602, 1),
@@ -219,6 +224,24 @@ class DependencyMissingError(CorpusError):
     error_type = "dependency_missing"
     http_status, socket_code, cli_exit = ERROR_MAP["dependency_missing"]
     remediation = "Install the named extra. Example: pip install '.[extra]'. Then try again."
+
+
+class StoreNewerError(CorpusError):
+    """The store schema is newer than this code knows (W5-a boot guard)."""
+
+    error_type = "store_newer"
+    http_status, socket_code, cli_exit = ERROR_MAP["store_newer"]
+    remediation = (
+        "Update this app to the version that owns those migrations. Or restore the store backup."
+    )
+
+
+class PackageNotPublishedError(CorpusError):
+    """The package is not on PyPI yet, so the upgrade step cannot run."""
+
+    error_type = "package_not_published"
+    http_status, socket_code, cli_exit = ERROR_MAP["package_not_published"]
+    remediation = "Install from the git checkout instead. Or wait for the PyPI release."
 
 
 class InternalError(CorpusError):

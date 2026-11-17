@@ -29,7 +29,7 @@ import sys
 import asyncpg
 from mcp.server.mcpserver import MCPServer
 
-from corpus_kb.errors import ConfigError, DatabaseUnavailableError
+from corpus_kb.errors import ConfigError, DatabaseUnavailableError, StoreNewerError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ def build_mcp_server(pg_pool: asyncpg.Pool, config: dict[str, object] | None = N
 
 async def _serve_stdio() -> None:
     """One event loop for the store and the protocol: config, open, serve."""
+    from corpus_kb._setup.version_guard import assert_store_supported
     from corpus_kb.config import load_config
     from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
 
@@ -76,6 +77,17 @@ async def _serve_stdio() -> None:
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
             "configure database.connection_string in config.yaml."
         )
+    # Boot guard (W5-a): a store schema NEWER than this code refuses to
+    # serve — typed, before the pool opens. A fresh or older store
+    # proceeds unchanged.
+    backend = "duckdb" if conn_str.startswith("duckdb:") else "postgres"
+    try:
+        await assert_store_supported(conn_str, backend)
+    except (ConnectionError, OSError, asyncpg.PostgresError) as exc:
+        detail = str(exc) or type(exc).__name__
+        raise DatabaseUnavailableError(
+            f"Cannot reach the database to check the schema version: {detail}"
+        ) from exc
     try:
         pool = await open_pool_typed_store(conn_str)
     except Exception as exc:
@@ -103,7 +115,7 @@ def run_stdio_server() -> int:
         asyncio.run(_serve_stdio())
     except KeyboardInterrupt:
         logger.info("MCP stdio server interrupted")
-    except (ConfigError, DatabaseUnavailableError) as exc:
+    except (ConfigError, DatabaseUnavailableError, StoreNewerError) as exc:
         print(f"corpus-kb: {exc}", file=sys.stderr)
         print(f"corpus-kb: {exc.remediation}", file=sys.stderr)
         return exc.cli_exit

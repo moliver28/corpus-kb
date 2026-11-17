@@ -222,6 +222,13 @@ async def test_startup_postgres_happy_path_assembles_services(
     monkeypatch.setattr(sw, "_wire_projections", fake_projections)
     monkeypatch.setattr(sw, "_wire_http", fake_http)
 
+    # The W5-a boot guard is the fifth offline seam: an older-or-fresh
+    # store passes; the probe never touches a real database here.
+    async def fake_guard(_conn_str: str, _backend: str) -> None:
+        return None
+
+    monkeypatch.setattr("corpus_kb._setup.version_guard.assert_store_supported", fake_guard)
+
     cfg = {"database": {"connection_string": "postgresql://x", "backend": "postgres"}}
     services = await startup(cfg)
 
