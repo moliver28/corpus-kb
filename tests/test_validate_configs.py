@@ -62,7 +62,7 @@ def valid_opencode_config():
                 "description": "Local RAG system",
                 "command": ["corpus-kb", "--transport", "stdio"],
                 "environment": {},
-                "autoApprove": ["search", "retrieve_context"],
+                "autoApprove": ["search", "list_documents"],
             }
         },
     }
@@ -79,7 +79,7 @@ def valid_claude_config():
                 "command": "corpus-kb",
                 "args": ["--transport", "stdio"],
                 "env": {},
-                "autoApprove": ["search", "retrieve_context"],
+                "autoApprove": ["search", "list_documents"],
             }
         },
     }
@@ -112,7 +112,7 @@ def valid_codex_config():
                 "command": "corpus-kb",
                 "args": ["--transport", "stdio"],
                 "env": {},
-                "autoApprove": ["search", "retrieve_context"],
+                "autoApprove": ["search", "list_documents"],
             }
         },
     }

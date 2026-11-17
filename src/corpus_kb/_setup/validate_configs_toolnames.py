@@ -1,11 +1,12 @@
 """Master allowlist of MCP tool names valid in ``autoApprove`` lists.
 
-Two families:
-  * the master corpus-kb MCP tool set (search / sql / graph / metadata),
-  * the research/coding surfaces (tools/research_tools.py +
-    tools/notebook_tools.py — todo-18 tool-name lockstep, r9: every PR
-    registering an MCP tool extends this set AND regenerates the harness
-    pack in the SAME PR).
+The set DERIVES from the one source of truth, not from a hand list: the
+parity catalogue (``corpus_kb.contracts``) plus ``surface_registry``'s
+``SURFACES``. Every row that declares the MCP kind joins; CLI-only and
+HTTP-only ids stay out. The lockstep gate (``poe toolname-lockstep``,
+ci.yml / toolname-lockstep, issue #416) pins the set in both directions,
+so a new MCP tool cannot silently fall out of the allowlist (the r9
+class: a registry row landed, its allowlist entry did not).
 
 Also owns the shared autoApprove list rule used by the OpenCode and
 Claude Code validators.
@@ -13,146 +14,58 @@ Claude Code validators.
 
 from __future__ import annotations
 
-VALID_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        # -- master corpus-kb MCP tools -------------------------------------
-        "search",
-        "ask",
-        "search_context",
-        "search_similar",
-        "retrieve_context",
-        "list_documents",
-        # Issue #182: the document delete and the answer verifier gained
-        # surface_registry rows (the UI manifest ids document-delete and
-        # verify); the tool names join here.
-        "delete_document",
-        "verify_answer",
-        "get_stats",
-        "list_versions",
-        "list_branches",
-        "get_entity_relations",
-        "search_graph",
-        "graph_neighbors",
-        "graph_traverse",
-        "sql_query",
-        "sql_tables",
-        "get_document_tags",
-        "get_metadata",
-        "query_document_stats",
-        "sync_database",
-        # -- research/coding surfaces (todos 11-18) --------------------------
-        "research_ingest_transcript",
-        "research_ingest",
-        "coding_run",
-        "inductive_run",
-        "codebook_promote",
-        "research_report",
-        "review_execute",
-        "notebook_ask",
-        "notebook_evidence",
-        "notebook_uncoded",
-        "notebook_overlap",
-        "research_cycle",
-        "research_demo",
-        # -- release lifecycle (U5, tools/release_tools.py, P7) --------------
-        "release_assess",
-        "release_request",
-        "release_review",
-        "release_execute",
-        "release_status",
-        "release_compare",
-        # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
-        "ingest_status",
-        "ingest_reembed",
-        # -- #202 bulk re-embed (tools/ingest_reingest.py) -------------------
-        "ingest_reingest",
-        # -- pipeline ingest ops (UI SPA Task 5a): catalogue-registered MCP
-        #    tools that gained surface_registry rows (manifest longRunning) --
-        "ingest_directory",
-        "ingest_url",
-        # -- ingest queue (textbook program): catalogue-registered MCP tools
-        #    with surface_registry rows ------------------------------------
-        "queue_enqueue",
-        "queue_status",
-        "queue_cancel",
-        # -- Track C: the per-project raw-table ops ------------------------
-        "project_provision",
-        "project_list",
-        "project_drop",
-        # -- lifecycle UI ops (UI SPA Task 5b, issue #176): registry rows over
-        #    the demo loader and the doctor probes ---------------------------
-        "demo_load",
-        "doctor",
-        # -- lifecycle read lists (UI SPA Task 5b, spec B2): the Review and
-        #    Codebook screens' GET reads -------------------------------------
-        "projects_list",
-        "codebooks_list",
-        "codebook_proposals",
-        "coding_assignments",
-        # -- topics layer (Wave 4, tools/topics_tools.py) ---------------------
-        "topics_build",
-        "topics_list",
-        # -- analysis program (Wave 0 skeleton, tools/*_tools.py) -------------
-        "topics_trends",
-        "labeling_build",
-        "labeling_list",
-        "labeling_lfs",
-        "labeling_triage",
-        "labeling_gold_check",
-        "classification_build",
-        "classification_list",
-        "analysis_backfill_dates",
-        "analyze_run",
-        # -- analysis method register program (wave 2, tools/*_tools.py) -----
-        "analysis_select_method",
-        # -- analysis question-routing program (wave 3, question front door) -
-        "analysis_route",
-        "keyphrases_extract",
-        "lexical_classify",
-        "neighbors_classify",
-        "centroids_classify",
-        "clusters_inspect",
-        "duplicates_screen",
-        "outliers_rank",
-        "nli_classify",
-        "contradictions_screen",
-        "sentiment_screen",
-        "active_learn_next",
-        # -- calibrate family (issue #200, tools/calibrate_tools.py) ---------
-        "calibrate_apply",
-        # -- chunk-coding ops (issue #350, tools/coding_tools.py) ------------
-        "coding_embed_codebook",
-        "coding_pool",
-        "coding_code_batch",
-        "coding_reliability",
-        "coding_calibrate_floors",
-        "coding_saturation",
-        "coding_status",
-        "coding_export",
-        # -- event-store health (issue #350, tools/events_tools.py) ----------
-        "events_summary",
-        # -- graph/beliefs/conflicts/statements reads (W3c auto-approve
-        #    derivation brought these catalogue ops into host lists) -------
-        "beliefs_compare",
-        "beliefs_predict",
-        "beliefs_timeline",
-        "beliefs_current",
-        "conflicts_list",
-        "conflicts_scan",
-        "conflicts_resolve",
-        "statements_list",
-        "statements_timeline",
-        "query",
-        # -- catalogue write/ingest ops the W3c classification names (the
-        #    master allowlist covers every live MCP tool, safe or not) -----
-        "add_entity",
-        "add_relation",
-        "analysis_embed_meta",
-        "extraction_tune",
-        "ingest_text",
-        "ingest_file",
-    }
-)
+import importlib.util
+import sys
+from pathlib import Path
+
+
+def _derive_valid_tool_names() -> frozenset[str]:
+    """Every live MCP tool name: catalogue rows plus registry rows.
+
+    A name joins when its row declares the MCP kind: a catalogue
+    surface spec with kind ``mcp``, or a registry row with ``"mcp"`` in
+    its surface set and a tool name. Names that only an HTTP route or a
+    CLI subcommand carries never join.
+    """
+    from corpus_kb.contracts import OPERATIONS
+    from corpus_kb.contracts.model import MCP
+    from corpus_kb.surface_registry import SURFACES
+
+    names = {spec.route for op in OPERATIONS for spec in op.surfaces if spec.kind == MCP}
+    names |= {s.mcp_tool for s in SURFACES if "mcp" in s.surfaces and s.mcp_tool}
+    return frozenset(names)
+
+
+def _derive_in_script_context() -> frozenset[str]:
+    """Derive when ``corpus_kb`` is not installed (script context).
+
+    The CI validate-configs job installs only PyYAML, and ``corpus_kb``
+    stays UNIMPORTABLE there by design: the engine import chain needs
+    the full dependency set. ``surface_registry`` is stdlib-only, so
+    this loads it by path (the ``agent_config_autoapprove`` pattern)
+    and unions its two classified sets. The engine-side lockstep test
+    pins that union to the full MCP tool universe, so the two paths can
+    never disagree.
+    """
+    registry_path = (
+        Path(__file__).resolve().parents[3] / "src" / "corpus_kb" / "surface_registry.py"
+    )
+    spec = importlib.util.spec_from_file_location("corpus_surface_registry", registry_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load surface_registry by path: {registry_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        return frozenset(module.SERVER_AUTO_APPROVE) | frozenset(module.AUTO_APPROVE_WRITE_TOOLS)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+
+try:
+    VALID_TOOL_NAMES: frozenset[str] = _derive_valid_tool_names()
+except ImportError:  # pragma: no cover - script context (CI validate job)
+    VALID_TOOL_NAMES = _derive_in_script_context()
 
 
 def _auto_approve_errors(prefix: str, auto_approve: object, with_valid_list: bool) -> list[str]:
