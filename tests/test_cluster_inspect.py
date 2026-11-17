@@ -1,16 +1,18 @@
 """Unit tests for clusters_inspect.
 
 The reduction seam is faked for the structure tests (fast, no numba);
-one test drives the REAL reduction + clustering path (PCA fallback +
-sklearn HDBSCAN — umap is not installed in this venv) and asserts
-STRUCTURAL stability only: same data, same cluster sizes and noise
-count on one machine. Coordinate byte-equality is never asserted (the
-AMR rule: UMAP/PCA coordinates are not a contract; structure is).
+the real reduction + clustering path runs under two kinds of tests:
+the PCA fallback path (sklearn HDBSCAN, no umap) and the real-UMAP
+paths (skipped where umap is absent). All of them assert STRUCTURAL
+stability only: same data, same cluster sizes and noise count on one
+machine. Coordinate byte-equality is never asserted (the AMR rule:
+UMAP/PCA coordinates are not a contract; structure is).
 """
 
 from __future__ import annotations
 
 import sys
+import warnings
 
 import numpy as np
 import pytest
@@ -152,6 +154,178 @@ async def test_real_umap_path_reports_umap(monkeypatch: pytest.MonkeyPatch) -> N
     out = await cluster_tools.clusters_inspect(None, None, "t", min_cluster_size=3)
     assert out["status"] == "success"
     assert out["params"]["reduction"] == "umap"
+
+
+# ---------------------------------------------------------------------------
+# Tiny corpora (issue #436). umap's spectral init asks scipy for one more
+# eigenvector than n_components, so a sample of six or fewer points
+# crashes the locked umap 0.5.12 (eigsh k >= N TypeError) and warns its
+# way into a random fallback on 0.6.0. The guard runs a seeded random
+# init from three points up and PCA at two (umap cannot run at two
+# points: its n_neighbors floor of two collides with the sample size).
+
+
+def _tiny_rows(count: int) -> dict[str, list[float]]:
+    """A small spread-out corpus (8-D, one point per fake chunk id)."""
+    rng = np.random.default_rng(42)
+    centers = [[5.0] * 8, [-5.0] * 8, [0.0] * 7 + [9.0], [-9.0] + [0.0] * 7]
+    rows: dict[str, list[float]] = {}
+    for i in range(count):
+        point = np.asarray(centers[i % len(centers)]) + rng.normal(0.0, 0.2, 8)
+        rows[f"t{i}"] = [float(v) for v in point]
+    return rows
+
+
+async def test_real_umap_four_chunks_survive_and_are_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not HAS_UMAP:
+        pytest.skip("umap not installed; the UMAP path cannot run here")
+    _patch(monkeypatch, _space(_tiny_rows(4)))
+    with warnings.catch_warnings():
+        # umap 0.5.12 (the lock pin) TypeErrors inside eigsh here and
+        # umap 0.6.0 warns its way into an unseeded-size fallback. Both
+        # fail this test: the suite carries a zero-warnings ceiling.
+        warnings.simplefilter("error")
+        first = await cluster_tools.clusters_inspect(None, None, "t")
+        second = await cluster_tools.clusters_inspect(None, None, "t")
+    assert first["status"] == "success"
+    assert first["params"]["reduction"] == "umap_random_init"
+    assert first["params"]["random_state"] == 42
+    # Structure is the contract; coordinates are not (the AMR rule).
+    assert [c["size"] for c in first["clusters"]] == [c["size"] for c in second["clusters"]]
+    assert first["noise_count"] == second["noise_count"]
+    assert sum(c["size"] for c in first["clusters"]) + first["noise_count"] == 4
+
+
+async def test_real_umap_two_chunks_take_the_pca_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, _space(_tiny_rows(2)))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = await cluster_tools.clusters_inspect(None, None, "t")
+    assert out["status"] == "success"
+    assert out["params"]["reduction"] == "pca_fallback"
+    assert sum(c["size"] for c in out["clusters"]) + out["noise_count"] == 2
+
+
+class _Umap05Double:
+    """umap 0.5-shaped module double (the lock's pin): records kwargs."""
+
+    def __init__(self) -> None:
+        self.captured: dict[str, object] = {}
+
+    def UMAP(  # noqa: N802 - mirrors the real library's class name
+        self,
+        *,
+        n_neighbors: int = 15,
+        n_components: int = 5,
+        min_dist: float = 0.0,
+        metric: str = "cosine",
+        n_jobs: int = 1,
+        random_state: int = 42,
+        init: str = "spectral",
+    ) -> _Umap05Double:
+        self.captured = {
+            "n_neighbors": n_neighbors,
+            "n_components": n_components,
+            "min_dist": min_dist,
+            "metric": metric,
+            "n_jobs": n_jobs,
+            "random_state": random_state,
+            "init": init,
+        }
+        return self
+
+    def fit_transform(self, x: object) -> list[list[float]]:
+        return [[0.0] * 5] * 4
+
+
+class _Umap06Double(_Umap05Double):
+    """umap 0.6-shaped double: the constructor declares the 0.6 kwarg."""
+
+    def UMAP(  # noqa: N802 - mirrors the real library's class name
+        self,
+        *,
+        n_neighbors: int = 15,
+        n_components: int = 5,
+        min_dist: float = 0.0,
+        metric: str = "cosine",
+        n_jobs: int = 1,
+        random_state: int = 42,
+        init: str = "auto",
+        compatibility_layout: bool = True,
+    ) -> _Umap06Double:
+        self.captured = {
+            "n_neighbors": n_neighbors,
+            "n_components": n_components,
+            "min_dist": min_dist,
+            "metric": metric,
+            "n_jobs": n_jobs,
+            "random_state": random_state,
+            "init": init,
+            "compatibility_layout": compatibility_layout,
+        }
+        return self
+
+
+def _install_umap_double(monkeypatch: pytest.MonkeyPatch, double: _Umap05Double) -> _Umap05Double:
+    import corpus_kb.topics.engine as engine
+
+    # The probe and the loader both go through the engine seam, so the
+    # double answers both: umap is "installed" and this is the module.
+    monkeypatch.setattr(engine, "_import_module", lambda name: double)
+    monkeypatch.setattr(engine, "load_umap", lambda: double)
+    return double
+
+
+def test_tiny_corpus_umap_kwargs_on_the_0_5_lock_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    double = _install_umap_double(monkeypatch, _Umap05Double())
+    matrix = np.asarray(list(_tiny_rows(4).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "umap_random_init"
+    assert double.captured["init"] == "random"
+    assert double.captured["random_state"] == 42
+    assert double.captured["n_neighbors"] == 3  # min(15, n - 1) at n = 4
+    # The 0.6-era kwarg must never reach the 0.5.x constructor (#430).
+    assert "compatibility_layout" not in double.captured
+
+
+def test_tiny_corpus_umap_kwargs_on_0_6(monkeypatch: pytest.MonkeyPatch) -> None:
+    double = _install_umap_double(monkeypatch, _Umap06Double())
+    matrix = np.asarray(list(_tiny_rows(4).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "umap_random_init"
+    assert double.captured["init"] == "random"
+    assert double.captured["compatibility_layout"] is True
+
+
+def test_two_points_take_pca_even_when_umap_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # umap is importable here, yet two points must still take PCA (#436).
+    double = _install_umap_double(monkeypatch, _Umap05Double())
+    matrix = np.asarray(list(_tiny_rows(2).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "pca_fallback"
+    assert double.captured == {}  # umap never builds a two-point fit
+
+
+def test_seven_points_take_the_pinned_umap_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    double = _install_umap_double(monkeypatch, _Umap05Double())
+    matrix = np.asarray(list(_tiny_rows(7).values()), dtype=np.float64)
+    _reduced, name = cluster_tools._reduce(matrix)
+    assert name == "umap"
+    assert double.captured["random_state"] == 42
+    assert double.captured["n_neighbors"] == 6  # min(15, n - 1) at n = 7
+    # The pinned constructor path never sends the tiny-path kwargs.
+    assert double.captured["init"] == "spectral"
+    assert "compatibility_layout" not in double.captured
 
 
 # ---------------------------------------------------------------------------

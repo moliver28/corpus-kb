@@ -18,7 +18,7 @@ sklearn PCA fallback (full SVD, deterministic) and the envelope's
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import asyncpg
 import numpy as np
@@ -26,6 +26,9 @@ import numpy as np
 from ..analysis import vectors
 from ..errors import DependencyMissingError, ValidationError
 from .ingest_common import DEFAULT_TENANT_ID
+
+if TYPE_CHECKING:  # the umap instance surface (static only; no runtime edge)
+    from ..topics.engine import UmapInstance
 
 __all__ = ["clusters_inspect"]
 
@@ -37,6 +40,10 @@ EXEMPLAR_COUNT = 3
 
 # The research pin carried into the params record (UMAP + sampler).
 RANDOM_STATE = 42
+
+# Below this count umap's spectral init needs more eigenvectors than
+# points exist; see _reduce.
+_SPECTRAL_MIN_SAMPLES = 7
 
 _EMPTY_REASON = "the tenant has no embedded chunks to cluster."
 _EMPTY_REMEDY = "Ingest documents with embeddings first (corpus-kb research ingest), then retry."
@@ -54,6 +61,12 @@ class _ClusterDependencyError(DependencyMissingError):
     remediation = _CLASSIFY_INSTALL
 
 
+class _TinyUmapModule(Protocol):
+    """The umap constructor surface for the tiny path (adds ``init``)."""
+
+    def UMAP(self, **kwargs: object) -> UmapInstance: ...  # noqa: N802
+
+
 async def _load_vectors(
     pg_pool: asyncpg.Pool, tenant_id: str, config: dict[str, object] | None
 ) -> vectors.VectorSpace:
@@ -66,25 +79,45 @@ def _reduce(matrix: np.ndarray) -> tuple[np.ndarray, str]:
 
     UMAP through the topics engine's pinned construction when umap is
     installed (the importlib indirection keeps the extras-less runtime
-    and the type checker clean); PCA (full SVD) otherwise. Tests
-    substitute fakes here.
+    clean); PCA otherwise; tiny samples skip umap's spectral init (a
+    seeded random init, or PCA at two points). Tests substitute fakes.
     """
     try:
-        # The engine's indirection stays invisible to deptry (a direct
-        # importlib.import_module literal is DEP001-flagged; the extras'
-        # umap-learn ships transitively under [topics]).
+        # The engine's indirection stays invisible to deptry: a direct
+        # importlib.import_module literal is DEP001-flagged there.
         from corpus_kb.topics.engine import _import_module
 
         _import_module("umap")
     except ImportError:
         return _pca_reduce(matrix)
-    from corpus_kb.topics.engine import _make_umap, load_umap
+    count = matrix.shape[0]
+    if count <= 2:
+        # Two points equal umap's neighbor floor: truncation, then a crash.
+        return _pca_reduce(matrix)
+    from corpus_kb.topics.engine import _make_umap, _umap_has_compatibility_layout, load_umap
 
-    # The inspect sample can be tiny; umap truncates n_neighbors to n-1
-    # with a UserWarning on small corpora — clamp here, same contract as
-    # the inductive engine, so the inspect path stays silent.
-    n_neighbors = min(15, max(matrix.shape[0] - 1, 2))
-    reducer = _make_umap(load_umap(), n_neighbors=n_neighbors)
+    umap_module = load_umap()
+    if count < _SPECTRAL_MIN_SAMPLES:
+        # The spectral init needs one more eigenvector (n_components + 1)
+        # than points exist below seven: 0.5.12 TypeErrors inside eigsh
+        # and 0.6 warns. A seeded random init keeps umap in the loop.
+        kwargs: dict[str, object] = {
+            "random_state": RANDOM_STATE,
+            "n_neighbors": min(15, count - 1),
+            "n_components": 5,
+            "min_dist": 0.0,
+            "metric": "cosine",
+            "n_jobs": 1,
+            "init": "random",
+        }
+        if _umap_has_compatibility_layout(umap_module):
+            kwargs["compatibility_layout"] = True
+        reducer = cast(_TinyUmapModule, umap_module).UMAP(**kwargs)
+        return np.asarray(reducer.fit_transform(matrix), dtype=np.float64), "umap_random_init"
+
+    # Clamp like the inductive engine so umap never truncates with a warning.
+    n_neighbors = min(15, max(count - 1, 2))
+    reducer = _make_umap(umap_module, n_neighbors=n_neighbors)
     return np.asarray(reducer.fit_transform(matrix), dtype=np.float64), "umap"
 
 
