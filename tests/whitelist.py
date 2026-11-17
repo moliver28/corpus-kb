@@ -649,3 +649,8 @@ suppression_flag
 # src/ only and cannot see that reach.
 live
 closed_count
+
+# Embedder honesty note (issue #468): OllamaEmbedder.last_note is set on
+# degraded embed paths and read by the timeout tests and future receipt
+# surfaces; the vulture src scan sees only the writes.
+last_note

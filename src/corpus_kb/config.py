@@ -495,20 +495,19 @@ def get_default_config() -> dict[str, object]:
             "model": "qwen3-embedding:4b",
             "base_url": "http://localhost:11434",
             "batch_size": 32,
+            # Issue #468: hard cap on the per-call ``input`` array.
+            "max_batch_texts": 32,
             # Native output width. Must equal the schema width
             # (chunks_vectors.embedding = halfvec(EMBEDDING_DIMENSIONS)).
             "dimensions": EMBEDDING_DIMENSIONS,
             # U32 MRL gating: qwen3-embedding is Matryoshka-trained, so
-            # front-slice truncation + L2 renormalization is a sound
-            # reduced-dimension representation. Gates the two-stage
-            # matryoshka arm (retrieval.matryoshka_enabled) and the Ollama
-            # dimensions passthrough.
+            # front-slice truncation + L2 renormalization is sound. Gates
+            # the matryoshka arm and the Ollama dimensions passthrough.
             "mrl_trained": True,
             # Gates QUERY_INSTRUCTION_PREFIX at instruct() (query side only).
             "query_instruction": True,
-            # Late chunking gate (see the packaged config.yaml for the full
-            # contract; honest pooled fallback when the extra/model lacks
-            # token-level support).
+            # Late chunking gate; honest pooled fallback. The packaged
+            # config.yaml holds the full contract.
             "late_chunking": True,
         },
         "ingestion": {
