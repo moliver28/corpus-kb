@@ -564,3 +564,56 @@ async def test_stream_uncitable_generation_degrades_without_deltas() -> None:
     assert isinstance(final, AskStreamFinal)
     assert final.bundle.status == STATUS_DEGRADED
     assert final.bundle.note == NO_CITABLE_SENTENCES
+
+
+# ---------------------------------------------------------------------------
+# The judge-group + verdict-normalization degrade branches (unit level)
+# ---------------------------------------------------------------------------
+
+
+def test_judge_group_batch_call_raising_degrades_the_group() -> None:
+    """A batch seam that raises degrades every claim, never propagates."""
+
+    def _boom(claims: list[str], cited_texts: list[str]) -> list[tuple[str, float]]:
+        raise RuntimeError("transport down")
+
+    from corpus_kb.ask.steps import _judge_group
+
+    out = _judge_group(_boom, None, ["claim a", "claim b"], ["evidence"])
+
+    assert out == [("unsupported", 0.0), ("unsupported", 0.0)]
+
+
+def test_judge_group_without_any_entail_seam_degrades() -> None:
+    """No batch and no per-claim seam: the honest unsupported pair."""
+    from corpus_kb.ask.steps import _judge_group
+
+    assert _judge_group(None, None, ["claim a"], ["evidence"]) == [("unsupported", 0.0)]
+
+
+def test_judge_group_per_claim_entail_raising_degrades_that_claim() -> None:
+    """A raising per-claim seam degrades claim by claim, in order."""
+
+    def _boom(claim: str, cited_texts: list[str]) -> tuple[str, float]:
+        raise RuntimeError("judge exploded")
+
+    from corpus_kb.ask.steps import _judge_group
+
+    out = _judge_group(None, _boom, ["claim a", "claim b"], ["evidence"])
+
+    assert out == [("unsupported", 0.0), ("unsupported", 0.0)]
+
+
+def test_normalize_pair_hardens_duck_typed_verdicts() -> None:
+    """Junk verdicts normalize into the honest unsupported pair; clean
+    pairs pass through with string confidences parsed and clamped."""
+    from corpus_kb.ask.steps import _normalize_pair
+
+    assert _normalize_pair(("entailed", 0.8)) == ("entailed", 0.8)
+    assert _normalize_pair(("entailed", "0.7")) == ("entailed", 0.7)
+    assert _normalize_pair(("entailed", "half")) == ("unsupported", 0.0)
+    # An out-of-range confidence clamps to 0.0; a valid label stays.
+    assert _normalize_pair(("entailed", 2.5)) == ("entailed", 0.0)
+    assert _normalize_pair(("entailed", -1)) == ("entailed", 0.0)
+    assert _normalize_pair("junk") == ("unsupported", 0.0)
+    assert _normalize_pair(("entailed",)) == ("unsupported", 0.0)

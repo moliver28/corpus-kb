@@ -166,6 +166,34 @@ def test_entail_non_dict_json_degrades(monkeypatch) -> None:
     assert judge.entail("claim text", ["evidence"]) == ("unsupported", 0.0)
 
 
+def test_entail_non_numeric_confidence_degrades(monkeypatch) -> None:
+    """A confidence that is not a number degrades the whole verdict."""
+    judge = OllamaJudge({"judge": {"enabled": True}})
+    raw = json.dumps({"label": "entailed", "confidence": "half"})
+    _canned_chat(judge, monkeypatch, raw)
+
+    assert judge.entail("claim text", ["evidence"]) == ("unsupported", 0.0)
+
+
+def test_entail_batch_junk_entries_degrade_their_claims(monkeypatch) -> None:
+    """Non-object entries and a boolean claim number are ignored; their
+    claims degrade while the well-formed ones keep their verdicts."""
+    judge = OllamaJudge({"judge": {"enabled": True}})
+    raw = json.dumps(
+        [
+            {"n": 1, "label": "entailed", "confidence": 0.9},
+            "junk entry",
+            {"n": True, "label": "entailed", "confidence": 1.0},
+        ]
+    )
+    _canned_chat(judge, monkeypatch, raw)
+
+    assert judge.entail_batch(["claim one", "claim two"], ["ev"]) == [
+        ("entailed", 0.9),
+        ("unsupported", 0.0),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # _client_chat: the ollama client response shapes
 # ---------------------------------------------------------------------------
