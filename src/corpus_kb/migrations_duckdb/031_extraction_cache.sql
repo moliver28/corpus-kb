@@ -1,9 +1,9 @@
 -- DuckDB twin of pg migration 030 (extraction cache, Living Corpus W1).
 -- Type conversions per the house convention (see 029 header):
---   jsonb -> JSON, TEXT stays TEXT. No RLS: the DuckDB gateway enforces
---   the tenant predicate per statement, and the extraction stage never
---   touches this table on DuckDB runs (pool is None), so it exists to
---   keep the storage-portability parity and digest legs complete.
+--   jsonb -> JSON, TEXT stays TEXT. No RLS: the cache statements carry
+--   the tenant predicate explicitly (extraction/cache.py), and cache
+--   reads and writes run through the gateway statement gate on DuckDB
+--   runs — same statements, same key semantics as the Postgres twin.
 
 CREATE TABLE IF NOT EXISTS extraction_cache (
     tenant_id UUID NOT NULL,
