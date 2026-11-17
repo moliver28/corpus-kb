@@ -33,7 +33,10 @@ COPY src/ ./src/
 
 # --no-deps: only this package's wheel is built here; the runtime stage
 # resolves the dependencies from PyPI when it installs the wheel.
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
+# The pip download cache rides a BuildKit cache mount, so it survives
+# rebuilds and never lands in an image layer.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --no-deps --wheel-dir /wheels .
 
 # Wheel self-check (zero-drift: the built UI dist, the packaged config,
 # the base schema, and the migrations must all ride along; a bare wheel
@@ -51,8 +54,10 @@ sys.exit('wheel is missing: ' + ', '.join(missing)) if missing else print('wheel
 
 FROM python:3.11-slim-bookworm
 
-ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+# No PIP_NO_CACHE_DIR here: the install below uses a BuildKit cache mount.
+# The mount keeps downloaded wheels between rebuilds and keeps them OUT of
+# the image layers, so the shipped image stays as slim as before.
+ENV PYTHONUNBUFFERED=1
 
 # libmagic1: the `magic` module behind unstructured partitioning loads it on
 # Debian (the CI Windows equivalent is python-magic-bin). No git, no curl:
@@ -62,7 +67,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir /wheels/corpus_kb-*.whl \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install /wheels/corpus_kb-*.whl \
  && rm -rf /wheels
 
 # Non-root by default (Synology security hygiene). UID is fixed so a bind
