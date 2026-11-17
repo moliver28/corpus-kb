@@ -8,19 +8,19 @@ request. The model loads once per worker, not once per window.
 
 The worker speaks the same plain page rows the per-window child ships
 (:mod:`textbook_child` owns the child side), so a reused window
-carries the same items a fresh child would. Each worker's life is
-bounded: the parent recycles it after ``max_windows`` served windows,
-drops it after a crash or a missed window deadline, and the idle
-reaper drops it once it has sat idle past ``idle_ttl_s`` (checked at
-the next acquire), so a long-lived server sheds idle parser children
-instead of holding them for its whole life. A lost window still falls
-back to pypdf for that window only; the next window spawns a fresh
-worker.
+carries the same items a fresh child would. A "request" here is an
+in-process queue item: a local PDF path plus page bounds. This module
+has no network I/O. Each worker's life is bounded: the parent
+recycles it after ``max_windows`` served windows, drops it after a
+crash or a missed window deadline, and the idle reaper drops it once
+it has sat idle past ``idle_ttl_s`` (checked at the next acquire), so
+a long-lived server sheds idle parser children. A lost window still
+falls back to pypdf for that window only; the next window spawns a
+fresh worker.
 
 Every parse runs single-flight under the parser's lock, so two
-threads can never share one worker or steal another window's rows
-from its payload queue — even if a caller moves strategy parsing off
-the event loop onto worker threads.
+threads never share one worker or steal another window's rows from
+its payload queue, even when callers parse on worker threads.
 
 Tests patch :func:`_start_worker` (the spawn seam) and swap the
 ``_WORKERS`` table, so no test starts a real child process.

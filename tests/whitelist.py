@@ -644,6 +644,12 @@ session_ordinal
 # test, outside the vulture gate's src-only scan.
 suppression_flag
 
+# DuckDB read-pool introspection hooks (issue #471): the pool's health
+# counters are read by tests/test_duckdb_read_pool.py; vulture scans
+# src/ only and cannot see that reach.
+live
+closed_count
+
 # Embedder honesty note (issue #468): OllamaEmbedder.last_note is set on
 # degraded embed paths and read by the timeout tests and future receipt
 # surfaces; the vulture src scan sees only the writes.
