@@ -54,18 +54,19 @@ def validate_progression_fields(record: ProgressionRecord) -> None:
 
 
 def _check_concepts(concepts: list[str] | None) -> None:
-    """Taught concepts: 1 to 5, known words, non-empty, unique."""
+    """Taught concepts: 1 to 5, non-empty, known words, unique."""
     if concepts is None:
         return
     if not 1 <= len(concepts) <= MAX_CONCEPTS:
         raise ValueError(f"concepts: {len(concepts)} found. List 1 to {MAX_CONCEPTS}.")
+    # Blank entries come first: the vocabulary check cannot name them.
+    if any(not concept.strip() for concept in concepts):
+        raise ValueError("concepts: every entry must be non-empty text.")
     unknown = [concept for concept in concepts if concept not in TEACHING_CONCEPTS]
     if unknown:
         raise ValueError(
             f"concepts: {', '.join(unknown)} is not supported. "
             f"Use one of: {', '.join(TEACHING_CONCEPTS)}."
         )
-    if any(not concept.strip() for concept in concepts):
-        raise ValueError("concepts: every entry must be non-empty text.")
     if len(set(concepts)) != len(concepts):
         raise ValueError("concepts: remove duplicate concepts.")

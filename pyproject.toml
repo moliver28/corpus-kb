@@ -769,6 +769,15 @@ help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
 cmd = "python src/corpus_kb/_setup/validate_configs.py"
 help = "MCP config + runtime config consistency gate (ci.yml validate-configs job)"
 
+[tool.poe.tasks.toolname-lockstep]
+# The MCP tool-name allowlist lockstep (issue #416, rule 10: poe target +
+# ci.yml toolname-lockstep job + CI-map row). VALID_TOOL_NAMES derives
+# from the parity catalogue plus surface_registry; the lockstep test
+# pins exact set equality in both directions, so a new MCP tool cannot
+# fall out of the autoApprove allowlist by hand (the r9 drift class).
+cmd = "python -m pytest tests/test_toolname_lockstep.py -q --tb=short"
+help = "MCP tool-name allowlist lockstep vs catalogue + registry (issue #416)"
+
 [tool.poe.tasks.dup-check]
 # jscpd duplication gate (PR-F, rule 10: poe target + ci.yml dup-check
 # job + enforcement-map row). The scanner is pinned as a ui_src

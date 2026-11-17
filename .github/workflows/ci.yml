@@ -363,6 +363,35 @@ jobs:
         run: poe validate-configs
 
   # ─────────────────────────────────────────────────────────────────────
+  # Toolname lockstep (issue #416, zero-drift rule 10): VALID_TOOL_NAMES
+  # derives from the parity catalogue plus surface_registry, and the
+  # lockstep test pins exact set equality in both directions. A new MCP
+  # tool that skips the allowlist fails here (the r9 drift class), not
+  # in a user's autoApprove validation.
+  # ─────────────────────────────────────────────────────────────────────
+  toolname-lockstep:
+    name: "toolname-lockstep"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project deps
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev]"
+
+      - name: Toolname lockstep gate
+        run: poe toolname-lockstep
+
+  # ─────────────────────────────────────────────────────────────────────
   # audit-deps (PR-F, zero-drift rule 10): uv-native CVE audit of the
   # COMMITTED uv.lock. --locked fails both on known vulnerabilities and
   # on a lock that is stale against pyproject.toml. The ignore list,
