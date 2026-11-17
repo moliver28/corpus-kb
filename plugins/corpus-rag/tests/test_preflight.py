@@ -175,3 +175,38 @@ def test_doctor_report_tolerates_bad_output(tmp_path: Path, monkeypatch) -> None
     soft_checks.soft_checks(None, soft)
     assert [row["name"] for row in soft] == ["Ollama", "embedding model"]
     assert json.dumps(soft)  # rows stay JSON-serializable
+
+
+# ---------------------------------------------------------------------------
+# Drift cross-check: the fallback model name tracks the engine (issue #433)
+# ---------------------------------------------------------------------------
+
+REPO = Path(PLUGIN).parent.parent
+
+
+def _packaged_embedding_model() -> str | None:
+    """The ``embedding.model`` default from the packaged engine config."""
+    path = REPO / "src" / "corpus_kb" / "config.yaml"
+    block = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("embedding:"):
+            block = True
+            continue
+        if block and line and not line[0].isspace():
+            break  # a new top-level key: the embedding block ended
+        stripped = line.strip()
+        if block and stripped.startswith("model:"):
+            return stripped.split(":", 1)[1].strip()
+    return None
+
+
+def test_default_model_matches_the_packaged_engine_config() -> None:
+    """The plugin's fallback pull name is the engine's packaged default.
+
+    The literal lives here on purpose (the plugin ships standalone), so
+    this test is the drift gate: a packaged default change fails the
+    plugin suite until the constant moves with it.
+    """
+    packaged = _packaged_embedding_model()
+    assert packaged, "no embedding.model found in the packaged config.yaml"
+    assert soft_checks.DEFAULT_EMBEDDING_MODEL == packaged

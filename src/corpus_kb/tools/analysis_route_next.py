@@ -47,12 +47,20 @@ def cli_run_hint(op: str | None) -> str | None:
 
     The registry is the source; the fallback map covers only the ops it
     does not list. A ``None`` op (human-led rows) never yields a hint.
+
+    An op can ride several registry rows (``review_execute`` fronts the
+    accept and override rows). The pick does not depend on registry row
+    order: the candidates sort by CLI path, then surface name, and the
+    first one wins, so reordering ``SURFACES`` cannot move the hint.
     """
     if op is None:
         return None
-    for surface in SURFACES:
-        if surface.mcp_tool == op and "cli" in surface.surfaces:
-            return f"corpus-kb {surface.cli_path}"
+    candidates = sorted(
+        (s for s in SURFACES if s.mcp_tool == op and "cli" in s.surfaces),
+        key=lambda s: (s.cli_path, s.name),
+    )
+    if candidates:
+        return f"corpus-kb {candidates[0].cli_path}"
     fallback = _OP_CLI_FALLBACK.get(op)
     if fallback is None:
         return None

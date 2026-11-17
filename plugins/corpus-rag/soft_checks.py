@@ -14,6 +14,12 @@ import urllib.request
 
 OLLAMA_BASE = "http://127.0.0.1:11434"
 PROBE_TIMEOUT_S = 30
+# The shipped engine default (config.yaml / doctor truth); the stale
+# nomic-embed-text name made the fix command pull a model the engine
+# does not configure. tests/test_preflight.py cross-checks this name
+# against the packaged engine config, so a default change fails the
+# plugin suite until it lands here too.
+DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:4b"
 
 
 def doctor_report(cli: str) -> dict:
@@ -76,15 +82,11 @@ def soft_checks(cli: str | None, soft: list[dict]) -> None:
     pulled = False
     if model:
         pulled = any(name == model or name.startswith(f"{model}:") for name in models)
-    # The shipped engine default (config.yaml / doctor truth); the stale
-    # nomic-embed-text name made the fix command pull a model the engine
-    # does not configure.
-    default_model = "qwen3-embedding:4b"
     soft.append(
         row(
             "embedding model",
             pulled if model else bool(models),
-            f"Pull the model: `ollama pull {model or default_model}`.",
+            f"Pull the model: `ollama pull {model or DEFAULT_EMBEDDING_MODEL}`.",
             model or "no model configured",
         )
     )

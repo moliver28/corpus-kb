@@ -60,8 +60,11 @@ def get_tool_map(config: dict[str, Any], format_name: str) -> dict[str, dict[str
     if format_name == "opencode":
         container = config.get("mcp", {})
     elif format_name == "zcode":
-        # ZCode nests its servers one level deeper: mcp.servers.
-        container = config.get("mcp", {}).get("servers", {})
+        # ZCode nests its servers one level deeper: mcp.servers. A
+        # malformed envelope (mcp holds a non-dict) yields an empty
+        # map, mirroring the sibling branches.
+        mcp_block = config.get("mcp", {})
+        container = mcp_block.get("servers", {}) if isinstance(mcp_block, dict) else None
     else:
         container = config.get("mcpServers", {})
 

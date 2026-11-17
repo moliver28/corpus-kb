@@ -137,6 +137,20 @@ def test_cli_hint_is_none_without_a_command() -> None:
     assert cli_run_hint(None) is None
 
 
+def test_cli_hint_does_not_depend_on_registry_row_order(monkeypatch) -> None:
+    """An op with several rows (accept/override) picks the same hint.
+
+    ``review_execute`` fronts two registry rows with different CLI
+    paths. The pick must not follow tuple order: reversing ``SURFACES``
+    cannot move the hint (deterministic-output rule 9).
+    """
+    import corpus_kb.tools.analysis_route_next as route_next
+
+    assert route_next.cli_run_hint("review_execute") == "corpus-kb review accept"
+    monkeypatch.setattr(route_next, "SURFACES", tuple(reversed(route_next.SURFACES)))
+    assert route_next.cli_run_hint("review_execute") == "corpus-kb review accept"
+
+
 def test_every_implemented_register_op_yields_a_hint() -> None:
     """Drift guard: an op the registry misses cannot hide in a chain.
 

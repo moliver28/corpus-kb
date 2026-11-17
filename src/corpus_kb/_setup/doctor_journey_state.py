@@ -132,7 +132,12 @@ def _duckdb_build_state(conn_str: str) -> JourneyState | None:
 
 
 async def read_build_state(conn_str: str, backend: str) -> JourneyState | None:
-    """One read-only state read on the configured backend (never raises)."""
+    """One read-only state read on the configured backend.
+
+    Connect failures raise: asyncpg and duckdb connects carry timeouts
+    and errors. The doctor journey wraps this call and degrades on a
+    raise; a second caller must wrap it the same way.
+    """
     if backend == "duckdb":
         return _duckdb_build_state(conn_str)
     import asyncpg
