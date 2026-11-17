@@ -10,6 +10,7 @@ import asyncpg
 
 from ...extraction import ExtractStats, extraction_backend_name
 from ...extraction.cache import ExtractionCache
+from ...storage.gateway import SqlGateway
 from ...storage.graph_policy import graph_eligible_relations, graph_policy_mode
 from ...utils.models import Chunk, Entity, Relation
 from ..ingest_cfg import _nested_dict
@@ -170,9 +171,14 @@ async def _cache_lookup(
     cache_cfg = cast(dict[str, Any], config.get("extraction") or {}).get("cache")
     enabled = cache_cfg.get("enabled", True) if isinstance(cache_cfg, dict) else True
     key = _cache_versions(config)
-    if not enabled or pool is None or not chunks:
+    if not enabled or not chunks:
         return {}, list(chunks), None, key
-    cache = ExtractionCache(pool, ingest_sink.tenant_id)
+    # One store, both engines: the raw pool on Postgres runs, the sink's
+    # gateway on DuckDB runs (pool is None there). The cache rides that
+    # store's own transaction scope, so its writes go through the same
+    # statement gate as every other pipeline write — no side connections.
+    store: asyncpg.Pool | SqlGateway = pool if pool is not None else ingest_sink.gateway
+    cache = ExtractionCache(store, ingest_sink.tenant_id)
     hashes = [c.chunk_hash for c in chunks if c.chunk_hash]
     try:
         hits = await cache.get(hashes, backend=key[0], model_version=key[1], prompt_version=key[2])

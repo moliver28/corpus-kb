@@ -7,6 +7,12 @@ entity/relation lists are valid hits (the model genuinely found
 nothing). Payloads cross the wire as JSON, so dumps use
 ``model_dump(mode="json")`` — python-mode keeps UUID objects that neither
 JSONB nor JSONResponse accept.
+
+One store, both engines: a raw asyncpg pool (Postgres) or a
+:class:`~corpus_kb.storage.gateway.SqlGateway` (the DuckDB file driver,
+or an injected Postgres gateway). The statements carry the tenant
+predicate explicitly — Postgres RLS stays defense-in-depth on top of it,
+and DuckDB has no RLS, so the predicate is the filter there.
 """
 
 from __future__ import annotations
@@ -16,11 +22,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..utils.models import Entity, Relation
+from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 if TYPE_CHECKING:
     import asyncpg
-
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +35,14 @@ SELECT chunk_hash, entities, relations
 FROM extraction_cache
 WHERE chunk_hash = ANY($1::text[]) AND backend = $2
   AND model_version = $3 AND prompt_version = $4
+  AND tenant_id = $5::uuid
 """
 
 _EXISTING_SQL = """
 SELECT chunk_hash FROM extraction_cache
 WHERE chunk_hash = ANY($1::text[]) AND backend = $2
   AND model_version = $3 AND prompt_version = $4
+  AND tenant_id = $5::uuid
 """
 
 _PUT_SQL = """
@@ -52,8 +60,8 @@ def _payload(value: list[Entity] | list[Relation]) -> str:
 class ExtractionCache:
     """Read-through cache of per-chunk extraction results."""
 
-    def __init__(self, pool: asyncpg.Pool, tenant_id: str) -> None:
-        self._pool = pool
+    def __init__(self, store: asyncpg.Pool | SqlGateway, tenant_id: str) -> None:
+        self._store = store
         self._tenant_id = tenant_id
 
     async def get(
@@ -67,8 +75,10 @@ class ExtractionCache:
         """Cached results keyed by chunk hash; absent hashes are misses."""
         if not chunk_hashes:
             return {}
-        async with tenant_connection(self._pool, self._tenant_id) as conn:
-            rows = await conn.fetch(_GET_SQL, chunk_hashes, backend, model_version, prompt_version)
+        async with tenant_connection(self._store, self._tenant_id) as conn:
+            rows = await conn.fetch(
+                _GET_SQL, chunk_hashes, backend, model_version, prompt_version, self._tenant_id
+            )
         hits: dict[str, tuple[list[Entity], list[Relation]]] = {}
         for row in rows:
             try:
@@ -99,8 +109,10 @@ class ExtractionCache:
         if not entries:
             return 0
         hashes = list(entries)
-        async with tenant_connection(self._pool, self._tenant_id) as conn:
-            stored = await conn.fetch(_EXISTING_SQL, hashes, backend, model_version, prompt_version)
+        async with tenant_connection(self._store, self._tenant_id) as conn:
+            stored = await conn.fetch(
+                _EXISTING_SQL, hashes, backend, model_version, prompt_version, self._tenant_id
+            )
             fresh = [h for h in hashes if h not in {r["chunk_hash"] for r in stored}]
             if fresh:
                 # executemany over the shared INSERT (issue #330): asyncpg's
