@@ -90,10 +90,10 @@ dependencies = [
     # (Apache-2.0, one transitive). SDK + OTLP exporter live in the extra.
     "opentelemetry-api>=1.45",
     "psutil>=6.0",
-    "llama-index-core>=0.11",
-    "llama-index-vector-stores-postgres>=0.2",
-    "llama-index-llms-ollama>=0.4",
-    "llama-index-embeddings-ollama>=0.4",
+    # The four llama-index packages moved to the [llamaindex] extra
+    # (install fast-path W2.5 S2): the only consumer is the optional
+    # LlamaIndexPostgresBackend, which imports them lazily, so base
+    # installs save roughly 49 MB of downloads.
 ]
 
 classifiers = [
@@ -295,6 +295,20 @@ classify = ["scikit-learn>=1.5", "threadpoolctl>=3.5"]
 # the import stays lazy behind the tier gate, so the extras-less jobs
 # stay green (same contract as latechunk/inductive/ner/topics).
 setfit = ["setfit>=1.2"]
+# LlamaIndex RAG mirror (install fast-path W2.5 S2): the optional
+# LlamaIndexPostgresBackend (storage/llamaindex_backend.py) that mirrors
+# chunks into a PGVectorStore table. The packages are MIT. Every llama_index
+# import sits behind the module's load seam, so base installs never touch
+# llama-index; server wiring degrades to a disabled mirror with ONE honest
+# log line when the extra is absent, and direct use raises the typed
+# DependencyMissingError with the install command. CI NEVER installs this
+# extra; the extras-less jobs stay green (same contract as [code]).
+llamaindex = [
+    "llama-index-core>=0.11",
+    "llama-index-vector-stores-postgres>=0.2",
+    "llama-index-llms-ollama>=0.4",
+    "llama-index-embeddings-ollama>=0.4",
+]
 # lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
 # tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
 # (coding/refi_qda) is stdlib-only; every lxml use is behind
@@ -546,6 +560,16 @@ DEP002 = [
     # them, so deptry cannot see the import edges.
     "docling",
     "pypdf",
+    # The [llamaindex] extra (install fast-path W2.5 S2): the four dists live
+    # in the extra, never in base dependencies, and the package has ZERO
+    # static llama_index import edges — storage/llamaindex_backend.py loads
+    # every module through the lazy seam and types the surfaces with small
+    # local Protocols (the latechunk shim pattern), so extras-less pyright
+    # and deptry never resolve the names.
+    "llama-index-core",
+    "llama-index-vector-stores-postgres",
+    "llama-index-llms-ollama",
+    "llama-index-embeddings-ollama",
 ]
 # httpx is imported directly in ten modules but arrives transitively (via
 # mcp[cli]/ollama). Ratchet follow-up: declare httpx explicitly and

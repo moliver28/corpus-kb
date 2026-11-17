@@ -224,7 +224,7 @@ class ProjectionWiring:
     embed_projection: EmbedChunksProjection
     docs_projection: DocumentsProjection
     event_reader: EventReader
-    rag_backend: LlamaIndexPostgresBackend
+    rag_backend: LlamaIndexPostgresBackend | None
 
 
 async def _wire_projections(
@@ -248,7 +248,7 @@ async def _wire_projections(
     from corpus_kb.projections.embed_projection import EmbedChunksProjection, set_embed_projection
     from corpus_kb.projections.event_reader import EventReader
     from corpus_kb.rag import create_embedder
-    from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
+    from corpus_kb.storage.llamaindex_backend import create_initialized_rag_backend
 
     checkpoint_mgr = CheckpointManager(pool)
     dlq_handler = DLQHandler(pool)
@@ -264,9 +264,9 @@ async def _wire_projections(
     docs_projection = DocumentsProjection(pool, checkpoint_mgr, dlq_handler)
     set_documents_projection(docs_projection)
 
-    # LlamaIndex RAG backend (additive, Ollama-only)
-    rag_backend = LlamaIndexPostgresBackend(cfg)
-    await rag_backend.initialize()
+    # LlamaIndex RAG backend (additive, Ollama-only); None without the
+    # [llamaindex] extra (the factory logs one honest line and degrades).
+    rag_backend = await create_initialized_rag_backend(cfg)
     return ProjectionWiring(
         embed_projection=embed_projection,
         docs_projection=docs_projection,

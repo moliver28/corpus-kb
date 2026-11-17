@@ -154,6 +154,33 @@ async def test_wire_projections_builds_and_initializes(
     assert initialized == [True]
 
 
+@pytest.mark.asyncio
+async def test_wire_projections_degrades_without_llamaindex_extra(
+    _singletons_restored, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A base install (no [llamaindex] extra) boots with the mirror off.
+
+    The import seam is faked, so this runs in every environment. The
+    wiring answers ``rag_backend=None`` and never raises — the server
+    stays up and the log carries one honest line (the notebooks pattern).
+    """
+    import corpus_kb.domain.application as application_module
+    import corpus_kb.storage.llamaindex_backend as llamaindex_module
+
+    def _missing_import(name: str) -> object:
+        raise ModuleNotFoundError(f"No module named '{name}'")
+
+    monkeypatch.setattr(application_module, "events_table_name", lambda app: "events_fake_table")
+    monkeypatch.setattr(llamaindex_module, "_import_module", _missing_import)
+
+    projections = await _wire_projections(
+        _wiring_config(), SimpleNamespace(name="fake-pool"), SimpleNamespace(mapper=object())
+    )
+
+    assert isinstance(projections, ProjectionWiring)
+    assert projections.rag_backend is None
+
+
 def test_wire_http_mounts_spa_and_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     """The HTTP wiring mounts the SPA, the notebooks gate, and the socket."""
     import corpus_kb.ui.spa as spa_module

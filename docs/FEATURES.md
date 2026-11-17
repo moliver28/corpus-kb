@@ -197,6 +197,8 @@ Ingest receipts can state the run's token spend. The `token_usage` key appears o
 
 In addition to the built-in PostgresGraphStore search path, Corpus-KB includes an optional LlamaIndex RAG backend. The backend uses PGVectorStore for vector storage and Ollama for local embeddings.
 
+The backend rides the optional `[llamaindex]` extra. Install it with `pip install 'corpus-kb[llamaindex]'`. Without the extra, the server boots with the mirror off and logs one line. Direct use raises `LlamaIndexDependencyError` with that install command.
+
 ```mermaid
 flowchart LR
     Ingest --> GraphStore[PostgresGraphStore<br/>chunks + entities + relations]
