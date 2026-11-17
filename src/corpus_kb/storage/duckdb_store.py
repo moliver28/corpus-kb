@@ -26,9 +26,10 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from ..errors import DatabaseUnavailableError, MigrationMissingError
 from ..utils.models import Chunk, Document, Entity, Relation
+from .duckdb_errors import _translate_error
 from .duckpgq import ensure_duckpgq, merge_min_depth_rows, traversal_statements
+from .entity_aliases import resolve_entity_id
 from .graph_sql import (
     MAX_NEIGHBOR_HOPS,
     neighbors_sql,
@@ -43,24 +44,6 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
 logger = logging.getLogger(__name__)
-
-
-def _translate_error(exc: Exception) -> Exception:
-    """Map DuckDB failures onto the shared taxonomy (no new error classes)."""
-    import duckdb
-
-    text = str(exc).lower()
-    if isinstance(exc, duckdb.IOException) or "lock" in text or "conflict" in text:
-        return DatabaseUnavailableError(
-            "Another program is using this database file. Close it, then try again.",
-            remediation="Close the other program, then run the command again.",
-        )
-    if isinstance(exc, duckdb.CatalogException):
-        return MigrationMissingError(
-            f"Required table or graph object is missing: {exc}",
-            remediation="Run corpus-kb setup. Then try again.",
-        )
-    return exc
 
 
 def _engine_covers(max_depth: int) -> bool:
@@ -169,6 +152,15 @@ class DuckDbGraphStore(GraphStore):
         except duckdb.Error as exc:
             raise _translate_error(exc) from exc
 
+    async def _fetchval(self, sql: str, *args: object) -> object:
+        """First column of the first row, or None (the alias lookups)."""
+        rows = await self._fetch(sql, list(args))
+        return None if not rows else next(iter(rows[0].values()))
+
+    async def _resolve(self, entity_id: str) -> str:
+        """Alias ids resolve to their canonical entity row (#455)."""
+        return await resolve_entity_id(self._fetchval, self._tenant_id, entity_id)
+
     def _run_write(self, sql: str, args: list[object]) -> Any:
         with self._stmt_lock:
             cursor = self._conn.execute(sql, args)
@@ -254,7 +246,8 @@ class DuckDbGraphStore(GraphStore):
     # -- reads ---------------------------------------------------------------
 
     async def get_entity(self, entity_id: str) -> Entity | None:
-        """Fetch an entity by ID."""
+        """Fetch an entity by ID (alias ids resolve to the canonical row)."""
+        entity_id = await self._resolve(entity_id)
         rows = await self._fetch(
             """
             SELECT entity_id::text AS entity_id, name, entity_type,
@@ -311,6 +304,7 @@ class DuckDbGraphStore(GraphStore):
 
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
         """Get all relations where the entity is source or target."""
+        entity_id = await self._resolve(entity_id)
         rows = await self._fetch(
             """
             SELECT relation_id::text AS relation_id,
@@ -341,6 +335,7 @@ class DuckDbGraphStore(GraphStore):
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """Breadth-first search; DuckPGQ within its hop bound, else the CTE."""
+        start_entity_id = await self._resolve(start_entity_id)
         rows: list[dict[str, Any]] | None = None
         if _engine_covers(max_depth):
             rows = await self._duckpgq_rows(
@@ -403,6 +398,7 @@ class DuckDbGraphStore(GraphStore):
     ) -> list[dict[str, Any]]:
         """Fixed self-join chain over relations (shared graph_sql shape)."""
         validate_hops(hops)
+        entity_id = await self._resolve(entity_id)
         rows = await self._duckpgq_rows(
             lambda: traversal_statements(
                 direction, hops, self._tenant_id, entity_id, entity_types, relation_types
@@ -432,6 +428,7 @@ class DuckDbGraphStore(GraphStore):
     ) -> list[dict[str, Any]]:
         """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
         validate_depth(max_depth)
+        entity_id = await self._resolve(entity_id)
         rows: list[dict[str, Any]] | None = None
         if _engine_covers(max_depth):
             rows = await self._duckpgq_rows(
