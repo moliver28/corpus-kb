@@ -112,7 +112,7 @@ def _reduce(matrix: np.ndarray) -> tuple[np.ndarray, str]:
         }
         if _umap_has_compatibility_layout(umap_module):
             kwargs["compatibility_layout"] = True
-        reducer = cast("_TinyUmapModule", umap_module).UMAP(**kwargs)
+        reducer = cast(_TinyUmapModule, umap_module).UMAP(**kwargs)
         return np.asarray(reducer.fit_transform(matrix), dtype=np.float64), "umap_random_init"
 
     # Clamp like the inductive engine so umap never truncates with a warning.
