@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncpg
 
 from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.tools._count_input import limit_arg, offset_arg
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
@@ -33,6 +34,8 @@ async def list_entities(
 
     Delegates to ``QueryHandler.handle_list_entities`` — the same call
     GET /api/entities makes. Rows are ordered ``(name, entity_id)``.
+    Counts ride the shared window-count guard, so every surface answers
+    the typed validation error for a bad ``limit``/``offset``.
     Envelope: ``{"status", "result"}``.
     """
     from corpus_kb.domain.models import ListEntitiesQuery
@@ -41,8 +44,8 @@ async def list_entities(
     query = ListEntitiesQuery(
         tenant_id=uuid_arg(tenant_id, "tenant_id"),
         entity_type=entity_type,
-        limit=limit,
-        offset=offset,
+        limit=limit_arg(limit),
+        offset=offset_arg(offset),
     )
     handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
     results = await handler.handle_list_entities(query)
