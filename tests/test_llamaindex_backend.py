@@ -1,10 +1,19 @@
-"""Tests for the LlamaIndex RAG backend (no live Ollama required)."""
+"""Tests for the LlamaIndex RAG backend (no live Ollama required).
+
+Skips honestly when the ``[llamaindex]`` extra is absent (CI never
+installs it). The missing-extra behavior runs extras-less elsewhere: the
+typed error in ``tests/test_error_taxonomy.py`` and the wiring degrade
+path in ``tests/test_server_wiring_startup.py``, both through the
+``_import_module`` seam.
+"""
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+pytest.importorskip("llama_index.core")
 
 from corpus_kb.storage.llamaindex_backend import (
     DimensionMismatchError,
@@ -31,7 +40,7 @@ async def test_initialize_ollama_unreachable_degrades() -> None:
     backend = LlamaIndexPostgresBackend(_config("http://localhost:65535", 768))
     fake_store = type("FakeStore", (), {"embed_dim": 768})()
     with patch(
-        "corpus_kb.storage.llamaindex_backend.PGVectorStore.from_params",
+        "llama_index.vector_stores.postgres.PGVectorStore.from_params",
         return_value=fake_store,
     ):
         await backend.initialize()
@@ -45,7 +54,7 @@ async def test_dimension_mismatch_raises() -> None:
     fake_store = type("FakeStore", (), {"embed_dim": 768})()
     with (
         patch(
-            "corpus_kb.storage.llamaindex_backend.PGVectorStore.from_params",
+            "llama_index.vector_stores.postgres.PGVectorStore.from_params",
             return_value=fake_store,
         ),
         pytest.raises(DimensionMismatchError),

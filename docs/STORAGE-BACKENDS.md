@@ -146,7 +146,7 @@ The storage seam lives in `src/corpus_kb/storage/`. The modules most people touc
 | `duckpgq.py` | DuckPGQ graph traversal (opt-in behind `graph.duckdb_graph_backend`) |
 | `duckdb_rag.py` | DuckDB `RagBackend` arm over the `SqlGateway` |
 | `rag_backend.py` | The `RagBackend` Protocol (LlamaIndex and DuckDB arms implement it) |
-| `llamaindex_backend.py` | LlamaIndex-backed RAG storage (PGVectorStore + Ollama) |
+| `llamaindex_backend.py` | LlamaIndex-backed RAG storage (PGVectorStore + Ollama); needs the `[llamaindex]` extra |
 | `tenant_conn.py` | Shared tenant-scoped connection helper (Postgres RLS; DuckDB scope) |
 | `dialect.py` | Storage-dialect SQL shims for the portability program |
 | `search_backend.py`, `duckdb_search.py`, `duckdb_fts.py`, `duckdb_similar.py` | Search arms: shared contract, DuckDB lexical/FTS/similarity |
