@@ -45,6 +45,7 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `model` | `qwen3-embedding:4b` | Model name. Must emit exactly 2560 dimensions — see "Embedding dimensions and the vector schema" |
 | `base_url` | `http://localhost:11434` | Ollama API URL |
 | `batch_size` | `32` | Embeddings per batch |
+| `max_batch_texts` | `32` | Hard cap on texts sent as one `input` array per embed API call. Bounds one request even when `batch_size` is set higher |
 | `dimensions` | `2560` | Vector dimensions for the model. Must match the schema column for ingest to work |
 | `mrl_trained` | `true` | Whether the model is Matryoshka-trained (gates the matryoshka arm and the dimensions passthrough) |
 | `query_instruction` | `true` | Gates the query-side instruction prefix at `instruct()` |

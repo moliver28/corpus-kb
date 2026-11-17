@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import math
+import time
 from collections import OrderedDict
 from typing import Any, Protocol, cast, runtime_checkable
 
@@ -28,6 +28,9 @@ from corpus_kb.storage.gateway import SqlGateway
 from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
+from .embedder_math import _slice_normalize as _slice_normalize
+from .embedder_math import assert_unit_or_zero as assert_unit_or_zero
+from .embedder_math import l2_normalize as l2_normalize
 from .embedder_usage import EmbedUsage
 from .model_profiles import native_dimensions
 
@@ -47,10 +50,11 @@ DEFAULT_EMBEDDING_DIMENSIONS = EMBEDDING_DIMENSIONS
 # CPU; slower than that must DEGRADE (zero vectors) per the contract below.
 EMBED_TIMEOUT_SECONDS = 120.0
 
-# Boundary normalization tolerance (todo 13, r7): every research vector must
-# be L2-normalized where the embedder emits it; zero vectors (degraded mode)
-# are exempt so the house no-Ollama fallback keeps passing.
-UNIT_NORM_TOLERANCE = 0.02
+# Hard cap on the ``input`` array per /api/embed call (issue #468): one
+# giant batch can hold a worker far past any read timeout, because the read
+# bound is per received chunk and keep-alive bytes can reset it. The
+# ``embedding.max_batch_texts`` config key overrides this default.
+EMBED_MAX_BATCH_TEXTS = 32
 
 # Query-side instruction for instruction-tuned embedding models (e.g.
 # Qwen3-Embedding). Applied to QUERIES only — documents are embedded raw.
@@ -113,6 +117,10 @@ class OllamaEmbedder:
         self.model = _str_or_default(embedding, "model", DEFAULT_EMBEDDING_MODEL)
         self.base_url = _str_or_default(embedding, "base_url", "http://localhost:11434")
         self.batch_size = _int_or_default(embedding, "batch_size", 32)
+        # Issue #468: hard cap on the texts sent as one ``input`` array.
+        self.max_batch_texts = max(
+            1, _int_or_default(embedding, "max_batch_texts", EMBED_MAX_BATCH_TEXTS)
+        )
         self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
         # Config-v2 gates: ``query_instruction`` toggles the query-side
         # prefix at instruct(); ``mrl_trained`` (with a configured width
@@ -121,7 +129,18 @@ class OllamaEmbedder:
         self.query_instruction = bool(embedding.get("query_instruction", True))
         self.mrl_trained = bool(embedding.get("mrl_trained", False))
 
-        self._client = Client(host=self.base_url, timeout=EMBED_TIMEOUT_SECONDS)
+        # Issue #468: explicit all-four httpx timeout. The read bound is a
+        # per-chunk inactivity cap, not a total request cap, so the wall-
+        # clock deadline in embed_batch bounds the whole call too.
+        self._client = Client(
+            host=self.base_url,
+            timeout=httpx.Timeout(
+                connect=EMBED_TIMEOUT_SECONDS,
+                read=EMBED_TIMEOUT_SECONDS,
+                write=EMBED_TIMEOUT_SECONDS,
+                pool=EMBED_TIMEOUT_SECONDS,
+            ),
+        )
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
         # Per-call usage accounting (issue #198): ``last_usage`` is the
         # snapshot of the most recent embed_batch call; ``_api_prompt_tokens``
@@ -129,6 +148,8 @@ class OllamaEmbedder:
         # (None when the API was not called or reported nothing).
         self.last_usage: EmbedUsage | None = None
         self._api_prompt_tokens: int | None = None
+        # Issue #468 honesty note: set on degrade; None after a clean call.
+        self.last_note: str | None = None
 
     def embed(self, text: str) -> list[float]:
         """Return a single embedding vector for ``text``."""
@@ -143,6 +164,7 @@ class OllamaEmbedder:
         keys = [_sha256_key(text) for text in texts]
         results: list[list[float]] = [[] for _ in texts]
         missing: list[tuple[int, str]] = []
+        self.last_note = None
 
         for idx, key in enumerate(keys):
             cached = self._cache.get(key)
@@ -161,11 +183,19 @@ class OllamaEmbedder:
             return results
 
         missing_texts = [text for _, text in missing]
-        batch_size = max(1, self.batch_size)
+        batch_size = max(1, min(self.batch_size, self.max_batch_texts))
         batched_results: list[list[float]] = []
         reported: list[int | None] = []
+        # Wall-clock deadline (issue #468): the httpx read bound is per
+        # received chunk, so a server that drips bytes can starve it. The
+        # deadline stops new sub-batches once the budget is spent.
+        deadline = time.monotonic() + EMBED_TIMEOUT_SECONDS
 
         for start in range(0, len(missing_texts), batch_size):
+            if time.monotonic() >= deadline:
+                batched_results.extend([[0.0] * self.dimensions for _ in missing_texts[start:]])
+                self.last_note = "Embed deadline reached; remaining texts return zero vectors."
+                break
             batch = missing_texts[start : start + batch_size]
             batched_results.extend(self._embed_batch(batch))
             reported.append(self._api_prompt_tokens)
@@ -268,11 +298,13 @@ class OllamaEmbedder:
                 "Ollama connection failed at %s; returning zero vectors.",
                 self.base_url,
             )
+            self.last_note = f"Ollama call failed at {self.base_url}; returning zero vectors."
             return [[0.0] * self.dimensions for _ in texts]
 
         # Honest usage accounting (issue #198): keep what the response
         # reported; a missing count stays None (unknown, not zero).
         self._api_prompt_tokens = response.prompt_eval_count
+        self.last_note = None
         vectors = [list(vector) for vector in response.embeddings]
         self._validate_returned_width(vectors)
         return vectors
@@ -298,45 +330,6 @@ class OllamaEmbedder:
 
 def _sha256_key(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def l2_normalize(vec: list[float]) -> list[float]:
-    """L2-normalize a vector at the embedder boundary.
-
-    A ZERO vector (the degraded-mode signal from a failed embed call) stays
-    all-zero rather than dividing by zero — house zero-vector fallback
-    contract (todo 13, r7/r8).
-    """
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm == 0.0:
-        return vec
-    return [x / norm for x in vec]
-
-
-def assert_unit_or_zero(vec: list[float]) -> None:
-    """Unit-norm boundary assert that NO-OPS on zero vectors.
-
-    Degraded/no-Ollama runs emit zero vectors and must skip-pass (house
-    contract); any other non-unit output is a boundary bug and raises.
-    """
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm == 0.0:
-        return
-    if abs(norm - 1.0) > UNIT_NORM_TOLERANCE:
-        raise ValueError(f"expected unit-norm vector, got norm {norm:.6f}")
-
-
-def _slice_normalize(vec: list[float], dim: int) -> list[float]:
-    """Front-slice to `dim` dimensions and L2-renormalize (matryoshka truncation).
-
-    A zero vector (the degraded-mode signal from a failed embed call) stays
-    all-zero rather than dividing by zero.
-    """
-    sliced = vec[:dim]
-    norm = sum(x * x for x in sliced) ** 0.5
-    if norm == 0.0:
-        return sliced
-    return [x / norm for x in sliced]
 
 
 def _str_or_default(config: dict[str, Any], key: str, default: str) -> str:
