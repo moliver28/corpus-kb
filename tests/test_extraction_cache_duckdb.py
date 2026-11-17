@@ -179,9 +179,7 @@ async def test_duckdb_changed_doc_misses_only_changed_chunk(
     assert second["status"] == "success"
     assert len(calls) == 1, "only the changed chunk may re-extract"
     assert calls[0] != [unchanged_hash]
-    assert any(
-        "1 of 2 chunks served from cache" in note for note in second["extraction"]["notes"]
-    )
+    assert any("1 of 2 chunks served from cache" in note for note in second["extraction"]["notes"])
 
 
 async def test_duckdb_cache_key_semantics_and_tenant_isolation(

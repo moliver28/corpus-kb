@@ -177,7 +177,14 @@ async def _cache_lookup(
     # gateway on DuckDB runs (pool is None there). The cache rides that
     # store's own transaction scope, so its writes go through the same
     # statement gate as every other pipeline write — no side connections.
-    store: asyncpg.Pool | SqlGateway = pool if pool is not None else ingest_sink.gateway
+    # The attribute probe keeps store-less callers (partial test doubles
+    # predate the gateway property) on the no-cache path, the same
+    # duck-typing posture as storage.gateway.is_gateway.
+    store: asyncpg.Pool | SqlGateway | None = pool
+    if store is None and hasattr(ingest_sink, "gateway"):
+        store = ingest_sink.gateway
+    if store is None:
+        return {}, list(chunks), None, key
     cache = ExtractionCache(store, ingest_sink.tenant_id)
     hashes = [c.chunk_hash for c in chunks if c.chunk_hash]
     try:

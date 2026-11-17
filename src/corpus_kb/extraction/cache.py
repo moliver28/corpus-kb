@@ -21,9 +21,10 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from ..utils.models import Entity, Relation
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
+
+from ..utils.models import Entity, Relation
 
 if TYPE_CHECKING:
     import asyncpg
