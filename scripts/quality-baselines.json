@@ -7,7 +7,6 @@
   "routing_phrase_accuracy": 1.0,
   "routing_regret_mean": 0.0,
   "max_file_lines": {
-
     "scripts/run_ner_promotion.py": 295,
     "src/corpus_kb/_setup/doctor_env.py": 282,
     "src/corpus_kb/_setup/doctor_research.py": 784,
@@ -25,7 +24,7 @@
     "src/corpus_kb/coding/confidence_calibration.py": 308,
     "src/corpus_kb/coding/inductive_cluster.py": 323,
     "src/corpus_kb/coding/structured_output.py": 271,
-    "src/corpus_kb/config.py": 980,
+    "src/corpus_kb/config.py": 979,
     "src/corpus_kb/contracts/catalogue_analysis.py": 411,
     "src/corpus_kb/contracts/catalogue_research.py": 379,
     "src/corpus_kb/domain/codebook.py": 428,
@@ -43,7 +42,7 @@
     "src/corpus_kb/ingestion/strategies/textbook_paddle.py": 257,
     "src/corpus_kb/mcp_tools.py": 286,
     "src/corpus_kb/queue/worker.py": 273,
-    "src/corpus_kb/rag/embedder.py": 508,
+    "src/corpus_kb/rag/embedder.py": 501,
     "src/corpus_kb/rag/embedders/late_chunk_core.py": 266,
     "src/corpus_kb/rag/reranker.py": 384,
     "src/corpus_kb/research/calibration.py": 351,

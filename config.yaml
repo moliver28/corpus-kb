@@ -24,6 +24,9 @@ embedding:
   model: qwen3-embedding:4b
   base_url: http://localhost:11434
   batch_size: 32
+  # Hard cap on the input array per /api/embed call (issue #468); a giant
+  # batch can hold a worker far past any read timeout.
+  max_batch_texts: 32
   # Native output width. Must equal the schema width (halfvec(2560)).
   dimensions: 2560
   # qwen3-embedding is Matryoshka-trained: front-slice truncation is sound.

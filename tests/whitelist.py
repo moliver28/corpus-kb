@@ -643,3 +643,8 @@ session_ordinal
 # reads the in-process dropped-write flag; the reader is the telemetry
 # test, outside the vulture gate's src-only scan.
 suppression_flag
+
+# Embedder honesty note (issue #468): OllamaEmbedder.last_note is set on
+# degraded embed paths and read by the timeout tests and future receipt
+# surfaces; the vulture src scan sees only the writes.
+last_note
