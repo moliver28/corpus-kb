@@ -18,8 +18,8 @@ _REPO_SRC = Path(__file__).parent.parent / "src"
 if str(_REPO_SRC) not in sys.path:
     sys.path.insert(0, str(_REPO_SRC))
 
-from corpus_kb._setup import install as install_module  # noqa: E402
 from corpus_kb._setup import doctor_journey, doctor_research, doctor_storage  # noqa: E402
+from corpus_kb._setup import install as install_module  # noqa: E402
 
 
 async def _no_section_checks(*args: object, **kwargs: object) -> list[object]:
@@ -43,9 +43,7 @@ def _pinned_doctor_env(monkeypatch: pytest.MonkeyPatch) -> None:
     whether the assertions held. The pin makes every test here resolve the
     same fixed deployment whatever the caller exported.
     """
-    monkeypatch.setenv(
-        "CORPUS_KB_DATABASE_URL", "postgresql://installer-fixture.invalid/corpus_kb"
-    )
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", "postgresql://installer-fixture.invalid/corpus_kb")
     monkeypatch.setenv("CORPUS_KB_DATABASE_BACKEND", "postgres")
 
 
