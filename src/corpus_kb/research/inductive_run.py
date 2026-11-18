@@ -192,7 +192,7 @@ async def run_inductive(
             "status": "unavailable",
             "run_id": str(run_id),
             "reason": str(exc),
-            "install": 'pip install -e ".[inductive]"',
+            "install": exc.install_command,
         }
     except Exception:
         handler.stop_coding_run(tenant_id, run_id)

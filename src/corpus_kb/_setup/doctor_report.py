@@ -15,9 +15,9 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from corpus_kb import install_layout
 from corpus_kb._setup.doctor_engine import resolved_backend
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
-from corpus_kb._setup.setup_assets import resolve_setup_asset
 from corpus_kb._setup.setup_steps import EXTENSION_REMEDIATION, EXTENSIONS
 
 
@@ -77,13 +77,10 @@ def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
 def _clone_layout() -> bool:
     """True when this install runs from a repository checkout.
 
-    The checkout root (the assets resolver's fallback) keeps
-    ``pyproject.toml``. A wheel or pipx install ships no packaged copy
-    and has no checkout root, so the resolver returns None. Only a
-    clone needs the editable-install pip line; installed-package users
-    never do (issue #464).
+    Delegates to the one layout detector (``install_layout``); kept as
+    a named seam here so tests can monkeypatch the doctor tail.
     """
-    return resolve_setup_asset("pyproject.toml") is not None
+    return install_layout.is_clone_layout()
 
 
 def _recommended_setup_commands(info: dict[str, Any]) -> list[str]:

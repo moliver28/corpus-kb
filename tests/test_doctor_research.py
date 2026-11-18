@@ -42,7 +42,10 @@ def test_extras_checks_never_fail() -> None:
         assert "extras" in scipy_fix
     for check in checks[1:]:
         if check.status == dr.STATUS_INFO:
-            assert "pip install -e" in check.fix
+            # The command is layout-aware (install_layout): editable form in a
+            # clone, package-name form on a wheel/pipx install. Assert the
+            # layout-neutral shape here.
+            assert "pip install" in check.fix
 
 
 def test_embedder_check_warns_pgml_absent() -> None:
