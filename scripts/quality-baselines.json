@@ -54,7 +54,7 @@
     "src/corpus_kb/research/demo.py": 502,
     "src/corpus_kb/research/g3_audit.py": 264,
     "src/corpus_kb/research/guide_copy.py": 618,
-    "src/corpus_kb/research/inductive_run.py": 617,
+    "src/corpus_kb/research/inductive_run.py": 577,
     "src/corpus_kb/research/inductive_store.py": 331,
     "src/corpus_kb/research/keyword_surface.py": 261,
     "src/corpus_kb/research/notebook.py": 313,

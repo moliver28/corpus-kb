@@ -31,7 +31,6 @@ imports this module) is unaffected.
 from __future__ import annotations
 
 import logging
-from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
@@ -56,7 +55,8 @@ from corpus_kb.coding.saturation import isr
 from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research import guide_copy
-from corpus_kb.research.conn import tenant_scope
+from corpus_kb.research.conn import dialect_of, tenant_scope
+from corpus_kb.research.inductive_labels import suggested_label as suggested_label
 from corpus_kb.research.inductive_store import (
     find_observation,
     latest_baseline_dbcv,
@@ -88,46 +88,6 @@ RECLUSTER_EVERY_BATCHES_DEFAULT = 8
 CENTROID_DRIFT_THRESHOLD_DEFAULT = 0.15
 MAX_META_DECISIONS_PER_RUN = 50
 
-_STOPWORDS = frozenset(
-    [
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "but",
-        "by",
-        "for",
-        "from",
-        "has",
-        "have",
-        "i",
-        "in",
-        "is",
-        "it",
-        "its",
-        "of",
-        "on",
-        "or",
-        "that",
-        "the",
-        "their",
-        "them",
-        "they",
-        "this",
-        "to",
-        "was",
-        "we",
-        "were",
-        "what",
-        "with",
-        "you",
-        "your",
-    ]
-)
-
 
 def inductive_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
     """research.inductive block with engine defaults filled in."""
@@ -144,19 +104,6 @@ def inductive_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
         ),
         "tau_dup": float(values.get("tau_dup", TAU_DUP_DEFAULT)),
     }
-
-
-def suggested_label(summaries: list[str]) -> str:
-    """Deterministic top-content-terms label (ties break alphabetically)."""
-    counts: Counter[str] = Counter()
-    for text in summaries:
-        for token in text.lower().split():
-            word = "".join(ch for ch in token if ch.isalnum())
-            if len(word) > 2 and word not in _STOPWORDS:
-                counts[word] += 1
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    top = [w for w, _ in ranked[:3]]
-    return "-".join(top) if top else "cluster"
 
 
 def all_noise_note(n_clusters: int, noise_units: int) -> str | None:
@@ -209,11 +156,14 @@ async def _execute(
     embedder: SummaryEmbedder | None,
     settings: dict[str, Any],
 ) -> dict[str, Any]:
-    baseline = await latest_baseline_dbcv(pool, tenant_id, run_id)
+    # One engine read arms every statement twin in the pass. The baseline
+    # probe once ran the Postgres-only JSON '?' operator on DuckDB.
+    duck = dialect_of(pool).is_duckdb
+    baseline = await latest_baseline_dbcv(pool, tenant_id, run_id, duck=duck)
     async with tenant_scope(pool, tenant_id) as conn:
-        pairs = await load_codable_pairs(conn, tenant_id, project_id)
+        pairs = await load_codable_pairs(conn, tenant_id, project_id, duck=duck)
         code_names = await _existing_code_names(conn, tenant_id)
-        observations = await _observe(conn, tenant_id, run_id, pairs, llm, embedder)
+        observations = await _observe(conn, tenant_id, run_id, pairs, llm, embedder, duck=duck)
 
     if len(observations) < 2:
         handler.stop_coding_run(tenant_id, run_id)
@@ -244,6 +194,7 @@ async def _execute(
         llm,
         settings,
         _pins(manifest),
+        duck=duck,
     )
 
     final = cluster_embeddings(vectors, **_pins(manifest))
@@ -263,6 +214,7 @@ async def _execute(
                 centroid=final_centroids.get(label),
                 member_unit_ids=[observations[i]["unit_id"] for i in members],
                 dbcv_relative_validity=final.relative_validity,
+                duck=duck,
             )
         noise_units = 0
         for i, label in enumerate(final.labels):
@@ -334,6 +286,8 @@ async def _observe(
     pairs: list[dict[str, Any]],
     llm: SummaryChatClient | None,
     embedder: SummaryEmbedder | None,
+    *,
+    duck: bool = False,
 ) -> list[dict[str, Any]]:
     """Summarize + embed every codable unit (reusing prior observations)."""
     observations: list[dict[str, Any]] = []
@@ -378,6 +332,7 @@ async def _observe(
             embedding=embedding,
             embed_model=str(getattr(embedder, "model", "unknown")) if embedder else "none",
             model_revision=str(getattr(embedder, "model_revision", "")) if embedder else "",
+            duck=duck,
         )
         if embedding:
             observations.append(
@@ -419,6 +374,8 @@ async def _grow_batch(
     code_names: list[str],
     llm: SummaryChatClient | None,
     threshold: float,
+    *,
+    duck: bool = False,
 ) -> tuple[set[int], int, int]:
     """Assign one batch against the live centroids and record every signal.
 
@@ -456,6 +413,7 @@ async def _grow_batch(
             soft_cluster_entropy=entropy,
             n_clusters=k,
             extra=extra,
+            duck=duck,
         )
     return labels_touched, high_entropy, meta_new
 
@@ -536,6 +494,8 @@ async def _grow(
     llm: SummaryChatClient | None,
     settings: dict[str, Any],
     pins: dict[str, Any],
+    *,
+    duck: bool = False,
 ) -> dict[str, Any]:
     """Incremental growth: batches vs centroids, ISR per batch, meta-decisions.
 
@@ -561,7 +521,7 @@ async def _grow(
         batches += 1
         async with tenant_scope(pool, tenant_id) as conn:
             labels_touched, high_entropy, meta_new = await _grow_batch(
-                conn, batch, run, current_centroids, code_names, llm, threshold
+                conn, batch, run, current_centroids, code_names, llm, threshold, duck=duck
             )
         _grow_checkpoint(
             handler, tenant_id, run_id, batches, labels_touched, batch, high_entropy, meta_new
