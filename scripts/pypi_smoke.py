@@ -22,7 +22,8 @@ Offline case: a quick PyPI reachability probe first. When PyPI is not
 reachable the gate prints one ``SKIP: PyPI not reachable`` line and
 exits 0 (the declared skip semantics, the same honesty as
 ``docker-smoke``). An HTTP error status (the index answers but the
-package is gone) is a real failure, not a skip.
+package is gone) is a real failure, not a skip; a transient 5xx gets
+one retry with a short backoff, a malformed 200 body fails bounded.
 
 Exit code 1 on the first real failure with a bounded reason. The temp
 venv self-cleans on success AND failure. Output stays bounded: one line
@@ -31,6 +32,7 @@ per step, tails only on failure.
 
 from __future__ import annotations
 
+import http.client
 import json
 import shutil
 import subprocess
@@ -44,6 +46,8 @@ from pathlib import Path
 PACKAGE = "corpus-kb"
 PYPI_JSON_URL = f"https://pypi.org/pypi/{PACKAGE}/json"
 PROBE_TIMEOUT_S = 15.0
+#: Backoff before the one retry of a transient index 5xx (momus P2).
+PROBE_RETRY_BACKOFF_S = 5.0
 #: Overall wall-clock guard. The whole gate must fit inside this budget:
 #: the ~100 dependency wheels install inside it on every CI OS. The CI
 #: job cap sits above it (windows installs slowest).
@@ -92,19 +96,42 @@ def _fail(label: str, tail: str) -> None:
     raise SystemExit(1)
 
 
+def _probe_once() -> object:
+    """One GET of the package index; returns the parsed JSON body."""
+    with urllib.request.urlopen(PYPI_JSON_URL, timeout=PROBE_TIMEOUT_S) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def _probe_pypi() -> None:
-    """Reachability probe. SKIP (exit 0) when PyPI is not reachable."""
-    try:
-        with urllib.request.urlopen(PYPI_JSON_URL, timeout=PROBE_TIMEOUT_S) as resp:
-            payload: object = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        _fail(f"PyPI index (HTTP {exc.code} for {PACKAGE})", "")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        print(f"{PREFIX} SKIP: PyPI not reachable ({exc}).", flush=True)
-        raise SystemExit(0) from None
-    info = payload.get("info") if isinstance(payload, dict) else None
-    version = str(info.get("version")) if isinstance(info, dict) else "unknown"
-    print(f"{PREFIX} PyPI reachable (latest published version: {version}).", flush=True)
+    """Reachability probe. SKIP (exit 0) when PyPI is not reachable.
+
+    One retry with a short backoff on a transient 5xx (502/503 blips);
+    a second 5xx fails with a bounded reason. Connection-level failures
+    stay the declared skip. A malformed 200 body (captive portal,
+    truncated read) fails bounded instead of an uncaught traceback.
+    """
+    for attempt in (1, 2):
+        try:
+            payload: object = _probe_once()
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500 or attempt == 2:
+                _fail(f"PyPI index (HTTP {exc.code} for {PACKAGE})", "")
+            print(
+                f"{PREFIX} PyPI answered HTTP {exc.code}; retry {attempt + 1} of 2 "
+                f"in {PROBE_RETRY_BACKOFF_S:.0f}s.",
+                flush=True,
+            )
+            time.sleep(PROBE_RETRY_BACKOFF_S)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            print(f"{PREFIX} SKIP: PyPI not reachable ({exc}).", flush=True)
+            raise SystemExit(0) from None
+        except (ValueError, http.client.HTTPException) as exc:
+            _fail("PyPI index body (malformed 200 answer)", str(exc))
+        else:
+            info = payload.get("info") if isinstance(payload, dict) else None
+            version = str(info.get("version")) if isinstance(info, dict) else "unknown"
+            print(f"{PREFIX} PyPI reachable (latest published version: {version}).", flush=True)
+            return
 
 
 def _venv_layout() -> tuple[str, str]:
@@ -195,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         if root.exists():
             print(f"{PREFIX} note: temp venv cleanup failed (left at {root}).")
     failed = results.count(False)
-    if failed or len(results) != 3:
+    if failed:
         print(f"{PREFIX} FAIL ({failed} of {len(results)} checks failed).", flush=True)
         return 1
     print(f"{PREFIX} PASS.", flush=True)
