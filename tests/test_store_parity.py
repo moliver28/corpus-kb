@@ -119,6 +119,7 @@ def _relation(
     relation_type: str,
     weight: float,
     confidence: float | None = None,
+    extractor_id: str | None = None,
 ) -> Relation:
     return Relation(
         relation_id=relation_id,
@@ -127,6 +128,7 @@ def _relation(
         relation_type=relation_type,
         weight=weight,
         confidence=confidence,
+        extractor_id=extractor_id,
     )
 
 
@@ -463,26 +465,8 @@ async def test_stores_match_byte_for_byte(research_dsn: str, tmp_path: Path) -> 
 
 
 # --- Alias-id parity (issues #455/#492) ------------------------------------------
-
-
-@pytest.mark.asyncio
-@pytest.mark.requires_postgres
-async def test_alias_id_reads_postgres_leg_matches_golden(research_dsn: str) -> None:
-    """The live Postgres store answers a CLI-returned alias id with the
-    canonical row — get_entity, relations, hops, walk and bfs all of it."""
-    from corpus_kb.storage.gateway import PostgresGateway
-
-    ids = _leg_ids()
-    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=2)
-    store = PostgresGraphStore(pool, tenant_id=ids.tenant)
-    try:
-        await _seed(store, ids)
-        await _project_duplicate_add(PostgresGateway(pool), ids)
-        envelope = await _run_alias_scenario(store, ids)
-    finally:
-        await store.close()
-        await pool.close()
-    assert _envelope(envelope) == _envelope(_alias_golden(ids))
+# One fast hermetic canary (DuckDB) plus the cross-engine proof below; the
+# Postgres-only golden leg was dropped as a duplicate of the combined test.
 
 
 @pytest.mark.asyncio
@@ -550,16 +534,17 @@ async def test_alias_reads_match_byte_for_byte(research_dsn: str, tmp_path: Path
     assert _normalize(pg_envelope, pg_ids) == _normalize(duck_envelope, duck_ids)
 
 
-# --- Relation provenance: confidence roundtrip ------------------------------------
+# --- Relation provenance roundtrip: confidence + extractor_id ---------------------
 
 
 @pytest.mark.asyncio
 @pytest.mark.requires_postgres
-async def test_add_relation_persists_confidence_identically(
+async def test_add_relation_persists_provenance_identically(
     research_dsn: str, tmp_path: Path
 ) -> None:
-    """add_relation keeps the given confidence on BOTH engines (migration
-    008's column; the DuckDB insert used to omit it and store NULL)."""
+    """add_relation keeps the given confidence AND extractor_id on BOTH
+    engines (migration 008's columns; the DuckDB insert used to omit them
+    and store NULL)."""
     duckdb = pytest.importorskip("duckdb")
     from corpus_kb._setup.migrate import run_migrations
     from corpus_kb.storage.duckdb_store import DuckDbGraphStore
@@ -572,10 +557,13 @@ async def test_add_relation_persists_confidence_identically(
     try:
         await pg_store.add_entity(_entity(ids.a, "A-Node", "concept", {}))
         await pg_store.add_entity(_entity(ids.b, "B-Node", "concept", {}))
-        await pg_store.add_relation(_relation(ids.r1, ids.a, ids.b, "kinds", 1.0, 0.75))
+        await pg_store.add_relation(
+            _relation(ids.r1, ids.a, ids.b, "kinds", 1.0, 0.75, "parity-extractor")
+        )
         async with tenant_connection(pool, ids.tenant) as conn:
-            pg_confidence = await conn.fetchval(
-                "SELECT confidence FROM relations WHERE relation_id = $1", UUID(ids.r1)
+            pg_row = await conn.fetchrow(
+                "SELECT confidence, extractor_id FROM relations WHERE relation_id = $1",
+                UUID(ids.r1),
             )
     finally:
         await pg_store.close()
@@ -588,16 +576,21 @@ async def test_add_relation_persists_confidence_identically(
     try:
         await duck_store.add_entity(_entity(ids.a, "A-Node", "concept", {}))
         await duck_store.add_entity(_entity(ids.b, "B-Node", "concept", {}))
-        await duck_store.add_relation(_relation(ids.r1, ids.a, ids.b, "kinds", 1.0, 0.75))
-        duck_confidence = conn.execute(
-            "SELECT confidence FROM relations WHERE relation_id = ?", [ids.r1]
-        ).fetchone()[0]
+        await duck_store.add_relation(
+            _relation(ids.r1, ids.a, ids.b, "kinds", 1.0, 0.75, "parity-extractor")
+        )
+        duck_row = conn.execute(
+            "SELECT confidence, extractor_id FROM relations WHERE relation_id = ?", [ids.r1]
+        ).fetchone()
     finally:
         await duck_store.close()
         conn.close()
 
-    assert pg_confidence == 0.75
-    assert duck_confidence == 0.75
+    assert pg_row is not None and duck_row is not None
+    assert pg_row["confidence"] == 0.75
+    assert pg_row["extractor_id"] == "parity-extractor"
+    # DuckDB's fetchone() hands back a tuple: (confidence, extractor_id).
+    assert tuple(duck_row) == (0.75, "parity-extractor")
 
 
 def _normalize(envelope: dict[str, object], ids: ScenarioIds) -> str:

@@ -52,6 +52,7 @@ _DDL = (
         metadata VARCHAR,
         chunk_id VARCHAR,
         confidence DOUBLE,
+        extractor_id VARCHAR(100),
         UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
     )
     """,
@@ -95,7 +96,7 @@ def _seed(conn: duckdb.DuckDBPyConnection) -> None:
         )
     for relation_id, source, target, relation_type in _SEED_RELATIONS:
         conn.execute(
-            "INSERT INTO relations VALUES (?, ?, ?, ?, ?, 1.0, '{}', NULL, NULL)",
+            "INSERT INTO relations VALUES (?, ?, ?, ?, ?, 1.0, '{}', NULL, NULL, NULL)",
             [relation_id, TENANT, source, target, relation_type],
         )
 
