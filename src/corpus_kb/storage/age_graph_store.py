@@ -26,6 +26,7 @@ import asyncpg
 from corpus_kb.errors import InternalError, ValidationError
 
 from ..utils.models import Chunk, Document, Entity, Relation
+from .entity_aliases import resolve_on_conn
 from .graph_sql import MAX_NEIGHBOR_HOPS
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
 
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 GRAPH_NAME = "corpus_kb"
 MAX_BFS_DEPTH = 25
 
-_ENTITY_COLUMNS = (
+_ENTITY_COLUMNS = (  # the cypher() result contract for entity reads
     "entity_id agtype, name agtype, entity_type agtype, metadata agtype, source_document_id agtype"
 )
 
@@ -44,8 +45,7 @@ _ENTITY_COLUMNS = (
 # parameter; a matched vertex keeps its stored value.
 _ADD_ENTITY = """
 MERGE (e:Entity {tenant_id: $tenant_id, name: $name, entity_type: $entity_type})
-SET e.entity_id = coalesce(e.entity_id, $entity_id),
-    e.metadata = coalesce(e.metadata, $metadata),
+SET e.entity_id = coalesce(e.entity_id, $entity_id), e.metadata = coalesce(e.metadata, $metadata),
     e.source_document_id = coalesce(e.source_document_id, $source_document_id)
 RETURN e.entity_id AS entity_id
 """
@@ -92,8 +92,7 @@ MATCH (e:Entity)-[r:REL]-()
 WHERE e.entity_id = $entity_id AND e.tenant_id = $tenant_id
   AND r.tenant_id = $tenant_id
 RETURN DISTINCT r.relation_id AS relation_id,
-       r.source_entity_id AS source_entity_id,
-       r.target_entity_id AS target_entity_id,
+       r.source_entity_id AS source_entity_id, r.target_entity_id AS target_entity_id,
        r.relation_type AS relation_type, r.weight AS weight, r.metadata AS metadata
 ORDER BY r.relation_id
 """
@@ -106,8 +105,7 @@ RETURN a.entity_id AS eid
 
 _BFS_TRAVERSE = """
 MATCH p = (a:Entity)-[:REL*1..{depth}]-(b:Entity)
-WHERE a.entity_id = $start_id AND a.tenant_id = $tenant_id
-  AND b.tenant_id = $tenant_id
+WHERE a.entity_id = $start_id AND a.tenant_id = $tenant_id AND b.tenant_id = $tenant_id
 RETURN b.entity_id AS eid, min(length(p)) AS depth
 """
 
@@ -124,8 +122,7 @@ MATCH (a:Entity){pattern}
 WHERE a.entity_id = $start_id AND a.tenant_id = $tenant_id
   AND {node_guards}{type_guard}
 RETURN DISTINCT x{depth}.entity_id AS entity_id, x{depth}.name AS name,
-       x{depth}.entity_type AS entity_type, x{depth}.metadata AS metadata,
-       {depth} AS depth
+       x{depth}.entity_type AS entity_type, x{depth}.metadata AS metadata, {depth} AS depth
 """
 
 
@@ -373,7 +370,8 @@ class AgeGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def get_entity(self, entity_id: str) -> Entity | None:
-        """Fetch an entity vertex by ID."""
+        """Fetch an entity vertex by ID (an alias id resolves to its canonical row)."""
+        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
             rows = await self._run_cypher(
@@ -389,10 +387,7 @@ class AgeGraphStore(GraphStore):
         """Search entity vertices by case-insensitive name contains + type."""
         conn = await self._get_conn()
         try:
-            params: dict[str, Any] = {
-                "name": name,
-                "tenant_id": self._tenant_id,
-            }
+            params: dict[str, Any] = {"name": name, "tenant_id": self._tenant_id}
             query = _SEARCH
             if entity_type is not None:
                 query = _SEARCH_TYPED
@@ -403,7 +398,8 @@ class AgeGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
-        """Get all edges where the entity is source or target (undirected)."""
+        """Get all edges at the entity, both directions (alias ids resolve)."""
+        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
             rows = await self._run_cypher(
@@ -421,13 +417,14 @@ class AgeGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
-        """BFS via a variable-length cypher MATCH; depth is int-validated."""
+        """BFS via a variable-length cypher MATCH (alias ids resolve first)."""
         try:
             depth = int(max_depth)
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"max_depth must be an integer, got {max_depth!r}") from exc
         if not 1 <= depth <= MAX_BFS_DEPTH:
             raise ValidationError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
+        start_entity_id = await resolve_on_conn(self, start_entity_id)
         conn = await self._get_conn()
         try:
             params = {"start_id": start_entity_id, "tenant_id": self._tenant_id}
@@ -472,6 +469,7 @@ class AgeGraphStore(GraphStore):
         The Python merge pins the (depth, name, entity_id) total order, so
         the AGE path returns the same sequence as the SQL stores.
         """
+        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
             merged: dict[str, dict[str, Any]] = {}
