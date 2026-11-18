@@ -26,7 +26,7 @@ import asyncpg
 from corpus_kb.errors import InternalError, ValidationError
 
 from ..utils.models import Chunk, Document, Entity, Relation
-from .entity_aliases import resolve_on_conn
+from .entity_aliases import resolve_conn
 from .graph_sql import MAX_NEIGHBOR_HOPS
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
 
@@ -371,9 +371,9 @@ class AgeGraphStore(GraphStore):
 
     async def get_entity(self, entity_id: str) -> Entity | None:
         """Fetch an entity vertex by ID (an alias id resolves to its canonical row)."""
-        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             rows = await self._run_cypher(
                 conn,
                 _CypherSpec(_GET_ENTITY, _ENTITY_COLUMNS),
@@ -399,9 +399,9 @@ class AgeGraphStore(GraphStore):
 
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
         """Get all edges at the entity, both directions (alias ids resolve)."""
-        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             rows = await self._run_cypher(
                 conn,
                 _CypherSpec(
@@ -424,9 +424,9 @@ class AgeGraphStore(GraphStore):
             raise ValidationError(f"max_depth must be an integer, got {max_depth!r}") from exc
         if not 1 <= depth <= MAX_BFS_DEPTH:
             raise ValidationError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
-        start_entity_id = await resolve_on_conn(self, start_entity_id)
         conn = await self._get_conn()
         try:
+            start_entity_id = await resolve_conn(conn, self._tenant_id, start_entity_id)
             params = {"start_id": start_entity_id, "tenant_id": self._tenant_id}
             start_rows = await self._run_cypher(conn, _CypherSpec(_BFS_START, "eid agtype"), params)
             visited: dict[str, int] = {}
@@ -469,9 +469,9 @@ class AgeGraphStore(GraphStore):
         The Python merge pins the (depth, name, entity_id) total order, so
         the AGE path returns the same sequence as the SQL stores.
         """
-        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             merged: dict[str, dict[str, Any]] = {}
             for hop in range(1, hops + 1):
                 spec = _CypherSpec(

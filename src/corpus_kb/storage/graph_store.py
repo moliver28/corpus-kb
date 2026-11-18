@@ -20,7 +20,7 @@ import asyncpg
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 from ..utils.models import Chunk, Document, Entity, Relation
-from .entity_aliases import resolve_on_conn
+from .entity_aliases import resolve_conn
 from .graph_sql import neighbors_sql, traversal_row, traverse_sql
 
 logger = logging.getLogger(__name__)
@@ -298,9 +298,9 @@ class PostgresGraphStore(GraphStore):
 
     async def get_entity(self, entity_id: str) -> Entity | None:
         """Fetch an entity by ID (an alias id resolves to its canonical row)."""
-        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             row = await conn.fetchrow(
                 """
                 SELECT entity_id::text, name, entity_type, metadata::text,
@@ -371,9 +371,9 @@ class PostgresGraphStore(GraphStore):
 
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
         """Get all relations where the entity is source or target (alias ids resolve)."""
-        entity_id = await resolve_on_conn(self, entity_id)
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             rows = await conn.fetch(
                 """
                 SELECT relation_id::text, source_entity_id::text,
@@ -404,9 +404,9 @@ class PostgresGraphStore(GraphStore):
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """Breadth-first search using a recursive CTE (alias ids resolve)."""
-        start_entity_id = await resolve_on_conn(self, start_entity_id)
         conn = await self._get_conn()
         try:
+            start_entity_id = await resolve_conn(conn, self._tenant_id, start_entity_id)
             rows = await conn.fetch(
                 """
                 WITH RECURSIVE graph_bfs AS (
@@ -455,18 +455,18 @@ class PostgresGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Fixed self-join chain over relations (shared graph_sql shape)."""
-        entity_id = await resolve_on_conn(self, entity_id)
-        sql, args = neighbors_sql(
-            hops,
-            direction,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
-        )
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
+            sql, args = neighbors_sql(
+                hops,
+                direction,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
             rows = await conn.fetch(sql, *args)
         finally:
             await self._release_conn(conn)
@@ -481,17 +481,17 @@ class PostgresGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
-        entity_id = await resolve_on_conn(self, entity_id)
-        sql, args = traverse_sql(
-            max_depth,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
-        )
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
+            sql, args = traverse_sql(
+                max_depth,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
             rows = await conn.fetch(sql, *args)
         finally:
             await self._release_conn(conn)

@@ -21,9 +21,10 @@ that shape (the DuckDB gateway translates).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import TYPE_CHECKING
 
-import asyncpg
+if TYPE_CHECKING:
+    from asyncpg import Connection
 
 #: One single-value read: (sql, tenant_id, alias_entity_id) -> id or None.
 AliasLookup = Callable[[str, str, str], Awaitable[object | None]]
@@ -45,31 +46,12 @@ async def resolve_entity_id(fetchval: AliasLookup, tenant_id: str, entity_id: st
     return entity_id if canonical is None else str(canonical)
 
 
-class ConnectionSource(Protocol):
-    """A store that lends a tenant-scoped connection per statement.
+async def resolve_conn(conn: Connection, tenant_id: str, entity_id: str) -> str:
+    """The canonical id for ``entity_id``, read on a connection the caller holds.
 
-    ``PostgresGraphStore`` and ``AgeGraphStore`` acquire one pooled
-    connection and set the tenant GUC on it before the statement runs;
-    the alias lookup rides that same connection, so RLS scopes it to the
-    tenant of the read it serves.
+    The lookup is one more statement on that connection, so its tenant
+    context (the GUC the store set, or its open transaction) scopes it
+    exactly like the read it serves — no extra acquire, no extra GUC
+    round trip.
     """
-
-    _tenant_id: str
-
-    def _get_conn(self) -> Awaitable[asyncpg.Connection]: ...
-
-    def _release_conn(self, conn: asyncpg.Connection) -> Awaitable[None]: ...
-
-
-async def resolve_on_conn(source: ConnectionSource, entity_id: str) -> str:
-    """The canonical id for ``entity_id``, read on the store's connection.
-
-    The pool-backed twin of :func:`resolve_entity_id`: one lookup on the
-    connection the read itself is about to use, inside the tenant context
-    that connection already carries.
-    """
-    conn = await source._get_conn()
-    try:
-        return await resolve_entity_id(conn.fetchval, source._tenant_id, entity_id)
-    finally:
-        await source._release_conn(conn)
+    return await resolve_entity_id(conn.fetchval, tenant_id, entity_id)
