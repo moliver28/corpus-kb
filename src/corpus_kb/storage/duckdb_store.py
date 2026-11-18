@@ -178,8 +178,7 @@ class DuckDbGraphStore(GraphStore):
             """
             INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                 source_document_id, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
+            VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
             RETURNING entity_id::text AS entity_id
             """,
             [
@@ -207,11 +206,11 @@ class DuckDbGraphStore(GraphStore):
         row = await self._execute(
             """
             INSERT INTO relations (relation_id, tenant_id, source_entity_id,
-                target_entity_id, relation_type, weight, metadata, chunk_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (tenant_id, source_entity_id, target_entity_id,
-                relation_type, chunk_id) DO NOTHING
-            RETURNING relation_id::text AS relation_id
+                target_entity_id, relation_type, weight, metadata, chunk_id,
+                confidence, extractor_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type,
+                chunk_id) DO NOTHING RETURNING relation_id::text AS relation_id
             """,
             [
                 relation.relation_id,
@@ -222,6 +221,8 @@ class DuckDbGraphStore(GraphStore):
                 relation.weight if relation.weight else 1.0,
                 json.dumps(relation.metadata),
                 relation.chunk_id,
+                relation.confidence,
+                relation.extractor_id,
             ],
         )
         if row:
@@ -251,8 +252,7 @@ class DuckDbGraphStore(GraphStore):
         rows = await self._fetch(
             """
             SELECT entity_id::text AS entity_id, name, entity_type,
-                   metadata::text AS metadata, source_document_id::text
-                   AS source_document_id
+                   metadata::text AS metadata, source_document_id::text AS source_document_id
             FROM entities WHERE entity_id = $1 AND tenant_id = $2
             """,
             [entity_id, self._tenant_id],
