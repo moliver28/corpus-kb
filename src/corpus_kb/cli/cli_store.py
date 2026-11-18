@@ -8,9 +8,9 @@ stays storage-blind: commands hand ``wired.store`` to the shared handlers
 and render the payload.
 
 ``wired_store`` is THE bootstrap now (issue #330): every CLI coroutine
-opens its store here, and the research embedder still rides the Postgres
-pool path only (the config mix gate refuses pgml on DuckDB, so the
-Ollama embedder serves there).
+opens its store here, and ``embedder=True`` wires a ``ResearchEmbedder``
+on BOTH paths. The Ollama embedder serves DuckDB (the config mix gate
+refuses pgml there); Postgres keeps the pool-backed embedder.
 """
 
 from __future__ import annotations
@@ -46,9 +46,10 @@ async def wired_store(
 ) -> AsyncIterator[StoreWired]:
     """Open the configured store (pool or gateway); close it on exit.
 
-    ``embedder=True`` builds a ``ResearchEmbedder`` on the Postgres path
-    (the ask/uncoded wiring); on DuckDB it stays None — the embedder is a
-    Postgres-typed component today.
+    ``embedder=True`` builds a ``ResearchEmbedder`` for the ask/uncoded
+    wiring on both paths. The store hands the embedder its SQL session
+    (pool wrapper on Postgres, gateway on DuckDB); the Ollama embedder
+    serves DuckDB because the config mix gate refuses pgml there.
 
     Bootstrap failures go through the taxonomy (zero-drift rule 4): an
     unparseable DSN raises ConfigError, an unreachable database raises
@@ -118,11 +119,15 @@ async def wired_store(
                 "The Postgres database did not accept a connection."
             ) from exc
         store = pool
-        if embedder:
-            from corpus_kb.projections.research._embed import ResearchEmbedder
-            from corpus_kb.rag import create_embedder
+    # One embedder seam for BOTH engines (the server pattern): the store
+    # hands the research embedder its SQL session — pool wrapper on
+    # Postgres, the gateway itself on DuckDB (pg_pool_of answers None, so
+    # the Ollama embedder serves; the config mix gate refuses pgml there).
+    if embedder:
+        from corpus_kb.projections.research._embed import ResearchEmbedder
+        from corpus_kb.rag import create_embedder
 
-            research_embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+        research_embedder = ResearchEmbedder(store, create_embedder(cfg, store))
     try:
         yield StoreWired(store=store, cfg=cfg, conn_str=conn_str, embedder=research_embedder)
     finally:
