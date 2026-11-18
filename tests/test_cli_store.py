@@ -28,8 +28,37 @@ async def test_wired_store_opens_the_duckdb_gateway_and_closes_it(tmp_path) -> N
     conn_str = f"duckdb:///{(tmp_path / 'wired.duckdb').as_posix()}"
     async with wired_store(cfg=_cfg(conn_str)) as wired:
         assert isinstance(wired.store, DuckDbGateway)
-        assert wired.embedder is None  # the embedder is a Postgres component
+        assert wired.embedder is None  # embedder=False by default
         assert await wired.store.fetchval("SELECT 40 + 2") == 42
+
+
+async def test_wired_store_builds_the_research_embedder_on_duckdb(tmp_path) -> None:
+    """``embedder=True`` on the duckdb path wires a ResearchEmbedder, not None."""
+    from corpus_kb.cli.cli_store import wired_store
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+
+    conn_str = f"duckdb:///{(tmp_path / 'wired-embedder.duckdb').as_posix()}"
+    async with wired_store(embedder=True, cfg=_cfg(conn_str)) as wired:
+        assert isinstance(wired.embedder, ResearchEmbedder)
+
+
+@pytest.mark.requires_ollama
+async def test_wired_store_duckdb_embedder_embeds_for_real(tmp_path) -> None:
+    """Ollama up: the duckdb embedder returns a real 1024-d unit vector."""
+    import math
+
+    from corpus_kb._setup.migrate import run_migrations
+    from corpus_kb.cli.cli_store import wired_store
+
+    conn_str = f"duckdb:///{(tmp_path / 'wired-embed-live.duckdb').as_posix()}"
+    await run_migrations(conn_str)
+    async with wired_store(embedder=True, cfg=_cfg(conn_str)) as wired:
+        vec = await wired.embedder.embed_cached(
+            "00000000-0000-0000-0000-000000000001", "grid investment"
+        )
+        assert vec is not None, "Ollama is up: the embedder must embed, not abstain"
+        assert len(vec) == 1024
+        assert abs(math.sqrt(sum(x * x for x in vec)) - 1.0) < 1e-6
 
 
 async def test_wired_store_refuses_a_fileless_duckdb_dsn() -> None:
