@@ -722,6 +722,18 @@ help = "Fail when live pytest warnings exceed the pytest_warnings ceiling (quali
 cmd = "python scripts/docker_smoke.py"
 help = "Docker compose app-stack smoke: default-stack contract, build, boot, doctor, ingest/search, clean teardown"
 
+[tool.poe.tasks.pypi-smoke]
+# Published-wheel smoke (zero-drift rule 10: poe target + ci.yml
+# `pypi-smoke` job + enforcement-map row). Stdlib only. A throwaway venv
+# gets the UNPINNED wheel from PyPI — whatever is latest at run time, no
+# branch code involved — then proves the installed CLI boots: --help
+# (exit 0, "Usage" marker), doctor (exit 0 or 3; 3 is the honest
+# no-database degraded state), demo-kb --help (exit 0). One honest SKIP
+# line and exit 0 when PyPI is unreachable; the three CI OS legs
+# enforce the gate.
+cmd = "python scripts/pypi_smoke.py"
+help = "PyPI wheel smoke: fresh venv, unpinned corpus-kb install, CLI boot proof (--help, doctor, demo-kb --help)"
+
 # Plain-language gate (zero-drift Wave 5A, program standard 6). The full
 # suite already includes it; this target runs the gate alone.
 [tool.poe.tasks.ste]
