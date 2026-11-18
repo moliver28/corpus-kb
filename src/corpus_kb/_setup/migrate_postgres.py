@@ -21,7 +21,7 @@ from corpus_kb._setup.migrate_admin import (
     hand_over_to_app_role,
     refuse_025_with_embeddings,
 )
-from corpus_kb._setup.migrate_report import MigrateReport
+from corpus_kb._setup.migrate_report import GATED_MIGRATION_EXTENSIONS, MigrateReport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -67,6 +67,38 @@ async def applied_migrations(conn: asyncpg.Connection) -> set[str]:
     return {row["filename"] for row in rows}
 
 
+async def _missing_gated_extensions(conn: asyncpg.Connection) -> set[str]:
+    """The gated extensions this server cannot install (issue #508).
+
+    One read-only probe of ``pg_available_extensions`` per run; the
+    result serves every gated file, so no per-file guessing.
+    """
+    rows = await conn.fetch("SELECT name FROM pg_available_extensions")
+    available = {row["name"] for row in rows}
+    return {ext for ext in GATED_MIGRATION_EXTENSIONS.values() if ext not in available}
+
+
+def _split_pending(
+    sql_files: list[Path], done: set[str], missing: set[str]
+) -> tuple[list[str], list[str]]:
+    """(pending, skipped) names for this run.
+
+    A gated file whose extension is missing is reported as skipped, not
+    pending, so a fully migrated native database reports no pending work.
+    """
+    pending: list[str] = []
+    skipped: list[str] = []
+    for sql_file in sql_files:
+        if sql_file.name in done:
+            continue
+        extension = GATED_MIGRATION_EXTENSIONS.get(sql_file.name)
+        if extension is not None and extension in missing:
+            skipped.append(sql_file.name)
+        else:
+            pending.append(sql_file.name)
+    return pending, skipped
+
+
 async def run_postgres_migrations(
     connection_string: str,
     *,
@@ -95,15 +127,30 @@ async def run_postgres_migrations(
             await prepare_age_session(conn)
             await ensure_migrations_table(conn)
             done = await applied_migrations(conn)
-            pending = [f.name for f in sql_files if f.name not in done]
+            missing = await _missing_gated_extensions(conn)
+            pending, skipped = _split_pending(sql_files, done, missing)
             if dry_run:
-                return MigrateReport("postgres", sorted(done), pending, [], True)
+                return MigrateReport(
+                    "postgres",
+                    sorted(done),
+                    pending,
+                    [],
+                    True,
+                    skipped_extension_gated=skipped,
+                )
             await refuse_025_with_embeddings(conn, pending, reset_embeddings)
             if superuser_dsn is None:
                 await apply_session_settings(conn, session_settings)
-                applied_now = await _apply_pending(conn, sql_files)
+                applied_now, applied_skipped = await _apply_pending(conn, sql_files, missing)
                 logger.info("Migrations complete")
-                return MigrateReport("postgres", sorted(done), pending, applied_now, False)
+                return MigrateReport(
+                    "postgres",
+                    sorted(done),
+                    pending,
+                    applied_now,
+                    False,
+                    skipped_extension_gated=applied_skipped,
+                )
         finally:
             await conn.close()
 
@@ -114,7 +161,7 @@ async def run_postgres_migrations(
             await prepare_age_session(su_conn)
             await ensure_migrations_table(su_conn)
             await apply_session_settings(su_conn, session_settings)
-            applied_now = await _apply_pending(su_conn, sql_files)
+            applied_now, applied_skipped = await _apply_pending(su_conn, sql_files, missing)
             await hand_over_to_app_role(
                 su_conn,
                 superuser_role=dsn_role(superuser_dsn),
@@ -123,16 +170,40 @@ async def run_postgres_migrations(
         finally:
             await su_conn.close()
         logger.info("Migrations complete")
-        return MigrateReport("postgres", sorted(done), pending, applied_now, False)
+        return MigrateReport(
+            "postgres",
+            sorted(done),
+            pending,
+            applied_now,
+            False,
+            skipped_extension_gated=applied_skipped,
+        )
 
 
-async def _apply_pending(conn: asyncpg.Connection, sql_files: list[Path]) -> list[str]:
-    """Apply every unapplied migration file in order; return the names."""
+async def _apply_pending(
+    conn: asyncpg.Connection, sql_files: list[Path], missing: set[str]
+) -> tuple[list[str], list[str]]:
+    """Apply every unapplied migration file in order; return (applied, skipped).
+
+    A gated migration whose extension is missing is skipped with a loud
+    warning and never recorded as applied (issue #508).
+    """
     done = await applied_migrations(conn)
     applied_now: list[str] = []
+    skipped: list[str] = []
     for sql_file in sql_files:
         if sql_file.name in done:
             logger.info("Migration already applied: %s", sql_file.name)
+            continue
+        extension = GATED_MIGRATION_EXTENSIONS.get(sql_file.name)
+        if extension is not None and extension in missing:
+            logger.warning(
+                "Skipping extension-gated migration %s "
+                "(needs the %s extension; the docker-compose stack ships both)",
+                sql_file.name,
+                extension,
+            )
+            skipped.append(sql_file.name)
             continue
         sql = sql_file.read_text(encoding="utf-8")
         async with conn.transaction():
@@ -143,4 +214,4 @@ async def _apply_pending(conn: asyncpg.Connection, sql_files: list[Path]) -> lis
                 sql_file.name,
             )
         applied_now.append(sql_file.name)
-    return applied_now
+    return applied_now, skipped

@@ -19,6 +19,7 @@ import pytest
 from typer.testing import CliRunner
 
 from corpus_kb._setup.migrate import run_migrations
+from corpus_kb._setup.migrate_report import EXTENSION_GATED_MIGRATIONS, MigrateReport
 from corpus_kb.cli import app
 from corpus_kb.errors import ConfigError
 
@@ -148,6 +149,156 @@ def test_cli_migrate_typed_failure_maps_its_exit_code(tmp_path: Path, monkeypatc
     result = runner.invoke(app, ["migrate"])
     assert result.exit_code == 3
     assert "the scratch migration runner failed on purpose" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Extension-gated skip (issue #508): the probe, the report field, the CLI.
+# ---------------------------------------------------------------------------
+
+#: Limit note (issue #508, found while fixing): a truly EMPTY database cannot
+#: run ``corpus-kb migrate`` alone — the base schema loads first through
+#: ``apply_schema`` / ``corpus-kb setup``. That predates this fix. The conn
+#: double below models a database that bootstrap step already ran on.
+
+
+class _FakeExtensionTransaction:
+    """The async context manager shape asyncpg's transaction() returns."""
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+
+class _FakeExtensionConn:
+    """Postgres conn double: in-memory extension list and migration ledger.
+
+    Statement text is recorded, never parsed, so the DDL inside any
+    migration file is irrelevant; only the probe answer and the ledger
+    matter.
+    """
+
+    def __init__(self, available: set[str], applied: list[str] | None = None) -> None:
+        self._available = available
+        self._applied = list(applied or [])
+        self.recorded: list[str] = []
+        self.closed = False
+
+    async def execute(self, sql: str, *args: object) -> str:
+        if "INSERT INTO corpus.schema_migrations" in sql and args:
+            self.recorded.append(str(args[0]))
+        return "OK"
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        if "pg_available_extensions" in sql:
+            return [{"name": name} for name in sorted(self._available)]
+        if "schema_migrations" in sql:
+            return [{"filename": name} for name in self._applied]
+        return []
+
+    async def fetchval(self, sql: str, *args: object) -> int:
+        return 0
+
+    def transaction(self) -> _FakeExtensionTransaction:
+        return _FakeExtensionTransaction()
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def _run_postgres_with(
+    conn: _FakeExtensionConn, monkeypatch: Any, **kwargs: Any
+) -> MigrateReport:
+    """Run the Postgres migrations against the conn double (no server)."""
+    import corpus_kb._setup.migrate_postgres as postgres_mod
+
+    async def fake_connect(_dsn: str) -> _FakeExtensionConn:
+        return conn
+
+    monkeypatch.setattr(postgres_mod.asyncpg, "connect", fake_connect)
+    return await postgres_mod.run_postgres_migrations("postgresql://double/test", **kwargs)
+
+
+async def test_missing_extensions_skip_gated_and_apply_the_rest(monkeypatch: Any) -> None:
+    """No AGE/pgml on the server: 004/005 skip and everything else applies."""
+    conn = _FakeExtensionConn(available=set())
+    report = await _run_postgres_with(conn, monkeypatch)
+    assert report.backend == "postgres"
+    assert report.skipped_extension_gated == ["004_enable_age.sql", "005_enable_pgml.sql"]
+    assert not (set(report.pending) & EXTENSION_GATED_MIGRATIONS)
+    assert "040_entities_doc_link_no_fk.sql" in report.applied_now
+    assert "045_entity_id_aliases.sql" in report.applied_now
+    assert not (set(conn.recorded) & EXTENSION_GATED_MIGRATIONS)
+    assert set(report.applied_now) == set(conn.recorded)
+
+
+async def test_only_the_missing_extension_skips(monkeypatch: Any) -> None:
+    """AGE present, pgml missing: 004 applies and only 005 skips."""
+    conn = _FakeExtensionConn(available={"age"})
+    report = await _run_postgres_with(conn, monkeypatch)
+    assert report.skipped_extension_gated == ["005_enable_pgml.sql"]
+    assert "004_enable_age.sql" in report.applied_now
+
+
+async def test_full_extension_server_applies_both_gated(monkeypatch: Any) -> None:
+    """The docker path: with AGE and pgml present, 004/005 still apply."""
+    conn = _FakeExtensionConn(available={"age", "pgml"})
+    report = await _run_postgres_with(conn, monkeypatch)
+    assert report.skipped_extension_gated == []
+    assert "004_enable_age.sql" in report.applied_now
+    assert "005_enable_pgml.sql" in report.applied_now
+
+
+async def test_dry_run_lists_skipped_separately_from_pending(monkeypatch: Any) -> None:
+    """A dry run classifies the gated set; nothing applies or records."""
+    conn = _FakeExtensionConn(available=set())
+    report = await _run_postgres_with(conn, monkeypatch, dry_run=True)
+    assert report.dry_run is True
+    assert report.applied_now == []
+    assert conn.recorded == []
+    assert report.skipped_extension_gated == ["004_enable_age.sql", "005_enable_pgml.sql"]
+    assert "004_enable_age.sql" not in report.pending
+
+
+async def _report_with_one_skip(*args: Any, **kwargs: Any) -> MigrateReport:
+    """A finished Postgres run that skipped the pgml-gated migration."""
+    return MigrateReport(
+        "postgres",
+        ["001_corpus_schema.sql"],
+        [],
+        [],
+        False,
+        skipped_extension_gated=["005_enable_pgml.sql"],
+    )
+
+
+def test_cli_migrate_json_lists_skipped_extension_gated(tmp_path: Path, monkeypatch: Any) -> None:
+    """--json carries skipped_extension_gated; skipped names are not pending."""
+    import corpus_kb._setup.migrate as migrate_mod
+
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(migrate_mod, "run_migrations", _report_with_one_skip)
+    result = runner.invoke(app, ["migrate", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["skipped_extension_gated"] == ["005_enable_pgml.sql"]
+    assert payload["pending"] == []
+
+
+def test_cli_migrate_human_report_prints_skipped_line(tmp_path: Path, monkeypatch: Any) -> None:
+    """Success-with-skips exits 0 and prints the skipped names, not an error."""
+    import corpus_kb._setup.migrate as migrate_mod
+
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(migrate_mod, "run_migrations", _report_with_one_skip)
+    result = runner.invoke(app, ["migrate"])
+    assert result.exit_code == 0, result.output
+    assert "Skipped" in result.output
+    assert "005_enable_pgml.sql" in result.output
+    assert "Nothing to apply. The database is up to date." in result.output
 
 
 class _FakeGuardConn:
