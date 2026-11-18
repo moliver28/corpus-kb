@@ -51,6 +51,7 @@ _DDL = (
         weight DOUBLE,
         metadata VARCHAR,
         chunk_id VARCHAR,
+        confidence DOUBLE,
         UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
     )
     """,
@@ -94,7 +95,7 @@ def _seed(conn: duckdb.DuckDBPyConnection) -> None:
         )
     for relation_id, source, target, relation_type in _SEED_RELATIONS:
         conn.execute(
-            "INSERT INTO relations VALUES (?, ?, ?, ?, ?, 1.0, '{}', NULL)",
+            "INSERT INTO relations VALUES (?, ?, ?, ?, ?, 1.0, '{}', NULL, NULL)",
             [relation_id, TENANT, source, target, relation_type],
         )
 
@@ -270,6 +271,10 @@ class _RecordingConn:
 
     async def execute(self, sql: str, *args: object) -> str:
         return "OK"
+
+    async def fetchval(self, sql: str, *args: object) -> object | None:
+        """The alias lookup answers None: an unknown id passes through."""
+        return None
 
     async def fetch(self, sql: str, *args: object) -> list[dict[str, Any]]:
         self.fetch_sql = sql

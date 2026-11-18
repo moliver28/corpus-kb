@@ -14,6 +14,7 @@ from __future__ import annotations
 import inspect
 import json
 from typing import Any
+from uuid import uuid4
 
 import asyncpg
 import pytest
@@ -56,6 +57,8 @@ class FakeConnection:
         self.fetch_result: list[dict[str, Any]] = []
         self.fetchrow_result: dict[str, Any] | None = None
         self.fetch_responses: list[tuple[str, list[dict[str, Any]]]] = []
+        #: What the entity_id_aliases lookup answers (None = unknown id).
+        self.alias_hit: str | None = None
 
     def add_fetch_response(self, needle: str, rows: list[dict[str, Any]]) -> None:
         self.fetch_responses.append((needle, rows))
@@ -72,6 +75,12 @@ class FakeConnection:
             return {"ok": self.age_present}
         return self.fetchrow_result
 
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        self.calls.append(("fetchval", sql, args))
+        if "entity_id_aliases" in sql:
+            return self.alias_hit
+        return None
+
     async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
         self.calls.append(("fetch", sql, args))
         for needle, rows in self.fetch_responses:
@@ -81,6 +90,13 @@ class FakeConnection:
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction()
+
+    def alias_lookups(self) -> list[tuple[str, tuple[Any, ...]]]:
+        return [
+            (sql, args)
+            for (method, sql, args) in self.calls
+            if method == "fetchval" and "entity_id_aliases" in sql
+        ]
 
 
 class FakePool:
@@ -432,6 +448,70 @@ async def test_tenant_context_scoped_per_store(conn: FakeConnection, pool: FakeP
 
 
 # ============================================================================
+def _store_for(conn: FakeConnection) -> AgeGraphStore:
+    """A store over this fake connection (fresh probe state per call)."""
+    return AgeGraphStore(FakePool(conn))
+
+
+# (c2) Alias-id resolution — the relational connection answers before cypher
+# ============================================================================
+
+
+async def test_alias_id_resolves_before_the_cypher_call(conn: FakeConnection) -> None:
+    """get_entity by a CLI-returned alias id looks the canonical id up on
+    the relational connection, then matches the vertex by it."""
+    canonical = "00000000-0000-0000-0000-00000000a001"
+    conn.alias_hit = canonical
+    conn.fetch_result = [
+        {
+            "entity_id": agjson(canonical),
+            "name": agjson("Widget"),
+            "entity_type": agjson("CLASS"),
+            "metadata": agjson({}),
+            "source_document_id": agjson(None),
+        }
+    ]
+    entity = await _store_for(conn).get_entity("alias-uuid")
+    assert entity is not None
+    assert entity.entity_id == canonical
+    lookups = conn.alias_lookups()
+    assert len(lookups) == 1, "one alias lookup, on the relational connection"
+    sql, args = lookups[0]
+    assert "$1" in sql and "$2" in sql, "parameterized lookup, never interpolated"
+    assert args == (DEFAULT_TENANT_ID, "alias-uuid"), "tenant binds first (RLS scope)"
+    params = json.loads(cypher_calls(conn)[-1][1][0])
+    assert params["entity_id"] == canonical, "cypher matches the CANONICAL vertex id"
+
+
+async def test_relations_and_walks_resolve_alias_ids(conn: FakeConnection) -> None:
+    """relations / neighbors / traverse / bfs send the canonical id to cypher."""
+    canonical = "00000000-0000-0000-0000-00000000a002"
+    conn.alias_hit = canonical
+    conn.add_fetch_response("RETURN a.entity_id AS eid", [{"eid": agjson(canonical)}])
+    s = _store_for(conn)
+    await s.get_entity_relations("alias-uuid")
+    await s.neighbors("alias-uuid", hops=1)
+    await s.traverse("alias-uuid", max_depth=1)
+    bfs = await s.bfs("alias-uuid", max_depth=2)
+    param_sets = [json.loads(args[0]) for _sql, args in cypher_calls(conn)]
+    assert param_sets, "every read matched through cypher"
+    assert any("start_id" in params for params in param_sets)
+    for params in param_sets:
+        for key in ("entity_id", "start_id"):
+            if key in params:
+                assert params[key] == canonical, "no cypher call ever sees the alias id"
+    assert bfs["start_entity_id"] == canonical, "the bfs envelope names the canonical id"
+
+
+async def test_unknown_alias_id_keeps_the_caller_id(conn: FakeConnection) -> None:
+    """An id with no alias row passes through: callers keep their error paths."""
+    conn.fetch_result = []
+    assert await _store_for(conn).get_entity("ghost") is None
+    params = json.loads(cypher_calls(conn)[-1][1][0])
+    assert params["entity_id"] == "ghost"
+
+
+# ============================================================================
 # (d) Live degraded probe — PG16 without AGE must raise a clear error
 # ============================================================================
 
@@ -493,5 +573,46 @@ async def test_live_age_roundtrip_when_available() -> None:
         bfs = await store.bfs(eid1, max_depth=2)
         assert bfs["visited"][eid1] == 0
         assert bfs["visited"][eid2] == 1
+        # Alias parity (#492): seed what the shared projection writes for a
+        # duplicate add-entity, then read the vertex through the alias id.
+        alias_id = str(uuid4())
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, false)", DEFAULT_TENANT_ID
+            )
+            await conn.execute(
+                "INSERT INTO entities (entity_id, tenant_id, name, entity_type, metadata) "
+                "VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT DO NOTHING",
+                eid1,
+                DEFAULT_TENANT_ID,
+                "AgeRoundtripA",
+                "CLASS",
+                json.dumps({}),
+            )
+            await conn.execute(
+                "INSERT INTO entity_id_aliases (tenant_id, alias_entity_id, entity_id) "
+                "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                DEFAULT_TENANT_ID,
+                alias_id,
+                eid1,
+            )
+            await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", "")
+        try:
+            by_alias = await store.get_entity(alias_id)
+            assert by_alias is not None and by_alias.entity_id == eid1
+            walks = await store.neighbors(alias_id, hops=1)
+            assert any(row["entity_id"] == eid2 for row in walks)
+        finally:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "SELECT set_config('app.current_tenant_id', $1, false)", DEFAULT_TENANT_ID
+                )
+                await conn.execute(
+                    "DELETE FROM entity_id_aliases WHERE tenant_id = $1 AND alias_entity_id = $2",
+                    DEFAULT_TENANT_ID,
+                    alias_id,
+                )
+                await conn.execute("DELETE FROM entities WHERE entity_id = $1", eid1)
+                await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", "")
     finally:
         await pool.close()

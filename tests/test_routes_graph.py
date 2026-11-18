@@ -59,6 +59,10 @@ class _ScriptedConn:
     async def execute(self, sql: str, *args: object) -> str:
         return "OK"
 
+    async def fetchval(self, sql: str, *args: object) -> object | None:
+        """The alias lookup answers None: an unknown id passes through."""
+        return None
+
     async def fetch(self, sql: str, *args: object) -> list[dict[str, Any]]:
         self.fetch_sql = sql
         self.fetch_args = args
