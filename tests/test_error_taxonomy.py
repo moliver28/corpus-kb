@@ -743,16 +743,41 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
     from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
     from corpus_kb.storage.age_graph_store import AgeUnavailableError
-    from corpus_kb.storage.llamaindex_backend import DimensionMismatchError
+    from corpus_kb.storage.llamaindex_backend import (
+        DimensionMismatchError,
+        LlamaIndexDependencyError,
+    )
     from corpus_kb.web.fetch import WebFetchError
 
     assert issubclass(DimensionMismatchError, ValidationError)
+    assert issubclass(LlamaIndexDependencyError, DependencyMissingError)
     assert issubclass(_MalformedRowError, InternalError)
     assert issubclass(AgeUnavailableError, InternalError)
     assert issubclass(LateChunkDependencyError, InternalError)
     assert issubclass(WebFetchError, InternalError)
     # Instance triples ride the class attributes.
     _assert_triple(WebFetchError("x"), 500, -32603, 1)
+    _assert_triple(LlamaIndexDependencyError("x"), 503, -32005, 3)
+
+
+def test_llamaindex_backend_missing_extra_answers_dependency_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the [llamaindex] extra, construction raises the typed error.
+
+    The import seam is faked, so this runs in every environment — with or
+    without llama-index installed (the marimo seam test pattern).
+    """
+    import corpus_kb.storage.llamaindex_backend as llamaindex_module
+
+    def _missing_import(name: str) -> object:
+        raise ModuleNotFoundError(f"No module named '{name}'")
+
+    monkeypatch.setattr(llamaindex_module, "_import_module", _missing_import)
+    with pytest.raises(llamaindex_module.LlamaIndexDependencyError) as excinfo:
+        llamaindex_module.LlamaIndexPostgresBackend({})
+    _assert_triple(excinfo.value, 503, -32005, 3)
+    assert "corpus-kb[llamaindex]" in excinfo.value.remediation
 
 
 async def test_get_strategy_unknown_name_answers_the_validation_triple() -> None:
@@ -876,6 +901,7 @@ async def test_age_neighbors_reject_an_unknown_direction() -> None:
 
 
 async def test_llamaindex_backend_requires_initialize() -> None:
+    pytest.importorskip("llama_index.core")
     from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
 
     backend = LlamaIndexPostgresBackend({})
@@ -1014,6 +1040,7 @@ def test_neighbors_sql_rejects_an_unknown_direction() -> None:
 
 async def test_llamaindex_backend_guards_speak_the_taxonomy() -> None:
     """Diff-cover pins: every lifecycle guard on the LlamaIndex backend."""
+    pytest.importorskip("llama_index.core")
     from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
 
     with pytest.raises(InternalError, match=r"requires database.connection_string"):

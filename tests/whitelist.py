@@ -93,6 +93,9 @@ prevalence_affected
 end_to_end
 nr_bins
 evolution_tuning
+# storage/llamaindex_backend.py: _VectorStoreClient.adelete mirrors the
+# llama_index PGVectorStore keyword (the [llamaindex] extra's lazy seam).
+ref_doc_id
 
 # dynamically-dispatched or test-patched names (verified by repo-wide grep): 152 name(s)
 # sp-suite-hardening: QueryHandler keeps these delegating methods so the

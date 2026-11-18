@@ -1095,10 +1095,6 @@ dependencies = [
     { name = "eventsourcing", extra = ["postgres"] },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "llama-index-core" },
-    { name = "llama-index-embeddings-ollama" },
-    { name = "llama-index-llms-ollama" },
-    { name = "llama-index-vector-stores-postgres" },
     { name = "mcp", extra = ["cli"] },
     { name = "murmurhash" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-9-corpus-kb-docling' and extra == 'extra-9-corpus-kb-semchunk')" },
@@ -1186,6 +1182,12 @@ latechunk = [
     { name = "torch" },
     { name = "transformers" },
 ]
+llamaindex = [
+    { name = "llama-index-core" },
+    { name = "llama-index-embeddings-ollama" },
+    { name = "llama-index-llms-ollama" },
+    { name = "llama-index-vector-stores-postgres" },
+]
 ml = [
     { name = "gliner" },
     { name = "gliner2" },
@@ -1251,10 +1253,10 @@ requires-dist = [
     { name = "huggingface-hub", marker = "extra == 'ml'", specifier = ">=0.30" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "langextract", marker = "extra == 'langextract'" },
-    { name = "llama-index-core", specifier = ">=0.11" },
-    { name = "llama-index-embeddings-ollama", specifier = ">=0.4" },
-    { name = "llama-index-llms-ollama", specifier = ">=0.4" },
-    { name = "llama-index-vector-stores-postgres", specifier = ">=0.2" },
+    { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.11" },
+    { name = "llama-index-embeddings-ollama", marker = "extra == 'llamaindex'", specifier = ">=0.4" },
+    { name = "llama-index-llms-ollama", marker = "extra == 'llamaindex'", specifier = ">=0.4" },
+    { name = "llama-index-vector-stores-postgres", marker = "extra == 'llamaindex'", specifier = ">=0.2" },
     { name = "lxml", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "mapie", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "marimo", marker = "extra == 'notebook'", specifier = ">=0.25" },
@@ -1319,7 +1321,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "xenon", marker = "extra == 'dev'", specifier = ">=0.9" },
 ]
-provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "calibrate", "code", "docling", "scan", "ocr-vl", "notebook", "classify", "setfit", "dev"]
+provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "calibrate", "code", "docling", "scan", "ocr-vl", "notebook", "classify", "setfit", "llamaindex", "dev"]
 
 [[package]]
 name = "coverage"
