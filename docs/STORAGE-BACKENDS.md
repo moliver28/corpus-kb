@@ -159,7 +159,7 @@ Every schema change ships twice:
 - the Postgres migration in `src/corpus_kb/migrations/`
 - the DuckDB mirror in `src/corpus_kb/migrations_duckdb/`, same number up to 029
 
-From 030 on, every DuckDB file runs one number above its Postgres twin. For example, pg `030_extraction_cache.sql` is duckdb `031_extraction_cache.sql`. The DuckDB-only file `030_ingest_runs_source.sql` has no Postgres twin and no rollback. It causes the shift. Applied databases record their numbers, so the numbers stay as they are. Always pair files by name, never by number. The schema-parity gate checks both name sets (`scripts/schema_parity_nameset.py`, issue #230).
+Numbers 030 to 042 run one above the Postgres twin. For example, pg `030_extraction_cache.sql` is duckdb `031_extraction_cache.sql`. The cause is the DuckDB-only file `030_ingest_runs_source.sql`; it has no Postgres twin and no rollback. From 043 on, twin files share the number again. Applied databases record their numbers, so the numbers stay as they are. Always pair files by name, never by number. The schema-parity gate checks both name sets (`scripts/schema_parity_nameset.py`, issue #230).
 
 Some Postgres constructs have no DuckDB shape. The mirror reshapes them:
 

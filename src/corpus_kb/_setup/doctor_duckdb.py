@@ -29,6 +29,7 @@ from corpus_kb._setup.doctor_research import (
     ResearchCheck,
 )
 from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
+from corpus_kb.storage.duckpgq import DUCKDB_GRAPH_BACKENDS
 
 if TYPE_CHECKING:  # function-local at runtime (program rule 9)
     import duckdb
@@ -61,6 +62,9 @@ _EXTENSION_PURPOSE = {
 
 _CHUNKS_COUNT_SQL = "SELECT count(*) FROM chunks"
 _FTS_DOCS_SQL = "SELECT count(*) FROM fts_main_chunks.docs"
+
+#: Bare LOAD probe for the opt-in DuckPGQ engine; the doctor never downloads.
+_DUCKPGQ_LOAD_SQL = "LOAD 'duckpgq'"
 
 
 def _default_opener(path: str) -> None:
@@ -155,6 +159,47 @@ def fts_watermark_check(con: duckdb.DuckDBPyConnection) -> ResearchCheck:
     )
 
 
+def graph_traversal_check(probe_con: Any, requested: str) -> ResearchCheck:
+    """Report the requested traversal engine against what loads here.
+
+    A duckpgq opt-in turns the engine on at the first walk; any failure
+    pins that connection to the CTE path (``storage/duckdb_store.py``).
+    The probe is a bare LOAD, so the doctor never downloads anything.
+    """
+    name = "Graph traversal"
+    if requested not in DUCKDB_GRAPH_BACKENDS:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail=f"Unknown graph.duckdb_graph_backend value {requested!r}.",
+            fix="Set graph.duckdb_graph_backend to cte or duckpgq in config.yaml.",
+            doc=DOC_ADMIN,
+        )
+    if requested == "cte":
+        return ResearchCheck(
+            name=name,
+            status=STATUS_OK,
+            detail="cte (the default).",
+            doc=DOC_ADMIN,
+        )
+    try:
+        probe_con.execute(_DUCKPGQ_LOAD_SQL)
+    except Exception:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail="cte (duckpgq requested but unavailable).",
+            fix="Check the DuckDB version and community repository access. Or keep cte.",
+            doc=DOC_ADMIN,
+        )
+    return ResearchCheck(
+        name=name,
+        status=STATUS_OK,
+        detail="duckpgq (the extension loads).",
+        doc=DOC_ADMIN,
+    )
+
+
 def _vendoring_fix(name: str) -> str:
     """The offline-vendoring remediation (auto-install stays off)."""
     return (
@@ -201,4 +246,5 @@ __all__ = [
     "duckdb_lock_check",
     "extension_load_check",
     "fts_watermark_check",
+    "graph_traversal_check",
 ]

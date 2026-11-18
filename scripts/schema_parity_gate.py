@@ -4,9 +4,10 @@
 Parses the Postgres truth (``storage/schema.sql`` + forward files in
 ``migrations/``) and the DuckDB mirror (``migrations_duckdb/``), folds
 each set into one final schema state, and diffs tables, columns, PKs,
-uniques, FKs, sequences, and plain indexes. Undeclared drift exits 1.
-STALE allowlist entries (declared but no longer real) also exit 1, so
-the allowlist cannot outlive its drift.
+uniques, CHECKs, FKs (with referential actions), sequences, and plain
+indexes. Undeclared drift exits 1. The allowlist lives in
+``schema_parity_drift.py``; STALE entries (declared but no longer real)
+also exit 1, so the allowlist cannot outlive its drift.
 
 A second check compares migration NAME sets across the two trees
 (``schema_parity_nameset``, issue #230): the same name at a different
@@ -29,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from schema_parity_compare import Drift, compare_states
+from schema_parity_drift import ALLOWED_DRIFT
 from schema_parity_fold import fold_file
 from schema_parity_model import SchemaState
 from schema_parity_nameset import NameSetResult, name_set_result
@@ -37,77 +39,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PG_BASE = Path("src/corpus_kb/storage/schema.sql")
 PG_MIGRATIONS = Path("src/corpus_kb/migrations")
 DUCK_MIGRATIONS = Path("src/corpus_kb/migrations_duckdb")
-
-# Declared divergences: (kind, table, item) -> one-line why. Anything not
-# listed here fails. An entry that no longer matches real drift is STALE
-# and fails the gate, so this table stays truthful.
-_NUMERIC_TO_DOUBLE = "Unbounded numeric becomes DOUBLE on DuckDB (duckdb 012 header)."
-_DYNAMIC_RETYPE = (
-    "pg 025 retypes this to halfvec(2560) via dynamic EXECUTE; the static fold cannot see it."
-)
-_NOT_NULL_ADD = "DuckDB refuses NOT NULL ADD COLUMN; the gateway coalesces NULL."
-ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
-    # -- Unbounded numeric -> DOUBLE (duckdb 012 header; W0 spike finding).
-    ("column.type", "chunk_codes", "confidence"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "chunk_signals", "score"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "code_keywords", "ll"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "code_keywords", "log_ratio"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "code_registry", "pool_floor"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "code_registry", "residual_floor"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "doc_extraction_audit", "miss_rate_point"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "doc_extraction_audit", "miss_rate_ub95"): _NUMERIC_TO_DOUBLE,
-    ("column.type", "final_codes", "confidence"): _NUMERIC_TO_DOUBLE,
-    # -- pg 025 retypes these to halfvec(2560) with dynamic EXECUTE format;
-    # -- the static fold cannot see inside dynamic SQL.
-    ("column.type", "answer_ctx_vectors", "vector"): _DYNAMIC_RETYPE,
-    ("column.type", "chunk_codes", "rationale_vector"): _DYNAMIC_RETYPE,
-    ("column.type", "code_registry", "definition_vector"): _DYNAMIC_RETYPE,
-    ("column.type", "code_registry", "probe_vector"): _DYNAMIC_RETYPE,
-    # -- DuckDB refuses NOT NULL on ADD COLUMN; the gateway coalesces NULL.
-    ("column.nullable", "chunks", "degraded"): _NOT_NULL_ADD,
-    ("column.nullable", "chunks_vectors", "degraded"): _NOT_NULL_ADD,
-    ("column.nullable", "documents", "doc_version"): _NOT_NULL_ADD,
-    ("column.nullable", "answer_ctx_vectors", "vector"): (
-        "pg 025 drops this NOT NULL via dynamic EXECUTE; both engines end nullable."
-    ),
-    # -- Constraint shape differences with a documented owner.
-    ("unique", "codebook_releases", "codebook_id,codebook_version,tenant_id"): (
-        "pg keeps the one-released-row unique; DuckDB uses a plain index, gateway enforced."
-    ),
-    ("unique", "relations", "relation_type,source_entity_id,target_entity_id,tenant_id"): (
-        "pg 008 replaces this unique in a DO block; the gate cannot attribute the drop."
-    ),
-    # -- DuckDB-only ledger column and index (duckdb 030, documented there).
-    ("column", "ingest_runs", "source"): (
-        "DuckDB-only ledger column (030): documents rows freeze, so freshness lives in the ledger."
-    ),
-    ("index", "ingest_runs", "source,started_at,tenant_id"): "DuckDB-only ledger index (030).",
-    ("index", "codebook_releases", "codebook_id,codebook_version,tenant_id"): (
-        "Plain lookup twin of the pg unique index; the gateway enforces the rule."
-    ),
-    # -- Orphan sequence kept for the pg serial naming convention.
-    ("sequence", "", "sources_id_seq"): (
-        "Orphan: DuckDB 001 mirrors the pg serial name; sources.id uses gen_random_uuid()."
-    ),
-    # -- entities.source_document_id FK (issue #330): Postgres drops it in
-    # -- its 040 via ALTER TABLE DROP CONSTRAINT, which the static fold
-    # -- cannot see; the DuckDB rebuild (041) lands the same end state.
-    # -- storage.duckdb_cascade owns the SET NULL action on both engines.
-    ("fk", "entities", "source_document_id"): (
-        "Dropped by pg 040 (ALTER DROP CONSTRAINT is invisible to the fold);"
-        " DuckDB 041 rebuilds entities without it. The cascade module owns"
-        " the SET NULL action."
-    ),
-    # -- entity_id_aliases.entity_id FK (issue #455): only the pg mirror
-    # -- declares it. DuckDB 041 rebuilds entities through DROP TABLE, and
-    # -- a key table here would block that replay (migrations apply twice
-    # -- cleanly). Nothing deletes entities rows, so the action has no
-    # -- runtime role on DuckDB.
-    ("fk", "entity_id_aliases", "entity_id"): (
-        "pg 045 only: DuckDB 045 skips the FK because the 041 entities"
-        " rebuild (DROP TABLE) must stay replayable."
-    ),
-}
 
 
 @dataclass
@@ -128,9 +59,9 @@ def migration_files(root: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path
 
     Forward Postgres truth is storage/schema.sql plus the numbered
     migrations (glob ``[0-9]*.sql`` skips the rollback files and keeps
-    working past migration 099). The DuckDB set runs 000..039 in name
-    order; from 031 on each file pairs by name with its Postgres twin
-    one ordinal lower (issue #230).
+    working past migration 099). The DuckDB set folds its forward files
+    in name order; twins pair by name, and numbers 030-042 are offset
+    by one (issue #230).
     """
     pg: list[tuple[Path, str]] = []
     base = root / PG_BASE

@@ -114,6 +114,11 @@ def register(app: typer.Typer) -> None:
                     "No database found. Set database.connection_string in "
                     "config.yaml, or CORPUS_KB_DATABASE_URL."
                 )
+            if maintenance_work_mem and conn_str.startswith(DUCKDB_DSN_PREFIX):
+                raise ConfigError(
+                    "--maintenance-work-mem is a Postgres session setting. The target is DuckDB.",
+                    remediation="Drop the flag. Or point the migrate target at Postgres.",
+                )
             su_dsn = superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN", "") or None
             report = asyncio.run(
                 run_migrations(

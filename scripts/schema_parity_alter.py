@@ -15,6 +15,7 @@ from schema_parity_model import (
     Origin,
     SchemaState,
     TableSpec,
+    normalize_check,
     normalize_default,
     normalize_type,
 )
@@ -32,12 +33,19 @@ def _schema_cols(node: exp.Expression) -> tuple[str, ...]:
     return ()
 
 
-def _ref_target(ref: exp.Expression) -> tuple[str, tuple[str, ...]]:
-    """(table, cols) of a REFERENCES clause; table may be Schema-wrapped."""
+def _ref_target(ref: exp.Expression) -> tuple[str, tuple[str, ...], str]:
+    """(table, cols, actions) of a REFERENCES clause; actions may be ''.
+
+    sqlglot keeps the referential actions (ON DELETE / ON UPDATE) as
+    option strings on the Reference node; the space-joined, uppercased
+    text is the compared fact.
+    """
     this = ref.args.get("this")
     table = this.this if isinstance(this, exp.Schema) else this
     cols = tuple(e.name for e in ref.args.get("expressions") or [])
-    return (table.name if isinstance(table, exp.Table) else "", cols)
+    options = ref.args.get("options") or []
+    actions = " ".join(str(option) for option in options).strip().upper()
+    return (table.name if isinstance(table, exp.Table) else "", cols, actions)
 
 
 def fold_column(table: TableSpec, col: exp.ColumnDef, at: Origin) -> None:
@@ -61,6 +69,8 @@ def fold_column(table: TableSpec, col: exp.ColumnDef, at: Origin) -> None:
                 sequences.append(match.group(1))
         elif isinstance(kind, exp.GeneratedAsIdentityColumnConstraint):
             sequences.append(f"{table.name}_{name}_seq")
+        elif isinstance(kind, exp.CheckColumnConstraint):
+            table.checks.add(normalize_check(kind.sql()))
         elif isinstance(kind, exp.Reference):
             table.fks[(name,)] = _ref_target(kind)
     if raw_type.strip().upper() in ("SERIAL", "BIGSERIAL", "SMALLSERIAL"):
@@ -74,11 +84,18 @@ def fold_column(table: TableSpec, col: exp.ColumnDef, at: Origin) -> None:
 
 
 def fold_table_constraints(node: exp.Expression, table: TableSpec) -> None:
-    """Fold PK / UNIQUE / FK constraints found anywhere inside node."""
+    """Fold PK / UNIQUE / FK / CHECK constraints found anywhere inside node.
+
+    The CHECK sweep covers column-level and table-level constraints in
+    one walk (sqlglot uses the same node class for both), so a named
+    ``CONSTRAINT ... CHECK`` folds through the same rule.
+    """
     for pk in node.find_all(exp.PrimaryKey):
         table.primary_key = _schema_cols(pk)
     for uq in node.find_all(exp.UniqueColumnConstraint):
         table.uniques.add(tuple(sorted(_schema_cols(uq))))
+    for chk in node.find_all(exp.CheckColumnConstraint):
+        table.checks.add(normalize_check(chk.sql()))
     for fk in node.find_all(exp.ForeignKey):
         target = _ref_target(fk.args["reference"])
         cols = tuple(sorted(e.name for e in fk.args.get("expressions") or []))

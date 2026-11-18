@@ -20,6 +20,7 @@ from corpus_kb._setup.doctor_duckdb import (
     duckdb_lock_check,
     extension_load_check,
     fts_watermark_check,
+    graph_traversal_check,
 )
 from corpus_kb._setup.doctor_engine import (
     engine_fit_check,
@@ -200,6 +201,9 @@ async def storage_checks(
             checks.append(unreadable_file_check(path, exc))
     with closing(duckdb.connect(":memory:")) as scratch:
         checks.extend(extension_load_check(scratch))
+        graph_cfg = config.get("graph") or {}
+        requested = str(graph_cfg.get("duckdb_graph_backend") or "cte")
+        checks.append(graph_traversal_check(scratch, requested))
     checks.append(events_sidecar_check(conn_str))
     checks.append(engine_fit_check("duckdb", count))
     checks.append(await project_tables_check(config, conn_str))
@@ -223,6 +227,7 @@ __all__ = [
     "events_sidecar_check",
     "extension_load_check",
     "fts_watermark_check",
+    "graph_traversal_check",
     "print_storage_checks",
     "resolved_backend",
     "storage_checks",
