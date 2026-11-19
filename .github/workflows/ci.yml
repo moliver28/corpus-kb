@@ -1472,3 +1472,39 @@ jobs:
 
       - name: Plugin suite
         run: poe plugin-tests
+
+  # ─────────────────────────────────────────────────────────────────────
+  # PyPI wheel smoke (zero-drift rule 10: poe target `pypi-smoke` + this
+  # job + the enforcement-map row). Installs the PUBLISHED `corpus-kb`
+  # wheel from PyPI, UNPINNED, into a fresh venv and proves the CLI
+  # boots: --help (exit 0, "Usage" marker), doctor (exit 0 or 3 — the
+  # honest no-database degraded state), demo-kb --help (exit 0).
+  # Always-run (lint job shape: no needs/if on the changes filter). The
+  # job depends on NO branch code: it tests whatever is latest on PyPI,
+  # so this PR's CI run is the proof, not the source tree. Python 3.13
+  # here also proves the requires-python >=3.11.5 claim past the pinned
+  # dev version (3.11).
+  # ─────────────────────────────────────────────────────────────────────
+  pypi-smoke:
+    name: "pypi-smoke (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install poethepoet
+        run: pip install poethepoet
+
+      - name: PyPI wheel smoke
+        run: poe pypi-smoke
