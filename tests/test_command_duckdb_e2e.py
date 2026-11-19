@@ -12,8 +12,10 @@ No Postgres, no Ollama: the embedder is a stub, the queries are bounded.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -22,6 +24,7 @@ from corpus_kb._setup.migrate import run_duckdb_migrations
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.models import AddEntityCommand, RoutedQuery
+from corpus_kb.handlers.coding_handler import CodingHandler
 from corpus_kb.handlers.command_handler import CommandHandler
 from corpus_kb.handlers.idempotency import IdempotencyChecker
 from corpus_kb.handlers.router_handler import RouterHandler
@@ -273,3 +276,288 @@ async def test_parent_expand_on_duckdb(gateway: DuckDbGateway) -> None:
     assert [str(r.chunk_id) for r in expanded] == [str(hit)]
     assert expanded[0].text == "BIG PARENT CONTEXT"
     assert expanded[0].score == 0.9
+
+
+# ============================================================================
+# W3: coding command-replay legs on DuckDB
+#
+# One leg per registered coding command, driven through the ONE shared
+# tool function every surface routes through, on the migrated gateway
+# file. The two transport boundaries that need a model (the codebook
+# embedder and the chunk coder) answer through deterministic doubles
+# patched at the module seams; every store write, read, and event stays
+# real. Replay pins: the codebook load is content-hash idempotent (the
+# second load answers the SAME version id) and the re-dispatched cell is
+# a duplicate no-op (append-only table, nothing written twice).
+# ============================================================================
+
+_EMBED_DIM = 2560
+
+_CODEBOOK: dict[str, Any] = {
+    "paradigm": "codebook",
+    "categories": [
+        {
+            "id": "C1",
+            "name": "trust",
+            "brief_definition": "trust in management",
+            "inclusion_criteria": "confidence statements",
+            "exclusion_criteria": "e-trust",
+            "examples": [],
+            "theory": {},
+        },
+        {
+            "id": "C2",
+            "name": "fear",
+            "brief_definition": "fear of layoffs",
+            "inclusion_criteria": "i-fear",
+            "exclusion_criteria": "e-fear",
+            "examples": [],
+            "theory": {},
+        },
+    ],
+}
+
+
+def _one_hot_literal(text: str, dim: int = _EMBED_DIM, instructed: bool = False) -> str:
+    """A deterministic one-hot ``FLOAT[dim]`` literal for one text.
+
+    Equal texts embed equal, different texts embed orthogonal, so every
+    replay scores identically.
+    """
+    index = int(hashlib.sha256(f"{instructed}:{text}".encode()).hexdigest(), 16) % dim
+    vector = [0.0] * dim
+    vector[index] = 1.0
+    return "[" + ",".join(format(float(v), ".9g") for v in vector) + "]"
+
+
+class _StubResearchEmbedder:
+    """A fixed one-hot embedder for the inductive leg (ParityEmbedder style).
+
+    One fixed vector per text, so the leg never touches Ollama and the
+    unit count is the same in every environment (degraded runner too).
+    """
+
+    model = "stub-research"
+    model_revision = "1"
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for text in texts:
+            index = int(hashlib.sha256(text.encode()).hexdigest(), 16) % _EMBED_DIM
+            vector = [0.0] * _EMBED_DIM
+            vector[index] = 1.0
+            vectors.append(vector)
+        return vectors
+
+
+def _coder_reply(decision: str, quote: str) -> dict[str, Any]:
+    """One valid coder reply for the canned dispatch double."""
+    return {
+        "decisions": [
+            {
+                "code_id": "C1",
+                "decision": decision,
+                "confidence": 0.9 if decision == "assign" else 0.95,
+                "evidence_quote": quote if decision == "assign" else None,
+                "rationale": "parity leg",
+            }
+        ],
+        "logprobs": [],
+    }
+
+
+async def _seed_chunk(gateway: DuckDbGateway, text: str) -> UUID:
+    """One document + chunk row; returns the chunk id."""
+    doc_id = uuid4()
+    await _insert_document(gateway, doc_id)
+    chunk_id = uuid4()
+    await gateway.execute(
+        "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text, metadata)"
+        " VALUES ($1::uuid, $2, $3::uuid, 0, $4, '{}')",
+        str(chunk_id),
+        str(TENANT),
+        str(doc_id),
+        text,
+    )
+    return chunk_id
+
+
+async def _seed_proposal_world(gateway: DuckDbGateway) -> int:
+    """One exchange, one answer unit (both with 1024-d vectors), one proposal.
+
+    The promotion re-derivation reads the member unit's answer view, the
+    exchange QA view, and the proposed_code log; all three land here with
+    deterministic vector literals.
+    """
+    doc_id = uuid4()
+    await gateway.execute(
+        "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES (?, ?, ?, ?)",
+        str(doc_id),
+        str(TENANT),
+        f"promote-{doc_id}.md",
+        "markdown",
+    )
+    await gateway.execute(
+        "INSERT INTO research_exchanges (exchange_id, tenant_id, doc_id, seq,"
+        " q_unit_ids, a_unit_ids, embedding)"
+        " VALUES (901, $1, $2::uuid, 0, [], [], $3::FLOAT[1024])",
+        str(TENANT),
+        str(doc_id),
+        _one_hot_literal("qa-view", 1024),
+    )
+    await gateway.execute(
+        "INSERT INTO research_units (unit_id, tenant_id, doc_id, seq, text, text_sha256,"
+        " exchange_id, role_in_exchange, embedding)"
+        " VALUES (902, $1, $2::uuid, 0, $3, $4, 901, 'answer', $5::FLOAT[1024])",
+        str(TENANT),
+        str(doc_id),
+        "We trust in management here.",
+        hashlib.sha256(b"We trust in management here.").hexdigest(),
+        _one_hot_literal("answer-view", 1024),
+    )
+    # The view loader keeps only units whose exchange also carries a
+    # question arm, so the world needs one question unit beside the answer.
+    await gateway.execute(
+        "INSERT INTO research_units (unit_id, tenant_id, doc_id, seq, text, text_sha256,"
+        " exchange_id, role_in_exchange, embedding)"
+        " VALUES (903, $1, $2::uuid, 1, $3, $4, 901, 'question', $5::FLOAT[1024])",
+        str(TENANT),
+        str(doc_id),
+        "Do you trust management?",
+        hashlib.sha256(b"Do you trust management?").hexdigest(),
+        _one_hot_literal("question-view", 1024),
+    )
+    await gateway.execute(
+        "INSERT INTO research_proposed_codes (proposed_id, tenant_id, cluster_id, run_id,"
+        " member_unit_ids, n_members)"
+        " VALUES (7, $1, 'parity-cluster', 'parity-run', [902], 1)",
+        str(TENANT),
+    )
+    return 7
+
+
+async def test_coding_command_replay_legs_on_duckdb(
+    gateway: DuckDbGateway,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All five coding commands run and replay on the DuckDB file.
+
+    The config the research commands resolve internally points the event
+    store at this file's SQLite sidecar; the embedder and coder seams
+    answer without a model. Nothing here touches Postgres or Ollama.
+    """
+    from corpus_kb.tools.coding_tools import coding_code_batch, coding_embed_codebook
+    from corpus_kb.tools.research_tools import codebook_promote, coding_run, inductive_run
+
+    # The research commands load config at call time; this config binds
+    # the event store to the SQLite sidecar of THIS analytics file.
+    cfg = {
+        "database": {
+            "backend": "duckdb",
+            "connection_string": f"duckdb:///{(tmp_path / 'cmd.duckdb').as_posix()}",
+        }
+    }
+    monkeypatch.setattr("corpus_kb.config.load_config", lambda: cfg)
+
+    def _stub_embed_fn(self: CodingHandler) -> Any:
+        async def embed_fn(text: str, instructed: bool = False) -> str:
+            return _one_hot_literal(text)
+
+        return embed_fn
+
+    monkeypatch.setattr(CodingHandler, "_default_embed_fn", _stub_embed_fn)
+
+    async def _canned_call_ollama(window: str, model: str, **kwargs: Any) -> dict[str, Any]:
+        return _coder_reply("assign", "trust in management")
+
+    monkeypatch.setattr("corpus_kb.coding.coder_dispatch.call_ollama", _canned_call_ollama)
+
+    # 1 EMBED-CODEBOOK + replay: the second load answers the SAME version
+    # id (content-hash idempotence), the registry holds two codes.
+    first = await coding_embed_codebook(gateway, _CODEBOOK, config=cfg)
+    assert first["status"] == "success"
+    version_id = str(first["codebook_version_id"])
+    UUID(version_id)  # parses
+    codes = await gateway.fetch(
+        "SELECT code_id FROM code_registry WHERE tenant_id = $1 ORDER BY code_id",
+        str(TENANT),
+    )
+    assert [str(row["code_id"]) for row in codes] == ["C1", "C2"]
+
+    replay = await coding_embed_codebook(gateway, _CODEBOOK, config=cfg)
+    assert replay["status"] == "success"
+    assert str(replay["codebook_version_id"]) == version_id
+
+    # 2 CODE-BATCH + replay: one cell lands once; the re-dispatch is a
+    # duplicate no-op against the append-only chunk_codes table.
+    chunk_id = await _seed_chunk(gateway, "We trust in management here.")
+    cells = [{"chunk_id": str(chunk_id), "code_ids": ["C1"]}]
+    batch = await coding_code_batch(gateway, cells, coder="stub", model="stub", config=cfg)
+    assert batch["status"] == "success"
+    assert batch["cells_coded"] == 1
+    assert batch["cells_routed"] == 1
+    row = await gateway.fetchrow(
+        "SELECT decision, route FROM chunk_codes WHERE tenant_id = $1 AND chunk_id = $2::uuid",
+        str(TENANT),
+        str(chunk_id),
+    )
+    assert row is not None and row["decision"] == "assign"
+
+    again = await coding_code_batch(gateway, cells, coder="stub", model="stub", config=cfg)
+    assert again["status"] == "success"
+    assert again["cells_coded"] == 1
+    assert again["cells_routed"] == 0
+    assert again["results"][0]["duplicates"] == 1
+    count = await gateway.fetchval(
+        "SELECT count(*) FROM chunk_codes WHERE tenant_id = $1 AND chunk_id = $2::uuid",
+        str(TENANT),
+        str(chunk_id),
+    )
+    assert count == 1  # append-only: the replay wrote nothing
+
+    # 3 CODING-RUN: one deductive run over the loaded codebook and an
+    # empty research corpus answers the zero-unit summary, twice.
+    for _ in range(2):
+        summary = await coding_run(gateway, version_id)
+        assert summary["status"] == "success"
+        assert summary["n_units"] == 0
+        UUID(str(summary["run_id"]))  # parses
+        assert UUID(str(summary["codebook_version_id"])) == UUID(version_id)
+
+    # 4 CODEBOOK-PROMOTE: one proposal with one member unit mints a NEW
+    # codebook version and marks the proposal promoted in the log.
+    proposed_id = await _seed_proposal_world(gateway)
+    promoted = await codebook_promote(gateway, proposed_id, "trust", "trust in management")
+    assert promoted["status"] == "promoted"
+    assert promoted["n_members"] == 1
+    UUID(str(promoted["codebook_version_id"]))
+    assert str(promoted["codebook_version_id"]) != version_id  # a NEW version
+    marked = await gateway.fetchval(
+        "SELECT status FROM research_proposed_codes WHERE proposed_id = $1",
+        proposed_id,
+    )
+    assert marked == "promoted"
+
+    # 5 INDUCTIVE-RUN (last). Step 4 seeds one codable answer unit, so the
+    # expected unit count comes from the database, not a constant. The query
+    # mirrors the codable filter in load_codable_pairs. The pass answers the
+    # honest nothing-to-cluster envelope (or the no-extra unavailable
+    # envelope).
+    # The run's embedder seam resolves at call time; a fixed stub here keeps
+    # the unit count the same with and without a live Ollama.
+    def _stub_create_embedder(cfg: dict[str, Any], pool: Any = None) -> _StubResearchEmbedder:
+        return _StubResearchEmbedder()
+
+    monkeypatch.setattr("corpus_kb.rag.create_embedder", _stub_create_embedder)
+    expected_units = await gateway.fetchval(
+        "SELECT count(*) FROM research_units u"
+        " JOIN research_exchanges x"
+        " ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id"
+        " WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'",
+        str(TENANT),
+    )
+    inductive = await inductive_run(gateway)
+    assert inductive["status"] in {"success", "unavailable"}
+    if inductive["status"] == "success":
+        assert inductive["n_units"] == expected_units

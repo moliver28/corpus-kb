@@ -15,11 +15,14 @@ exception. Empty result sets are the honest outcome for an empty store.
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from typing import Any, cast
 from uuid import uuid4
 
 import pytest
-from test_surface_parity_deep import DOC_ID, LEGS, TENANT
+from test_surface_parity_deep import _QUEUE_ID, DOC_ID, LEGS, TENANT
 
 from tests.live_embed import live_embed_dimensions, live_embed_model
 
@@ -95,6 +98,20 @@ PARITY_OPS: ParityLegs = (
     "analysis_backfill_dates",
     "analysis_embed_meta",
     "analyze_run",
+    # W3 parity-test-legs wave: the audited-missing DuckDB legs. These run
+    # their shared legs with only ctx additions (a gold file, one seeded
+    # queue row). The seed-dependent ops — conflicts_resolve and the
+    # beliefs trio — pin in the seeded test below: their shared legs seed
+    # through raw asyncpg sessions (pool.acquire + set_config), which is
+    # Postgres-shaped, so here the same rows land through gateway.execute
+    # and the SAME product functions the shared legs call run unmodified.
+    "search_context",
+    "verify_answer",
+    "notebook_ask",
+    "conflicts_scan",
+    "labeling_triage",
+    "labeling_gold_check",
+    "queue_cancel",
 )
 
 
@@ -197,18 +214,32 @@ async def test_all_parity_operations_run_on_duckdb(
     """Drive the 30 shared legs on one migrated file; collect every failure.
 
     ``queue_enqueue`` books a real row (its content hash names a tmp file,
-    so a second run would deduplicate), and ``delete_document`` runs LAST
-    on the seeded document — its cascade is one of the operations under
-    proof.
+    so a second run would deduplicate), ``queue_cancel`` cancels the
+    seeded pending row under the catalogue's fixed queue id, and
+    ``delete_document`` runs LAST on the seeded document — its cascade is
+    one of the operations under proof.
     """
     book = tmp_path / "queue-book.md"
     book.write_text("queue book body", encoding="utf-8")
+    gold = tmp_path / "parity-gold.json"
+    gold.write_text(json.dumps({"chunk-1": "reports"}), encoding="utf-8")
     ctx: dict[str, Any] = {
         "pool": parity_store,
         "config": {},
         _file_path_key(): str(book),
+        "gold_path": str(gold),
     }
     await _seed_document(parity_store, TENANT, DOC_ID)
+    # The cancel leg needs a pending row under the catalogue's fixed id;
+    # its content hash stays away from the enqueue leg's own row.
+    await parity_store.execute(
+        "INSERT INTO ingest_queue (id, tenant_id, path, content_hash)"
+        " VALUES ($1::uuid, $2, $3, $4)",
+        _QUEUE_ID,
+        TENANT,
+        str(book) + "-cancel-seed",
+        "parity-cancel-seed-content-hash",
+    )
 
     failures: list[str] = []
     for op in PARITY_OPS:
@@ -247,3 +278,186 @@ def test_parity_op_list_is_exact() -> None:
     """Every named operation exists as a shared leg (catalogue drift pin)."""
     missing = [op for op in PARITY_OPS if op not in LEGS]
     assert not missing, f"legs missing for: {missing}"
+
+
+# -- Seed-dependent legs -----------------------------------------------------
+#
+# The deep module's shared legs for conflicts_resolve and the beliefs trio
+# seed their world through raw asyncpg sessions (``pool.acquire`` plus the
+# ``set_config`` tenant GUC). The DuckDB gateway has no ``acquire`` and no
+# GUC, so this module lands the same rows through ``gateway.execute`` and
+# then calls the SAME product functions those shared legs call, with the
+# same arguments. Nothing else differs from the shared legs above.
+
+
+async def _seed_anchor(gateway: Any, tenant: str) -> str:
+    """Seed the one shared doc + chunk anchor; return the chunk id.
+
+    Both seeded worlds hang their statements on this anchor, so the
+    insert carries ``ON CONFLICT DO NOTHING`` and a second call is a
+    no-op that still answers the chunk id.
+    """
+    await gateway.execute(
+        "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
+        " VALUES ($1::uuid, $2, $3, $4) ON CONFLICT DO NOTHING",
+        DOC_ID,
+        tenant,
+        "parity-seed",
+        "text",
+    )
+    await gateway.execute(
+        "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text, source_type)"
+        " VALUES ($1::uuid, $2, $3::uuid, 0, $4, $5) ON CONFLICT DO NOTHING",
+        str(uuid4()),
+        tenant,
+        DOC_ID,
+        "parity seed text",
+        "text",
+    )
+    chunk_id = await gateway.fetchval(
+        "SELECT chunk_id FROM chunks WHERE doc_id::uuid = $1::uuid AND chunk_index = 0",
+        DOC_ID,
+    )
+    return str(chunk_id)
+
+
+async def _seed_conflict_world(gateway: Any, tenant: str, chunk_id: str) -> str:
+    """Seed two opposite statements and one flag; return the conflict id.
+
+    Mirrors the deep module's conflict seed row for row, minus the
+    ``ON CONFLICT`` clauses: each parity test owns a fresh DuckDB file.
+    """
+    seed_texts = ("I like ice cream.", "I dislike ice cream now.")
+    for seed_text in seed_texts:
+        await gateway.execute(
+            "INSERT INTO statements (tenant_id, chunk_id, document_id, statement_hash,"
+            " text, template_id, template_version, entities, metadata)"
+            " VALUES ($1, $2::uuid, $3::uuid, $4, $5, 'preference', 'v1',"
+            " '[]'::jsonb, '{}'::jsonb)",
+            tenant,
+            str(chunk_id),
+            DOC_ID,
+            sha256(seed_text.encode("utf-8")).hexdigest(),
+            seed_text,
+        )
+    stmt_a = await gateway.fetchval(
+        "SELECT statement_id FROM statements WHERE tenant_id = $1 AND text = $2",
+        tenant,
+        seed_texts[0],
+    )
+    stmt_b = await gateway.fetchval(
+        "SELECT statement_id FROM statements WHERE tenant_id = $1 AND text = $2",
+        tenant,
+        seed_texts[1],
+    )
+    await gateway.execute(
+        "INSERT INTO statement_conflicts (tenant_id, statement_a_id, statement_b_id,"
+        " anchor_name, kind, gate_reached, verdict, metadata)"
+        " VALUES ($1, $2::uuid, $3::uuid, 'ice cream', 'relation_swap', 'B', 'conflict',"
+        " '{}'::jsonb)",
+        tenant,
+        str(stmt_a),
+        str(stmt_b),
+    )
+    conflict_id = await gateway.fetchval(
+        "SELECT conflict_id FROM statement_conflicts"
+        " WHERE tenant_id = $1 AND anchor_name = 'ice cream'"
+        " ORDER BY created_at DESC, conflict_id ASC LIMIT 1",
+        tenant,
+    )
+    return str(conflict_id)
+
+
+async def _seed_belief_world(gateway: Any, tenant: str, chunk_id: str) -> dict[str, str]:
+    """Seed a like-then-dislike arc ten years apart; rebuild beliefs.
+
+    Returns the belief triple the timeline, predict, and compare legs
+    read. Mirrors the deep module's belief seed; the old statement carries
+    an ``observed_at`` ten years back so two eras segment cleanly.
+    """
+    from corpus_kb.beliefs.store import BeliefStore
+
+    now = datetime.now(UTC)
+    rows = [
+        (
+            sha256(b"belief-seed-old").hexdigest(),
+            "I like ice cream.",
+            now - timedelta(days=3650),
+        ),
+        (
+            sha256(b"belief-seed-new").hexdigest(),
+            "I dislike ice cream now.",
+            now,
+        ),
+    ]
+    for seed_hash, seed_text, observed in rows:
+        await gateway.execute(
+            "INSERT INTO statements (tenant_id, chunk_id, document_id, statement_hash,"
+            " text, template_id, template_version, entities, exchange_id, confidence,"
+            " observed_at, metadata)"
+            " VALUES ($1, $2::uuid, $3::uuid, $4, $5, 'preference', 'v1', $6::jsonb, 777, 0.9,"
+            " $7, '{}'::jsonb)",
+            tenant,
+            str(chunk_id),
+            DOC_ID,
+            seed_hash,
+            seed_text,
+            json.dumps([{"name": "ice cream", "entity_type": "CONCEPT"}]),
+            observed,
+        )
+    store = BeliefStore(gateway, tenant)
+    await store.rebuild()
+    return {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
+
+
+@pytest.mark.asyncio
+async def test_seeded_parity_operations_run_on_duckdb(parity_store: Any) -> None:
+    """Run conflicts_resolve and the beliefs trio on gateway-shaped seeds.
+
+    Every leg must answer its envelope without an engine-shaped error,
+    and the resolution must stick: the flag row reads back dismissed.
+    """
+    from corpus_kb.tools.beliefs_tools import beliefs_compare, beliefs_predict, beliefs_timeline
+    from corpus_kb.tools.conflicts_tools import conflicts_resolve
+
+    failures: list[str] = []
+
+    chunk_id = await _seed_anchor(parity_store, TENANT)
+    conflict_id = await _seed_conflict_world(parity_store, TENANT, chunk_id)
+    try:
+        resolved = await conflicts_resolve(
+            parity_store,
+            config={},
+            conflict_id=conflict_id,
+            resolved_verdict="dismissed",
+            resolved_by="parity-leg",
+        )
+        if resolved.get("status") != "success":
+            failures.append(f"conflicts_resolve: {resolved}")
+        verdict = await parity_store.fetchval(
+            "SELECT resolved_verdict FROM statement_conflicts WHERE conflict_id::uuid = $1::uuid",
+            conflict_id,
+        )
+        if verdict != "dismissed":
+            failures.append(f"conflicts_resolve: row reads back {verdict!r}, not 'dismissed'")
+    except Exception as exc:
+        failures.append(f"conflicts_resolve: {type(exc).__name__}: {exc}")
+
+    triple = await _seed_belief_world(parity_store, TENANT, chunk_id)
+    belief_legs: dict[str, Any] = {
+        "beliefs_timeline": lambda: beliefs_timeline(parity_store, config={}, **triple),
+        "beliefs_predict": lambda: beliefs_predict(parity_store, config={}, **triple),
+        "beliefs_compare": lambda: beliefs_compare(
+            parity_store, config={}, subject=triple["subject"]
+        ),
+    }
+    for op, run in belief_legs.items():
+        try:
+            envelope = await run()
+        except Exception as exc:
+            failures.append(f"{op}: {type(exc).__name__}: {exc}")
+            continue
+        if not isinstance(envelope, dict) or envelope.get("status") != "success":
+            failures.append(f"{op}: {envelope}")
+
+    assert not failures, "DuckDB seeded-operation parity failures:\n" + "\n".join(failures)
