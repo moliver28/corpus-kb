@@ -175,6 +175,9 @@ def _migrate_one(cli: str, args, slug: str, study: dict) -> int:
     command = [cli, "migrate", "--json"]
     if getattr(args, "reset_embeddings", False):
         command.append("--reset-embeddings")
+    # Heavy migrations (015's dedupe, 025's retype) need the bigger
+    # session memory; the flags exist on the engine's migrate command.
+    command += ["--work-mem", "1GB", "--maintenance-work-mem", "1GB"]
     env = study_config.study_env(slug, study)
     if str(study.get("backend", "postgres")) == "postgres":
         # The engine reads this fallback; argv would show the DSN to every
