@@ -519,10 +519,19 @@ async def test_coding_command_replay_legs_on_duckdb(
     )
     assert marked == "promoted"
 
-    # 5 INDUCTIVE-RUN (last). No codable units, so the pass answers the
+    # 5 INDUCTIVE-RUN (last). Step 4 seeds one codable answer unit, so the
+    # expected unit count comes from the database, not a constant. The query
+    # mirrors the codable filter in load_codable_pairs. The pass answers the
     # honest nothing-to-cluster envelope (or the no-extra unavailable
     # envelope).
+    expected_units = await gateway.fetchval(
+        "SELECT count(*) FROM research_units u"
+        " JOIN research_exchanges x"
+        " ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id"
+        " WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'",
+        str(TENANT),
+    )
     inductive = await inductive_run(gateway)
     assert inductive["status"] in {"success", "unavailable"}
     if inductive["status"] == "success":
-        assert inductive["n_units"] == 0
+        assert inductive["n_units"] == expected_units
