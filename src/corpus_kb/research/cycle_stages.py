@@ -108,14 +108,14 @@ async def stage_keywords(
     version_id: UUID | None,
     cfg: dict[str, Any] | None = None,
 ) -> dict[str, object]:
-    from corpus_kb.domain.application import dsn_from_config
     from corpus_kb.research.cycle_reads import latest_version_id
     from corpus_kb.research.keyword_surface import run_keyword_synthesis
+    from corpus_kb.storage.connect import config_conn_str
 
     resolved = version_id or await latest_version_id(pool, tenant_id)
     if resolved is None:
         return {"status": "unavailable", "reason": "no codebook version exists yet"}
-    return await run_keyword_synthesis(pool, tenant_id, resolved, dsn=dsn_from_config(cfg))
+    return await run_keyword_synthesis(pool, tenant_id, resolved, dsn=config_conn_str(cfg))
 
 
 async def stage_report(

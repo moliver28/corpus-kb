@@ -52,7 +52,6 @@ from corpus_kb.coding.inductive_cluster import (
 )
 from corpus_kb.coding.inductive_summaries import SummaryChatClient, meta_decide, summarize_unit
 from corpus_kb.coding.saturation import isr
-from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research import guide_copy
 from corpus_kb.research.conn import dialect_of, tenant_scope
@@ -67,6 +66,7 @@ from corpus_kb.research.inductive_store import (
     upsert_proposal,
 )
 from corpus_kb.research.promote_code import TAU_DUP_DEFAULT
+from corpus_kb.storage.connect import config_conn_str
 from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ async def run_inductive(
     """One inductive pass; returns the summary the CLI/MCP surfaces print."""
     from corpus_kb.coding._inductive_types import InductiveDependencyError
 
-    handler = ResearchHandler(pool, dsn=dsn_from_config(cfg))
+    handler = ResearchHandler(pool, dsn=config_conn_str(cfg))
     settings = inductive_config(cfg)
     run_info = handler.start_coding_run(
         tenant_id,

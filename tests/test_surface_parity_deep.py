@@ -2385,7 +2385,9 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     # Research transcript + path ingest: stub the handler + the projection
     # catch-up.
     monkeypatch.setattr(
-        research_tools_module, "get_research_handler", lambda pool: _StubResearchHandler()
+        research_tools_module,
+        "get_research_handler",
+        lambda pool, **kwargs: _StubResearchHandler(),
     )
 
     async def noop_advance(pool: Any, tenant_id: UUID) -> None:

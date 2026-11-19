@@ -9,13 +9,15 @@ identical read models after every event-writing command.
 
 from __future__ import annotations
 
-from typing import cast
-
 import asyncpg
 
+# config.load_config() reads the module attribute at call time: the tests
+# patch corpus_kb.config.load_config, so a from-import would bind past them.
+from corpus_kb import config
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.handlers.research_handler import get_research_handler
 from corpus_kb.projections.catchup import advance_all_projections
+from corpus_kb.storage.connect import config_conn_str
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools._uuid_input import uuid_arg
 
@@ -44,7 +46,7 @@ async def research_ingest_transcript(
     ``validate`` is the optional validation gate over the canonical
     document (off | advisory | enforce | calibrate); default ``off``.
     """
-    handler = get_research_handler(pg_pool)
+    handler = get_research_handler(pg_pool, dsn=config_conn_str(config.load_config()))
     result = await handler.ingest_transcript(
         uuid_arg(tenant_id, "tenant_id"),
         file_path,
@@ -70,7 +72,7 @@ async def research_ingest(
     ``validate`` rides into every per-file transcript ingest (off |
     advisory | enforce | calibrate); default ``off``.
     """
-    handler = get_research_handler(pg_pool)
+    handler = get_research_handler(pg_pool, dsn=config_conn_str(config.load_config()))
     result = await handler.ingest_path(
         uuid_arg(tenant_id, "tenant_id"),
         path,
@@ -128,13 +130,12 @@ async def inductive_run(
     writes the proposed_code log + noise queue. Returns status "unavailable"
     (never raises) when the optional ``inductive`` extra is absent.
     """
-    from corpus_kb.config import load_config
     from corpus_kb.handlers.llm_handler import LlmHandler
     from corpus_kb.projections.research._embed import ResearchEmbedder
     from corpus_kb.rag import create_embedder
     from corpus_kb.research.inductive_run import run_inductive
 
-    cfg = load_config()
+    cfg = config.load_config()
     embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
     summary = await run_inductive(
         pool,
@@ -166,12 +167,10 @@ async def codebook_promote(
     Created + CodeAdded + PrototypeUpdated events; status "duplicate_blocked"
     with a merge suggestion when the gate fires.
     """
-    from corpus_kb.config import load_config
-    from corpus_kb.domain.application import dsn_from_config
     from corpus_kb.research.inductive_run import inductive_config
     from corpus_kb.research.promote_code import promote_proposal
 
-    cfg = load_config()
+    cfg = config.load_config()
     effective_tau = tau_dup if tau_dup is not None else float(str(inductive_config(cfg)["tau_dup"]))
     result = await promote_proposal(
         pool,
@@ -183,7 +182,7 @@ async def codebook_promote(
         exclusion=exclusion,
         tau_dup=effective_tau,
         label=label,
-        dsn=dsn_from_config(cfg),
+        dsn=config_conn_str(cfg),
     )
     await advance_all_projections(pool, uuid_arg(tenant_id, "tenant_id"))
     return result
@@ -234,12 +233,10 @@ async def review_execute(
     The named review surface (todo 16 CLI, todo 18 MCP): every human decision
     becomes a CodingAssignment.Reviewed event projected into research_reviews.
     """
-    from corpus_kb.config import load_config
     from corpus_kb.research.review_surface import execute_review
 
-    cfg = load_config()
-    db = cast(dict[str, object], cfg.get("database") or {})
-    conn_str = str(db.get("connection_string", ""))
+    cfg = config.load_config()
+    conn_str = config_conn_str(cfg)
     return await execute_review(
         pool,
         uuid_arg(tenant_id, "tenant_id"),

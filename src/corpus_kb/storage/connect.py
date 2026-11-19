@@ -35,16 +35,16 @@ def is_duckdb_dsn(conn_str: str) -> bool:
     return conn_str.startswith(DUCKDB_DSN_PREFIX)
 
 
-def config_conn_str(cfg: dict[str, Any]) -> str:
+def config_conn_str(cfg: dict[str, Any] | None) -> str:
     """The config DSN, ``duckdb:///``-prefixed when the backend is duckdb.
 
     ``database.backend: duckdb`` with a bare file path is the supported
     shape (the env override table documents the key), so the prefix is
     added HERE instead of demanding every config file spell the scheme.
     A DSN that already carries the scheme passes through unchanged;
-    Postgres configs pass through unchanged.
+    Postgres configs pass through unchanged. None yields the empty string.
     """
-    db = cast("dict[str, Any]", cfg.get("database") or {})
+    db = cast("dict[str, Any]", (cfg or {}).get("database") or {})
     conn_str = str(db.get("connection_string") or "")
     backend = str(db.get("backend") or "postgres")
     if backend == "duckdb" and conn_str and not is_duckdb_dsn(conn_str):

@@ -97,7 +97,11 @@ def test_recommend_default_requires_rrf_beat_vector_within_budget() -> None:
 
 
 class _FakeConn:
-    """Protocol-shaped asyncpg stand-in (SQL recorded, fixture rows returned)."""
+    """Protocol-shaped asyncpg stand-in (SQL recorded, fixture rows returned).
+
+    The label read now runs in the tenant scope, so the stand-in also
+    answers ``transaction()`` (the session object tenant_connection yields).
+    """
 
     def __init__(self, rows: list[dict[str, object]]) -> None:
         self.rows = rows
@@ -106,6 +110,23 @@ class _FakeConn:
     async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
         self.sql.append(sql)
         return self.rows
+
+    async def execute(self, sql: str, *args: object) -> str:
+        """Accept the tenant-GUC statement the scope sets first."""
+        self.sql.append(sql)
+        return "SET"
+
+    def transaction(self):
+        outer = self
+
+        class _Tx:
+            async def __aenter__(self) -> _FakeConn:
+                return outer
+
+            async def __aexit__(self, *exc: object) -> bool:
+                return False
+
+        return _Tx()
 
 
 class _FakePool:
@@ -144,7 +165,9 @@ def test_load_reviewed_labels_joins_codes_and_skips_unreviewed() -> None:
     assert labels[0].relevant == frozenset({11, 12})
     assert "Billing Concern" in labels[0].text
     # Labels come ONLY from the reviewed statuses — pin the WHERE clause.
-    assert "'confirmed'" in conn.sql[0] and "'overridden'" in conn.sql[0]
+    # sql[0] is the tenant-GUC statement; the label read is the fetch after it.
+    fetch_sql = next(s for s in conn.sql if "'confirmed'" in s)
+    assert "'overridden'" in fetch_sql
 
 
 async def test_evaluate_arms_returns_insufficient_without_queries() -> None:
