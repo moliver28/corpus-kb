@@ -330,6 +330,26 @@ def _one_hot_literal(text: str, dim: int = _EMBED_DIM, instructed: bool = False)
     return "[" + ",".join(format(float(v), ".9g") for v in vector) + "]"
 
 
+class _StubResearchEmbedder:
+    """A fixed one-hot embedder for the inductive leg (ParityEmbedder style).
+
+    One fixed vector per text, so the leg never touches Ollama and the
+    unit count is the same in every environment (degraded runner too).
+    """
+
+    model = "stub-research"
+    model_revision = "1"
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for text in texts:
+            index = int(hashlib.sha256(text.encode()).hexdigest(), 16) % _EMBED_DIM
+            vector = [0.0] * _EMBED_DIM
+            vector[index] = 1.0
+            vectors.append(vector)
+        return vectors
+
+
 def _coder_reply(decision: str, quote: str) -> dict[str, Any]:
     """One valid coder reply for the canned dispatch double."""
     return {
@@ -524,6 +544,12 @@ async def test_coding_command_replay_legs_on_duckdb(
     # mirrors the codable filter in load_codable_pairs. The pass answers the
     # honest nothing-to-cluster envelope (or the no-extra unavailable
     # envelope).
+    # The run's embedder seam resolves at call time; a fixed stub here keeps
+    # the unit count the same with and without a live Ollama.
+    def _stub_create_embedder(cfg: dict[str, Any], pool: Any = None) -> _StubResearchEmbedder:
+        return _StubResearchEmbedder()
+
+    monkeypatch.setattr("corpus_kb.rag.create_embedder", _stub_create_embedder)
     expected_units = await gateway.fetchval(
         "SELECT count(*) FROM research_units u"
         " JOIN research_exchanges x"
