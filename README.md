@@ -24,15 +24,18 @@ No repo clone is needed. `quickstart` checks your machine and names any
 missing piece. `demo-kb` loads a small sample library, so search works
 right away.
 
-Two downloads come first:
+Three downloads come first:
 
-- [Ollama](https://ollama.com/download) serves the local models.
-- Docker runs the Postgres database. No Docker? Use the DuckDB path
+- [Ollama](https://ollama.com/download) serves the local models. The
+  two default models download about 2.5 GB each.
+- Docker runs the Postgres database. Its images add several GB.
+  No Docker? Use the DuckDB path
   ([Storage backends](docs/STORAGE-BACKENDS.md)).
+- Setup can also pull the extraction weights (GLiNER2 and Relex, about
+  4 GB together). The optional `[ml]` extra enables this download.
 
 The default models are `qwen3-embedding:4b` for vectors and `qwen3:4b`
-for answers. Each one downloads about 2.5 GB through Ollama. The setup
-pulls both for you.
+for answers. The setup pulls each download for you.
 
 ### The browser path: from a clone
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from corpus_kb import install_layout
 from corpus_kb._setup.doctor_engine import resolved_backend
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb._setup.setup_steps import EXTENSION_REMEDIATION, EXTENSIONS
@@ -73,6 +74,34 @@ def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
     print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
 
 
+def _clone_layout() -> bool:
+    """True when this install runs from a repository checkout.
+
+    Delegates to the one layout detector (``install_layout``); kept as
+    a named seam here so tests can monkeypatch the doctor tail.
+    """
+    return install_layout.is_clone_layout()
+
+
+def _recommended_setup_commands(info: dict[str, Any]) -> list[str]:
+    """The honest next-step setup lines for this backend and layout.
+
+    A DuckDB backend names the no-Docker setup command (the same fix
+    the DuckDB checks print). A Postgres backend keeps the guided
+    setup line; the editable pip line survives only for checkouts.
+    """
+    backend = str(info.get("backend", "postgres"))
+    commands: list[str] = []
+    if backend == "duckdb":
+        commands.append("corpus-kb setup --backend duckdb")
+    else:
+        if _clone_layout():
+            commands.append("pip install -e .[dev]")
+        commands.append("corpus-kb setup")
+    commands.append(f"ollama pull {info['recommended_model']}")
+    return commands
+
+
 def print_doctor_report(
     info: dict[str, Any],
     research: list[Any] | None = None,
@@ -101,9 +130,8 @@ def print_doctor_report(
 
         print_journey_checks(journey)
     print("\nRecommended commands (drop --dry-run to execute setup):")
-    print("  1. pip install -e .[dev]")
-    print("  2. corpus-kb setup")
-    print(f"  3. ollama pull {info['recommended_model']}")
+    for index, command in enumerate(_recommended_setup_commands(info), start=1):
+        print(f"  {index}. {command}")
     print("========================\n")
 
 

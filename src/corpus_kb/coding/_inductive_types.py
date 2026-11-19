@@ -21,14 +21,21 @@ from typing import Protocol, cast, runtime_checkable
 
 import numpy as np
 
+from corpus_kb.install_layout import extra_install_command
+
+_INSTALL_COMMAND = extra_install_command("inductive")
+
 
 class InductiveDependencyError(RuntimeError):
     """Raised when the ``inductive`` optional extra is not installed."""
 
+    #: The layout-aware pip command (install_layout), for machine-readable
+    #: receipts. _INSTALL_HINT (below) wraps the same command in prose.
+    install_command = _INSTALL_COMMAND
+
 
 _INSTALL_HINT = (
-    "the inductive extra is not installed — run "
-    '`pip install -e ".[inductive]"` (umap-learn + hdbscan)'
+    f"the inductive extra is not installed — run `{_INSTALL_COMMAND}` (umap-learn + hdbscan)"
 )
 
 

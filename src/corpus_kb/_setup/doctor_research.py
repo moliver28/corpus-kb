@@ -32,6 +32,7 @@ from corpus_kb._setup.doctor_checks import (
     ResearchCheck,
 )
 from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
+from corpus_kb.install_layout import extra_install_command
 from corpus_kb.projections.research._common import DEFAULT_TENANT, RESEARCH_PROJECTION_NAME
 from corpus_kb.research.search_settings import (
     MIN_ITERATIVE_SCAN_VERSION,
@@ -82,14 +83,13 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
 
 # Optional extras (todo-13/15, Stage 1 ner): report status + install command;
 # NEVER fail doctor when absent - the core pipeline and the demo run without
-# them.
-OPTIONAL_EXTRAS: tuple[tuple[str, tuple[str, ...], str], ...] = (
-    ("latechunk", ("sentence_transformers",), 'pip install -e ".[latechunk]"'),
-    ("inductive", ("umap", "hdbscan"), 'pip install -e ".[inductive]"'),
+# them. The command is layout-aware: extras_checks builds it via install_layout.
+OPTIONAL_EXTRAS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("latechunk", ("sentence_transformers",)),
+    ("inductive", ("umap", "hdbscan")),
     # Stage 1 gliner2 NER backend (extraction/gliner_backend.py): the import
-    # probe is the punter — the backend exists but degrades cleanly when the
-    # optional extra is not installed.
-    ("ner", ("gliner2",), 'pip install -e ".[ner]"'),
+    # probe decides; the backend degrades cleanly without the extra.
+    ("ner", ("gliner2",)),
 )
 
 DOC_RECONCILIATION = "docs/research/upgrade-reconciliation.md"
@@ -149,14 +149,14 @@ def extras_checks() -> list[ResearchCheck]:
             doc=DOC_RESEARCH,
         )
     ]
-    for extra, modules, install_cmd in OPTIONAL_EXTRAS:
+    for extra, modules in OPTIONAL_EXTRAS:
         present = all(_module_present(m) for m in modules)
         checks.append(
             ResearchCheck(
                 name=f"optional extra {extra}",
                 status=STATUS_OK if present else STATUS_INFO,
                 detail="installed" if present else "not installed (optional)",
-                fix="" if present else install_cmd,
+                fix="" if present else extra_install_command(extra),
                 doc=DOC_RESEARCH,
             )
         )

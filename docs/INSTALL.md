@@ -19,6 +19,8 @@ sample library and proves search works.
 The default models are `qwen3-embedding:4b` for vectors and `qwen3:4b`
 for answers. Each one downloads about 2.5 GB through Ollama. No Docker?
 Run `corpus-kb setup --backend duckdb` first, then re-run quickstart.
+A later `corpus-kb setup` can also pull the extraction weights
+(GLiNER2 and Relex, about 4 GB together).
 
 The rest of this page is the manual path from a clone.
 
@@ -252,12 +254,12 @@ The root `scripts/install.py` file still exists as a deprecation shim: it warns 
 
 Download Ollama from [ollama.com](https://ollama.com) and start it.
 
-One rule decides the model: **the schema column is fixed at 2560 dimensions,
-and pgvector needs an exact match.** The bundled schema stores `halfvec(2560)`.
-Pull the model that fits it:
+One rule decides the model: **the schema fits one model width.** The
+default model is `qwen3-embedding:4b`, and it downloads about 2.5 GB
+through Ollama:
 
 ```bash
-ollama pull qwen3-embedding:4b     # 2560 dimensions — the shipped default
+ollama pull qwen3-embedding:4b     # the shipped default
 ```
 
 `qwen3-embedding:4b` is the shipped config default and the installer's
@@ -290,7 +292,8 @@ database:
 
 embedding:
   provider: ollama
-  # The shipped schema stores halfvec(2560). Use the matching model.
+  # The shipped default. Other widths need a schema migration (see
+  # docs/ADMIN.md, model-schema matrix).
   model: qwen3-embedding:4b
   dimensions: 2560
   base_url: http://localhost:11434

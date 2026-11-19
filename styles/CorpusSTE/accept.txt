@@ -70,6 +70,7 @@ Priya
 Qual
 RLS
 RRF
+Relex
 Ripgrep
 SQL
 SQLite

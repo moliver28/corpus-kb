@@ -1,7 +1,8 @@
 """The ``corpus-kb demo-kb`` front door (UX program Wave 6).
 
 One command loads the bundled general-RAG sample corpus
-(``docs/demo-kb``) through the standard ingest tool layer, so a fresh
+(``corpus_kb/demo_corpus`` in the installed package, ``docs/demo-kb``
+in a clone) through the standard ingest tool layer, so a fresh
 database has something to search before any real files arrive.
 
 A lifecycle command in the quickstart/eval family. The ``demo_load``
@@ -67,8 +68,9 @@ def demo_kb(
 ) -> int:
     """Load the sample knowledge corpus into the database.
 
-    Ingests every markdown file under docs/demo-kb through the standard
-    pipeline. Exit codes: 0 loaded, 1 missing corpus or a failed file.
+    Ingests the bundled markdown files (packaged corpus first, clone
+    folder second) through the standard pipeline. Exit codes: 0 loaded,
+    1 missing corpus or a failed file.
     """
     from corpus_kb.config import load_config
     from corpus_kb.demo_kb import DemoCorpusMissingError, load_demo_kb

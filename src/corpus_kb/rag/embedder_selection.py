@@ -27,6 +27,7 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.install_layout import extra_install_command
 from corpus_kb.rag.embedder import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
@@ -131,7 +132,7 @@ def select_ingest_embedder(
             pool,
             note=(
                 "late_chunking requested but the latechunk extra is not installed. "
-                'Pooled fallback. Run: pip install -e ".[latechunk]"'
+                f"Pooled fallback. Run: {extra_install_command('latechunk')}"
             ),
         )
     if not model.startswith(TOKEN_LEVEL_MODEL_PREFIX):
