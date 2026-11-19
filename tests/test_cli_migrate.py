@@ -298,7 +298,24 @@ def test_cli_migrate_human_report_prints_skipped_line(tmp_path: Path, monkeypatc
     assert result.exit_code == 0, result.output
     assert "Skipped" in result.output
     assert "005_enable_pgml.sql" in result.output
-    assert "Nothing to apply. The database is up to date." in result.output
+    # The schema is NOT fully applied when files were skipped, so the
+    # completion line must not claim the database is up to date.
+    assert "Nothing to apply. The database is up to date." not in result.output
+    assert "Nothing left to apply." in result.output
+
+
+def test_enable_migration_files_are_pinned_in_the_gated_map() -> None:
+    """Every enable_* migration maps to its extension, except stock 003.
+
+    A rename or a new ``NNN_enable_*.sql`` file fails loudly here until
+    the gated map in ``migrate_report.py`` gains the entry. 003 is the
+    exception: it installs the stock vector and uuid-ossp extensions a
+    plain Postgres can create, so it is not gated.
+    """
+    from corpus_kb._setup.migrate_report import GATED_MIGRATION_EXTENSIONS
+
+    enable_files = {p.name for p in _numbered_migrations() if "_enable_" in p.name}
+    assert enable_files - {"003_enable_extensions.sql"} == set(GATED_MIGRATION_EXTENSIONS)
 
 
 class _FakeGuardConn:

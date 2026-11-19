@@ -142,6 +142,8 @@ def register(app: typer.Typer) -> None:
             typer.echo("Dry run. Nothing was applied.")
         elif report.applied_now:
             typer.echo(f"Applied now: {', '.join(report.applied_now)}")
+        elif report.skipped_extension_gated:
+            typer.echo("Nothing left to apply. The skipped files need extensions the server lacks.")
         else:
             typer.echo("Nothing to apply. The database is up to date.")
         return 0
