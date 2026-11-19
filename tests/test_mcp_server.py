@@ -319,7 +319,11 @@ async def test_round_trip_research_transcript(monkeypatch: pytest.MonkeyPatch) -
     async def noop_advance(pool: Any, tenant_id: UUID) -> None:
         return None
 
-    monkeypatch.setattr(research_tools_module, "get_research_handler", lambda pool: _Handler())
+    monkeypatch.setattr(
+        research_tools_module,
+        "get_research_handler",
+        lambda pool, **kwargs: _Handler(),
+    )
     monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
     payload = await _call(_make_server(), "research_ingest_transcript", {"file_path": "t.txt"})
     assert payload["status"] == "success"
@@ -437,7 +441,11 @@ async def test_round_trip_research_ingest(monkeypatch: pytest.MonkeyPatch) -> No
     async def noop_advance(pool: Any, tenant_id: UUID) -> None:
         return None
 
-    monkeypatch.setattr(research_tools_module, "get_research_handler", lambda pool: _Handler())
+    monkeypatch.setattr(
+        research_tools_module,
+        "get_research_handler",
+        lambda pool, **kwargs: _Handler(),
+    )
     monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
     payload = await _call(_make_server(), "research_ingest", {"path": "corpus/"})
     assert payload["status"] == "success"
