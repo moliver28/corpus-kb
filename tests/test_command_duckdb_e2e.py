@@ -519,26 +519,10 @@ async def test_coding_command_replay_legs_on_duckdb(
     )
     assert marked == "promoted"
 
-    # 5 INDUCTIVE-RUN (last: this leg skips on a documented product gap).
-    # No codable units, so the pass answers the honest nothing-to-cluster
-    # envelope (or the no-extra unavailable envelope).
-    import duckdb
-
-    try:
-        inductive = await inductive_run(gateway)
-    except duckdb.ParserException as exc:
-        # NEW GAP (W3 duckdb-parity-test-legs wave, NOT fixed here): the
-        # run's baseline read sends the Postgres-only JSON ``?`` probe to
-        # DuckDB. The twin exists but its caller never arms it —
-        # research/inductive_store.py:313 (``latest_baseline_dbcv`` duck
-        # branch, ``duck: bool = False`` default) and the caller
-        # research/inductive_run.py:212. Repro: run inductive_run on a
-        # migrated duckdb file; the parser dies at
-        # ``checkpoint ? 'dbcv_relative_validity'``. Skip pins the gap;
-        # the assertions below take over once the caller arms the twin.
-        if "dbcv_relative_validity" not in str(exc):
-            raise
-        pytest.skip(f"NEW GAP: inductive_run sends the PG-only JSON '?' probe to DuckDB: {exc}")
+    # 5 INDUCTIVE-RUN (last). No codable units, so the pass answers the
+    # honest nothing-to-cluster envelope (or the no-extra unavailable
+    # envelope).
+    inductive = await inductive_run(gateway)
     assert inductive["status"] in {"success", "unavailable"}
     if inductive["status"] == "success":
         assert inductive["n_units"] == 0
