@@ -44,8 +44,10 @@ class TableSpec:
     columns: dict[str, ColumnSpec] = field(default_factory=dict)
     primary_key: tuple[str, ...] = ()
     uniques: set[tuple[str, ...]] = field(default_factory=set)
-    # cols -> (target table, target cols). Referential actions are not kept.
-    fks: dict[tuple[str, ...], tuple[str, tuple[str, ...]]] = field(default_factory=dict)
+    # Normalized CHECK texts (column-level and table-level constraints).
+    checks: set[str] = field(default_factory=set)
+    # cols -> (target table, target cols, referential actions; "" = none).
+    fks: dict[tuple[str, ...], tuple[str, tuple[str, ...], str]] = field(default_factory=dict)
     # column -> backing sequence name (SERIAL, IDENTITY, or nextval default).
     sequences: dict[str, str] = field(default_factory=dict)
 
@@ -191,3 +193,22 @@ def normalize_default(raw: str) -> str:
     text = re.sub(r"\s+", "", raw).lower()
     text = text.replace("::jsonb", "::json")
     return re.sub(r"current_timestamp\(\)?", "now()", text)
+
+
+def normalize_check(raw: str) -> str:
+    """Canonical CHECK text: one space per gap, everything uppercase.
+
+    Declared equivalences (with why):
+      NOT x IS NULL == x IS NOT NULL: the same rule, one spelling.
+      IN-list member order is not part of the rule: sorted members.
+    Both sides pass through the same rules, so dialect casing and line
+    wrapping never manufacture drift.
+    """
+    text = re.sub(r"\s+", " ", raw.strip()).upper()
+    text = re.sub(r"NOT (\w+) IS NULL", r"\1 IS NOT NULL", text)
+
+    def _sorted_in(match: re.Match[str]) -> str:
+        members = sorted(match.group(1).split(", "))
+        return "IN (" + ", ".join(members) + ")"
+
+    return re.sub(r"IN \(([^()]*)\)", _sorted_in, text)

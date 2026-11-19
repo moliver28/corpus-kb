@@ -90,6 +90,22 @@ def test_cli_migrate_rejects_bad_session_setting(tmp_path: Path, monkeypatch: An
     assert "Invalid migration session setting" in result.output
 
 
+def test_cli_migrate_refuses_maintenance_work_mem_on_duckdb(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The Postgres-only session setting is refused on a DuckDB target.
+
+    DuckDB migrations never read it, so the old silent ignore hid a no-op
+    flag. The refusal is the taxonomy's ConfigError (exit 3).
+    """
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["migrate", "--dry-run", "--maintenance-work-mem", "1GB"])
+    assert result.exit_code == 3, result.output
+    assert "Postgres" in result.output
+    assert "DuckDB" in result.output
+
+
 # ---------------------------------------------------------------------------
 # The human report and the honest exit codes (issue #348 adapter legs).
 # ---------------------------------------------------------------------------
@@ -101,7 +117,7 @@ def test_cli_migrate_human_report_applies_then_answers_up_to_date(
     """The default report is human text; a second run says so honestly."""
     monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
     monkeypatch.chdir(tmp_path)
-    result = runner.invoke(app, ["migrate", "--maintenance-work-mem", "1MB"])
+    result = runner.invoke(app, ["migrate"])
     assert result.exit_code == 0, result.output
     assert "Backend: duckdb" in result.output
     assert "Applied now:" in result.output
