@@ -92,7 +92,7 @@ def register(app: typer.Typer) -> None:
         """Apply pending migrations to the configured database.
 
         Admin command (issue #348). Postgres and DuckDB both work. Prints
-        the applied and pending migration names.
+        the applied, pending, and skipped migration names.
         """
         from corpus_kb._setup.migrate import run_migrations
         from corpus_kb._setup.migrate_admin import validate_session_settings
@@ -113,6 +113,11 @@ def register(app: typer.Typer) -> None:
                 raise ConfigError(
                     "No database found. Set database.connection_string in "
                     "config.yaml, or CORPUS_KB_DATABASE_URL."
+                )
+            if maintenance_work_mem and conn_str.startswith(DUCKDB_DSN_PREFIX):
+                raise ConfigError(
+                    "--maintenance-work-mem is a Postgres session setting. The target is DuckDB.",
+                    remediation="Drop the flag. Or point the migrate target at Postgres.",
                 )
             su_dsn = superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN", "") or None
             report = asyncio.run(
@@ -136,10 +141,14 @@ def register(app: typer.Typer) -> None:
         typer.echo(f"Backend: {report.backend}")
         typer.echo(f"Already applied: {', '.join(report.applied) if report.applied else '(none)'}")
         typer.echo(f"Pending: {', '.join(report.pending) if report.pending else '(none)'}")
+        skipped = ", ".join(report.skipped_extension_gated) or "(none)"
+        typer.echo(f"Skipped (missing extension): {skipped}")
         if dry_run:
             typer.echo("Dry run. Nothing was applied.")
         elif report.applied_now:
             typer.echo(f"Applied now: {', '.join(report.applied_now)}")
+        elif report.skipped_extension_gated:
+            typer.echo("Nothing left to apply. The skipped files need extensions the server lacks.")
         else:
             typer.echo("Nothing to apply. The database is up to date.")
         return 0

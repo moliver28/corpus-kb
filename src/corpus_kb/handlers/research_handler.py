@@ -88,13 +88,11 @@ class ResearchHandler:
 
     @property
     def app(self):
-        # Bind the event store to THIS handler's database. A bare get_app()
-        # resolves env/config, which is not the database self._pool reads
-        # whenever the pool was built from an explicit DSN (the research
-        # fixtures' scratch DB, any duckdb backend) — the app cache is keyed
-        # on (backend, DSN), so the explicit DSN keeps aggregate writes on
-        # the same store the pool reads. None keeps the env/config
-        # resolution (the production default).
+        # Bind the event store to THIS handler's database: the app cache is
+        # keyed on (backend, DSN), so the explicit DSN keeps the aggregate
+        # writes on the same store the pool reads. A bare get_app() would
+        # resolve env/config instead, so a set CORPUS_KB_DATABASE_URL could
+        # point the writes at another Postgres. None keeps that resolution.
         return get_app(self._dsn) if self._dsn else get_app()
 
     def _link_embed(self) -> Callable[[str], list[float]] | None:
@@ -523,10 +521,11 @@ _handler = SingletonSlot[ResearchHandler]("ResearchHandler requires an asyncpg p
 def get_research_handler(
     pool: asyncpg.Pool | SqlGateway | None = None,
     embed_fn: Callable[[str], list[float]] | None = None,
+    dsn: str | None = None,
 ) -> ResearchHandler:
     if pool is None:
         return _handler.get()
-    return _handler.get_or_create(lambda: ResearchHandler(pool, embed_fn=embed_fn))
+    return _handler.get_or_create(lambda: ResearchHandler(pool, embed_fn=embed_fn, dsn=dsn))
 
 
 def reset_research_handler() -> None:

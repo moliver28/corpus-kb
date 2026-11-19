@@ -10,38 +10,35 @@ rule 9).
 
 The vector arm reuses ``research/retrieval.py`` internals so it inherits
 the U40 MATERIALIZED-CTE pattern and the tenant/project scoping verbatim.
-Default flips are NOT decided here: :func:`recommend_default` only speaks
-when a measured report proves RRF >= vector-only on recall@k inside the
-latency budget; otherwise it reports ``insufficient_data`` and the shipped
-defaults stand.
+The metric math lives in ``research/eval_metrics.py`` (one TypeVar keeps
+both eval callers on it). ``duck`` arms the exact-scan twins and the pure
+RRF port (DuckDB has no pgvector, no ``corpus.rrf_fusion``). Default flips
+are NOT decided here: :func:`recommend_default` only speaks when a measured
+report proves RRF >= vector-only on recall@k inside the latency budget;
+otherwise it reports ``insufficient_data`` and the shipped defaults stand.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeVar
+from typing import Protocol
 from uuid import UUID
 
-import asyncpg
 import numpy as np
 
+from corpus_kb.research.conn import SqlConn, Store, dialect_of, tenant_scope
+from corpus_kb.research.eval_metrics import _mrr, _ndcg, _ranked_unit_ids, _recall_k
+from corpus_kb.research.fts_duckdb import ensure_research_fts
 from corpus_kb.research.retrieval import (
     ResearchQuery,
     _rrf,
     _unit_arms,
 )
 from corpus_kb.research.retrieval_settings import RetrievalSettings
-from corpus_kb.storage.gateway import SqlConn
 
 ARMS = ("vector", "fts", "rrf", "rrf_rerank")
 INSUFFICIENT_DATA = "insufficient_data"
-
-# The metric math is label-type agnostic: the U45 arms score unit ids, the
-# W5 eval harness scores the same units' deterministic chunk-id UUIDs. One
-# TypeVar keeps both callers on THESE functions (no reimplementation).
-_L = TypeVar("_L", bound=Hashable)
 
 
 class _Reranker(Protocol):
@@ -83,11 +80,13 @@ def insufficient_report() -> EvalReport:
     return EvalReport(status=INSUFFICIENT_DATA, k=0, arms={})
 
 
-async def load_reviewed_labels(
-    pool: asyncpg.Pool, tenant_id: str, project_id: str
-) -> list[EvalQuery]:
-    """Derive labeled queries from human-reviewed codings (empty = no data)."""
-    async with pool.acquire() as conn:
+async def load_reviewed_labels(pool: Store, tenant_id: str, project_id: str) -> list[EvalQuery]:
+    """Derive labeled queries from human-reviewed codings (empty = no data).
+
+    The label read is tenant-scoped; ``project_id`` stays on the entry
+    contract for the arms' project scoping downstream.
+    """
+    async with tenant_scope(pool, tenant_id) as conn:
         rows = await conn.fetch(
             """
             SELECT cr.code_id, cr.name, cr.brief_definition,
@@ -99,7 +98,6 @@ async def load_reviewed_labels(
             GROUP BY cr.code_id, cr.name, cr.brief_definition
             """,
             tenant_id,
-            project_id,
         )
     return [
         EvalQuery(
@@ -109,33 +107,6 @@ async def load_reviewed_labels(
         )
         for row in rows
     ]
-
-
-def _recall_k(ranked: list[_L], relevant: frozenset[_L], k: int) -> float:
-    if not relevant:
-        return 0.0
-    return len(set(ranked[:k]) & relevant) / len(relevant)
-
-
-def _mrr(ranked: list[_L], relevant: frozenset[_L]) -> float:
-    for pos, unit_id in enumerate(ranked, start=1):
-        if unit_id in relevant:
-            return 1.0 / pos
-    return 0.0
-
-
-def _ndcg(ranked: list[_L], relevant: frozenset[_L], k: int = 10) -> float:
-    if not relevant:
-        return 0.0
-    dcg = sum(
-        1.0 / np.log2(pos + 2) for pos, unit_id in enumerate(ranked[:k]) if unit_id in relevant
-    )
-    ideal = sum(1.0 / np.log2(pos + 2) for pos in range(min(len(relevant), k)))
-    return float(dcg / ideal) if ideal > 0 else 0.0
-
-
-def _ranked_unit_ids(payloads: list[dict[str, Any]]) -> list[int]:
-    return [int(p["_unit_id"]) for p in payloads if p.get("_unit_id") is not None]
 
 
 async def _run_arm(
@@ -148,13 +119,14 @@ async def _run_arm(
     query_text: str,
     exact_threshold: float,
     rrf_k: int,
+    duck: bool = False,
 ) -> list[int]:
-    dense, fts = await _unit_arms(conn, query_vector, q, depth, exact_threshold)
+    dense, fts = await _unit_arms(conn, query_vector, q, depth, exact_threshold, duck)
     if arm == "vector":
         return _ranked_unit_ids(dense)
     if arm == "fts":
         return _ranked_unit_ids(fts)
-    fused = await _rrf(conn, dense, fts, depth, rrf_k)
+    fused = await _rrf(conn, dense, fts, depth, rrf_k, duck)
     if arm == "rrf":
         return _ranked_unit_ids(fused)
     if reranker is None or not fused:
@@ -167,7 +139,7 @@ async def _run_arm(
 
 
 async def evaluate_arms(
-    pool: asyncpg.Pool,
+    pool: Store,
     embedder: _Embedder,
     queries: list[EvalQuery],
     tenant_id: str,
@@ -186,6 +158,7 @@ async def evaluate_arms(
     from corpus_kb.rag.embedder import instruct
     from corpus_kb.storage.tenant_conn import tenant_connection
 
+    duck = dialect_of(pool).is_duckdb
     depth = max(settings.vector_candidates, k * 2)
     latencies: dict[str, list[float]] = {arm: [] for arm in arms}
     recalls: dict[str, list[float]] = {arm: [] for arm in arms}
@@ -193,6 +166,8 @@ async def evaluate_arms(
     ndcgs: dict[str, list[float]] = {arm: [] for arm in arms}
 
     async with tenant_connection(pool, tenant_id) as conn:
+        if duck:
+            await ensure_research_fts(conn)
         for eq in queries:
             q = ResearchQuery(
                 query=eq.text,
@@ -216,6 +191,7 @@ async def evaluate_arms(
                     eq.text,
                     settings.exact_filter_selectivity_threshold,
                     settings.rrf_k,
+                    duck,
                 )
                 latencies[arm].append((time.perf_counter() - start) * 1000.0)
                 recalls[arm].append(_recall_k(ranked, eq.relevant, k))

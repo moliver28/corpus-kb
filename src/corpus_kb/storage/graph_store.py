@@ -20,6 +20,7 @@ import asyncpg
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 from ..utils.models import Chunk, Document, Entity, Relation
+from .entity_aliases import resolve_conn
 from .graph_sql import neighbors_sql, traversal_row, traverse_sql
 
 logger = logging.getLogger(__name__)
@@ -225,8 +226,7 @@ class PostgresGraphStore(GraphStore):
                 INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                     source_document_id, metadata)
                 VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
-                RETURNING entity_id::text
+                ON CONFLICT (tenant_id, name, entity_type) DO NOTHING RETURNING entity_id::text
                 """,
                 entity.entity_id,
                 self._tenant_id,
@@ -262,8 +262,7 @@ class PostgresGraphStore(GraphStore):
                     chunk_id, confidence, extractor_id, model_version, prompt_version)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
-                DO NOTHING
-                RETURNING relation_id::text
+                DO NOTHING RETURNING relation_id::text
                 """,
                 relation.relation_id,
                 self._tenant_id,
@@ -298,9 +297,10 @@ class PostgresGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def get_entity(self, entity_id: str) -> Entity | None:
-        """Fetch an entity by ID."""
+        """Fetch an entity by ID (an alias id resolves to its canonical row)."""
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             row = await conn.fetchrow(
                 """
                 SELECT entity_id::text, name, entity_type, metadata::text,
@@ -334,8 +334,7 @@ class PostgresGraphStore(GraphStore):
                     """
                     SELECT entity_id::text, name, entity_type, metadata::text,
                            source_document_id::text
-                    FROM entities
-                    WHERE tenant_id = $1 AND name ILIKE $2 AND entity_type = $3
+                    FROM entities WHERE tenant_id = $1 AND name ILIKE $2 AND entity_type = $3
                     ORDER BY name ASC, entity_id ASC
                     """,
                     self._tenant_id,
@@ -347,8 +346,7 @@ class PostgresGraphStore(GraphStore):
                     """
                     SELECT entity_id::text, name, entity_type, metadata::text,
                            source_document_id::text
-                    FROM entities
-                    WHERE tenant_id = $1 AND name ILIKE $2
+                    FROM entities WHERE tenant_id = $1 AND name ILIKE $2
                     ORDER BY name ASC, entity_id ASC
                     """,
                     self._tenant_id,
@@ -372,17 +370,16 @@ class PostgresGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def get_entity_relations(self, entity_id: str) -> list[Relation]:
-        """Get all relations where the entity is source or target."""
+        """Get all relations where the entity is source or target (alias ids resolve)."""
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
             rows = await conn.fetch(
                 """
                 SELECT relation_id::text, source_entity_id::text,
-                       target_entity_id::text, relation_type, weight,
-                       metadata::text
+                       target_entity_id::text, relation_type, weight, metadata::text
                 FROM relations
-                WHERE tenant_id = $1
-                  AND (source_entity_id = $2 OR target_entity_id = $2)
+                WHERE tenant_id = $1 AND (source_entity_id = $2 OR target_entity_id = $2)
                 ORDER BY relation_id ASC
                 """,
                 self._tenant_id,
@@ -406,9 +403,10 @@ class PostgresGraphStore(GraphStore):
             await self._release_conn(conn)
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
-        """Breadth-first search using a recursive CTE."""
+        """Breadth-first search using a recursive CTE (alias ids resolve)."""
         conn = await self._get_conn()
         try:
+            start_entity_id = await resolve_conn(conn, self._tenant_id, start_entity_id)
             rows = await conn.fetch(
                 """
                 WITH RECURSIVE graph_bfs AS (
@@ -417,7 +415,7 @@ class PostgresGraphStore(GraphStore):
                     UNION ALL
                     SELECT
                         CASE
-                            WHEN r.source_entity_id = g.eid THEN r.target_entity_id::text
+                            WHEN r.source_entity_id = g.eid::uuid THEN r.target_entity_id::text
                             ELSE r.source_entity_id::text
                         END AS eid,
                         g.depth + 1
@@ -457,17 +455,18 @@ class PostgresGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Fixed self-join chain over relations (shared graph_sql shape)."""
-        sql, args = neighbors_sql(
-            hops,
-            direction,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
-        )
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
+            sql, args = neighbors_sql(
+                hops,
+                direction,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
             rows = await conn.fetch(sql, *args)
         finally:
             await self._release_conn(conn)
@@ -482,16 +481,17 @@ class PostgresGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
-        sql, args = traverse_sql(
-            max_depth,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
-        )
         conn = await self._get_conn()
         try:
+            entity_id = await resolve_conn(conn, self._tenant_id, entity_id)
+            sql, args = traverse_sql(
+                max_depth,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
             rows = await conn.fetch(sql, *args)
         finally:
             await self._release_conn(conn)

@@ -9,7 +9,10 @@ Backend-dispatched on the DSN scheme (storage portability program):
 - anything else is a Postgres DSN. ``migrate_postgres.py`` applies
   ``corpus_kb/migrations/`` through asyncpg, with the issue #348 admin
   knobs (dry run, session settings, superuser handover, the migration-025
-  embeddings guard — see ``migrate_admin.py``).
+  embeddings guard — see ``migrate_admin.py``). A gated migration whose
+  server extension is missing is skipped with a warning (issue #508).
+  Migration 003 is not gated: a truly stock Postgres still fails there.
+  The skip targets servers with pgvector that lack AGE/pgml.
 
 Each runner owns its tracking table; both sort files lexicographically,
 apply unapplied files inside a transaction, and are no-ops when re-run.

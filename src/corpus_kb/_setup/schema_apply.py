@@ -24,13 +24,11 @@ import asyncpg
 
 from corpus_kb._setup.migrate import applied_migrations, ensure_migrations_table
 
-logger = logging.getLogger(__name__)
+# EXTENSION_GATED_MIGRATIONS is re-exported for existing readers (issue #508);
+# its owning definition lives in migrate_report.
+from corpus_kb._setup.migrate_report import EXTENSION_GATED_MIGRATIONS
 
-#: Migrations that need a server extension stock Postgres lacks. Both are
-#: bundled in the docker-compose Postgres image (``corpus-kb setup``).
-EXTENSION_GATED_MIGRATIONS: frozenset[str] = frozenset(
-    {"004_enable_age.sql", "005_enable_pgml.sql"}
-)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

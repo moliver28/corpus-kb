@@ -200,6 +200,20 @@ def _compare_table_constraints(name: str, p: TableSpec, d: TableSpec, out: list[
                 d.origin.where(),
             )
         )
+    for chk in sorted(set(p.checks) | set(d.checks)):
+        if chk in p.checks and chk in d.checks:
+            continue
+        out.append(
+            Drift(
+                "check",
+                name,
+                chk,
+                "present" if chk in p.checks else "absent",
+                "present" if chk in d.checks else "absent",
+                p.origin.where(),
+                d.origin.where(),
+            )
+        )
     for fk in sorted(set(p.fks) | set(d.fks)):
         if p.fks.get(fk) == d.fks.get(fk):
             continue

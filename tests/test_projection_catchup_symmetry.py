@@ -80,7 +80,9 @@ def _install_domain_stubs(monkeypatch: pytest.MonkeyPatch) -> _CatchUpRecorder:
         recorder=SimpleNamespace(events_table_name="events"),
     )
     monkeypatch.setattr(
-        research_handler_module, "get_research_handler", lambda pool: SimpleNamespace(app=fake_app)
+        research_handler_module,
+        "get_research_handler",
+        lambda pool, **kwargs: SimpleNamespace(app=fake_app),
     )
     monkeypatch.setattr("corpus_kb.rag.create_embedder", lambda cfg, pool=None: object())
     return recorder
@@ -111,8 +113,10 @@ def test_research_ingest_transcript_advances_all_projections(
     fake_handler = _Handler()
     # research_tools binds get_research_handler at import time; the catch-up
     # helper imports it lazily from the handler module. Stub BOTH seams.
-    monkeypatch.setattr(research_tools, "get_research_handler", lambda pool: fake_handler)
-    monkeypatch.setattr(research_handler_module, "get_research_handler", lambda pool: fake_handler)
+    monkeypatch.setattr(research_tools, "get_research_handler", lambda pool, **kwargs: fake_handler)
+    monkeypatch.setattr(
+        research_handler_module, "get_research_handler", lambda pool, **kwargs: fake_handler
+    )
 
     result = asyncio.run(
         research_ingest_transcript("call.txt", _FakePool(), tenant_id=TENANT)  # type: ignore[arg-type]
@@ -139,8 +143,10 @@ def test_research_ingest_advances_all_projections(monkeypatch: pytest.MonkeyPatc
             return {"status": "success"}
 
     fake_handler = _Handler()
-    monkeypatch.setattr(research_tools, "get_research_handler", lambda pool: fake_handler)
-    monkeypatch.setattr(research_handler_module, "get_research_handler", lambda pool: fake_handler)
+    monkeypatch.setattr(research_tools, "get_research_handler", lambda pool, **kwargs: fake_handler)
+    monkeypatch.setattr(
+        research_handler_module, "get_research_handler", lambda pool, **kwargs: fake_handler
+    )
 
     result = asyncio.run(research_ingest("drop/", _FakePool(), tenant_id=TENANT))  # type: ignore[arg-type]
 

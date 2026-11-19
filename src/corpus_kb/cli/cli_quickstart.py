@@ -1,6 +1,6 @@
 """The ``corpus-kb quickstart`` front door (novice first-run path).
 
-One command from a fresh clone to a first successful search: probe
+One command from a fresh install to a first successful search: probe
 Ollama, resolve a reachable Postgres DSN (configured, then ``--dsn``,
 then the localhost:5432 twin, then provisioning via ``--superuser-dsn``),
 apply the schema, write the adopted DSN back to the local config.yaml,
@@ -144,7 +144,7 @@ def quickstart(
     ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON summary"),
 ) -> int:
-    """Take a fresh clone to a first successful search.
+    """Take a fresh install to a first successful search.
 
     Probes Ollama, resolves Postgres, applies the schema, and checks
     the models.

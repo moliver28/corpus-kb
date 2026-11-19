@@ -12,8 +12,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.research import guide_copy
 from corpus_kb.research.analytics_aggregates import (
     code_centroids_256,
@@ -25,6 +23,7 @@ from corpus_kb.research.analytics_sql import (
     residual_scan_exchanges,
     uncoded_units_ranking,
 )
+from corpus_kb.research.conn import Store, dialect_of
 from corpus_kb.research.governance_report import ResearchReport, with_level
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.report_assembly import finalize_report, queue_candidates
@@ -46,7 +45,7 @@ from corpus_kb.research.report_sections import (
     candidate_missing_codes,
     residual_full_section,
 )
-from corpus_kb.storage.gateway import SqlConn, SqlGateway
+from corpus_kb.storage.gateway import SqlConn
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -62,21 +61,26 @@ async def _load_models(
     """Read the kNN-shaped and bounded-aggregate read models for one report.
 
     Every kNN read goes through analytics_sql (256-d HNSW retrieval + full
-    1024-d re-rank).
+    1024-d re-rank); on DuckDB the session arms the exact-scan twins.
     """
+    duck = dialect_of(conn).is_duckdb
     codable = await load_codable_vectors(conn)
     prototypes = _prototypes(codes, gold_by_code)
     answer_protos = [p for c in prototypes.values() for p in c["answer"]]
     qa_protos = [p for c in prototypes.values() for p in c["qa"]]
     k = max(len(codable), 1)
-    residual_answer = await residual_scan(conn, answer_protos, k, force_index=force_index_proof)
-    residual_qa = await residual_scan_exchanges(conn, qa_protos, k, force_index=force_index_proof)
+    residual_answer = await residual_scan(
+        conn, answer_protos, k, force_index=force_index_proof, duck=duck
+    )
+    residual_qa = await residual_scan_exchanges(
+        conn, qa_protos, k, force_index=force_index_proof, duck=duck
+    )
     return {
         "codable": codable,
         "prototypes": prototypes,
         "residual_by_unit": _max_residuals(residual_answer, residual_qa),
-        "uncoded_ranking": await uncoded_units_ranking(conn, answer_protos, k),
-        "centroids": await code_centroids_256(conn, version_id),
+        "uncoded_ranking": await uncoded_units_ranking(conn, answer_protos, k, duck=duck),
+        "centroids": await code_centroids_256(conn, version_id, duck=duck),
         "coded_vectors": await coded_unit_vectors_256(conn, version_id),
         "assignments": await load_assignment_rows(conn, tenant_id, version_id),
         "irr": await load_irr_sheets(conn, tenant_id, version_id, [c["code_id"] for c in codes]),
@@ -135,7 +139,7 @@ async def _analyze_candidates(
 
 
 async def build_report(
-    pool: asyncpg.Pool | SqlGateway,
+    pool: Store,
     tenant_id: UUID,
     codebook_version_id: UUID | None = None,
     *,

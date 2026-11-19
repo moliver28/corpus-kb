@@ -31,7 +31,7 @@ from schema_parity_gate import (  # noqa: E402
     main,
     migration_files,
 )
-from schema_parity_model import normalize_default, normalize_type  # noqa: E402
+from schema_parity_model import normalize_check, normalize_default, normalize_type  # noqa: E402
 
 
 def _real_states():
@@ -61,6 +61,16 @@ def test_normalize_rules_pin_declared_translations() -> None:
     assert normalize_default("CURRENT_TIMESTAMP() + INTERVAL '24' hours") == (
         "now()+interval'24'hours"
     )
+
+
+def test_normalize_check_pins_declared_equivalences() -> None:
+    """CHECK text compares spelling-free: casing, gaps, and two equivalences."""
+    assert normalize_check("check  ( x  > 0 )") == "CHECK ( X > 0 )"
+    assert normalize_check("CHECK (NOT EMBEDDING IS NULL)") == ("CHECK (EMBEDDING IS NOT NULL)")
+    assert normalize_check(
+        "CHECK (KIND IN ('TEMPORAL', 'RELATION_SWAP', 'ENTITY_SWAP'))"
+    ) == normalize_check("CHECK (KIND IN ('RELATION_SWAP', 'ENTITY_SWAP', 'TEMPORAL'))")
+    assert normalize_check("CHECK (SOURCE_COUNT >= 0)") == "CHECK (SOURCE_COUNT >= 0)"
 
 
 def _write_pair(tmp_path: Path, pg_sql: str, duck_sql: str) -> tuple[Path, Path]:
@@ -104,6 +114,61 @@ def test_synthetic_type_drift_is_detected(tmp_path: Path) -> None:
     duck = fold_paths([(duck_file, "duck_mirror.sql")], "duckdb")
     result = evaluate(pg, duck, allowlist={})
     assert ("column.type", "gadgets", "size") in [d.key for d in result.undeclared]
+
+
+def test_synthetic_check_drift_is_detected(tmp_path: Path) -> None:
+    """A CHECK on one side only is undeclared drift (G8)."""
+    pg_file, duck_file = _write_pair(
+        tmp_path,
+        (
+            "CREATE TABLE gears (id INT PRIMARY KEY, size INT CHECK (size > 0),\n"
+            "    CHECK (id < 100));\n"
+        ),
+        "CREATE TABLE gears (id INT PRIMARY KEY, size INT, CHECK (id < 100));\n",
+    )
+    pg = fold_paths([(pg_file, "pg_truth.sql")], "postgres")
+    duck = fold_paths([(duck_file, "duck_mirror.sql")], "duckdb")
+    result = evaluate(pg, duck, allowlist={})
+    keys = [d.key for d in result.undeclared]
+    assert ("check", "gears", "CHECK (SIZE > 0)") in keys
+
+
+def test_matching_checks_fold_equal(tmp_path: Path) -> None:
+    """Identical column-level and table-level CHECKs fold to no drift."""
+    sql = (
+        "CREATE TABLE cogs (id INT PRIMARY KEY, size INT CHECK (size > 0),\n"
+        "    CONSTRAINT positive CHECK (id >= 0));\n"
+    )
+    pg_file, duck_file = _write_pair(tmp_path, sql, sql)
+    pg = fold_paths([(pg_file, "pg_truth.sql")], "postgres")
+    duck = fold_paths([(duck_file, "duck_mirror.sql")], "duckdb")
+    result = evaluate(pg, duck, allowlist={})
+    assert result.undeclared == []
+    assert pg.tables["cogs"].checks == {"CHECK (SIZE > 0)", "CHECK (ID >= 0)"}
+
+
+def test_synthetic_fk_action_drift_is_detected(tmp_path: Path) -> None:
+    """ON DELETE CASCADE on one side only is undeclared drift (G9)."""
+    pg_file, duck_file = _write_pair(
+        tmp_path,
+        "CREATE TABLE rel (x INT REFERENCES p(id) ON DELETE CASCADE);\n",
+        "CREATE TABLE rel (x INT REFERENCES p(id));\n",
+    )
+    pg = fold_paths([(pg_file, "pg_truth.sql")], "postgres")
+    duck = fold_paths([(duck_file, "duck_mirror.sql")], "duckdb")
+    result = evaluate(pg, duck, allowlist={})
+    assert ("fk", "rel", "x") in [d.key for d in result.undeclared]
+
+
+def test_matching_fk_actions_fold_equal(tmp_path: Path) -> None:
+    """Identical FK targets and referential actions fold to no drift."""
+    sql = "CREATE TABLE rel (x INT REFERENCES p(id) ON DELETE SET NULL);\n"
+    pg_file, duck_file = _write_pair(tmp_path, sql, sql)
+    pg = fold_paths([(pg_file, "pg_truth.sql")], "postgres")
+    duck = fold_paths([(duck_file, "duck_mirror.sql")], "duckdb")
+    result = evaluate(pg, duck, allowlist={})
+    assert result.undeclared == []
+    assert pg.tables["rel"].fks == {("x",): ("p", (), "ON DELETE SET NULL")}
 
 
 def test_allowlist_entry_suppresses_declared_drift(tmp_path: Path) -> None:

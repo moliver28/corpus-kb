@@ -18,6 +18,7 @@ from corpus_kb._setup.doctor_duckdb import (
     duckdb_lock_check,
     extension_load_check,
     fts_watermark_check,
+    graph_traversal_check,
 )
 from corpus_kb._setup.doctor_engine import engine_fit_check, resolved_backend
 from corpus_kb._setup.doctor_research import (
@@ -153,6 +154,36 @@ def test_extension_probe_optional_missing_is_info() -> None:
     assert all("extension_directory" in c.fix for c in checks[1:])
 
 
+# --- graph traversal engine row --------------------------------------------------
+
+
+def test_graph_traversal_cte_is_ok_without_probe() -> None:
+    """The default engine needs no probe: one plain OK row."""
+    check = graph_traversal_check(_Probe(fail={"duckpgq"}), "cte")
+    assert (check.name, check.status) == ("Graph traversal", STATUS_OK)
+    assert "cte" in check.detail
+
+
+def test_graph_traversal_duckpgq_ok_when_extension_loads() -> None:
+    check = graph_traversal_check(_Probe(fail=set()), "duckpgq")
+    assert check.status == STATUS_OK
+    assert "duckpgq" in check.detail
+
+
+def test_graph_traversal_reports_cte_when_duckpgq_unavailable() -> None:
+    """The honest row names both engines: cte in use, duckpgq requested."""
+    check = graph_traversal_check(_Probe(fail={"duckpgq"}), "duckpgq")
+    assert check.status == STATUS_WARN
+    assert "cte" in check.detail
+    assert "duckpgq" in check.detail
+
+
+def test_graph_traversal_warns_on_unknown_engine() -> None:
+    check = graph_traversal_check(_Probe(fail=set()), "sqlite")
+    assert check.status == STATUS_WARN
+    assert "graph.duckdb_graph_backend" in check.fix
+
+
 # --- sqlite event-store sidecar --------------------------------------------------
 
 
@@ -263,6 +294,7 @@ async def test_storage_checks_duckdb_full_pass(
     assert "DuckDB file lock" in names
     assert "FTS index watermark" in names
     assert "SQLite event store" in names
+    assert "Graph traversal" in names
     assert any(c.name == "engine fit" and c.status == STATUS_INFO for c in checks)
 
 

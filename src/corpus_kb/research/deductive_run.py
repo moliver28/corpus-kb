@@ -32,7 +32,6 @@ from uuid import UUID
 import asyncpg
 import numpy as np
 
-from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
 from corpus_kb.research.deduction_guard import guard_deductive_run
@@ -43,6 +42,7 @@ from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.run_inputs import UnitViews, load_codes, load_gold_views, load_unit_views
 from corpus_kb.research.scoring import SCORING_BATCH_ROWS, stream_scores
+from corpus_kb.storage.connect import config_conn_str
 from corpus_kb.storage.gateway import SqlConn, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -255,7 +255,7 @@ async def run_deductive(
         }
 
     cache = load_cache_settings(config)
-    handler = ResearchHandler(pool, dsn=dsn_from_config(config))
+    handler = ResearchHandler(pool, dsn=config_conn_str(config))
     run_params: dict[str, Any] = {
         "cal_alpha": cal_alpha,
         "scoring_batch_rows": SCORING_BATCH_ROWS,

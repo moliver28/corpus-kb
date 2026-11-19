@@ -503,7 +503,7 @@ CYCLE_PROPOSAL_FAILED = (
 )
 CYCLE_NO_QUESTION = "notebook stage skipped (no --question given)"
 CYCLE_INDUCTIVE_UNAVAILABLE = (
-    'the inductive extra is not installed (pip install -e ".[inductive]"); '
+    "the inductive extra is not installed ({install}); "
     "the cycle stops before the promotion gate because there is nothing to promote"
 )
 CYCLE_NO_EMBEDDINGS = (
