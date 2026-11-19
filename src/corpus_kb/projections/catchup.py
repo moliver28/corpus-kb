@@ -41,9 +41,14 @@ async def advance_all_projections(
     from corpus_kb.projections.research._embed import ResearchEmbedder
     from corpus_kb.projections.research_projection import ResearchProjection
     from corpus_kb.rag import create_embedder
+    from corpus_kb.storage.connect import config_conn_str
 
     cfg = load_config()
-    app = get_research_handler(pool).app
+    # The event store follows the config DSN — the store this pool opened
+    # (issue #330). A bare resolution reads CORPUS_KB_DATABASE_URL first,
+    # so a stale env var sent the event writes to another Postgres and
+    # starved the reader of the events it must replay.
+    app = get_research_handler(pool, dsn=config_conn_str(cfg)).app
     reader = EventReader(pool, app.mapper, events_table_name(app), recorder=app.recorder)
     checkpoint = CheckpointManager(pool, gateway=gateway)
     dlq = DLQHandler(pool, gateway=gateway)

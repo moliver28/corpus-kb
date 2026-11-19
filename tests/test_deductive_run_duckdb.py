@@ -22,6 +22,9 @@ from tests._research_duckdb_seeds import TENANT, VERSION, seed_radar_fixture
 
 CODE_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
+#: A closed port on localhost: no Postgres can absorb the event writes.
+DEAD_PG = "postgresql://corpus:corpus@127.0.0.1:59999/deadpg"
+
 
 @pytest.mark.asyncio
 async def test_coding_run_scores_seeded_units_on_duckdb(
@@ -51,6 +54,10 @@ async def test_coding_run_scores_seeded_units_on_duckdb(
         "corpus_kb.config.load_config",
         lambda: {"database": {"backend": "duckdb", "connection_string": dsn}},
     )
+    # The unmaskable shape: CI arms CORPUS_KB_DATABASE_URL on the test
+    # legs. A stale env var pointing at a dead Postgres must not absorb
+    # the event writes (a local Postgres on the env DSN masked this once).
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", DEAD_PG)
     try:
         from corpus_kb.tools.research_tools import coding_run
 
