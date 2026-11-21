@@ -16,6 +16,8 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+from corpus_kb.analysis.method_register_ids import EXPECTED_MAX_ID
+
 ARTIFACT_TYPES: tuple[str, ...] = (
     "answers",
     "clusters",
@@ -88,9 +90,10 @@ def _check_after(record: DataflowRecord) -> None:
     if len(links) > MAX_AFTER:
         raise ValueError(f"after: {len(links)} found. List up to {MAX_AFTER}.")
     for link in links:
-        if not _ID_SHAPE.fullmatch(link) or not 1 <= int(link) <= 30:
+        if not _ID_SHAPE.fullmatch(link) or not 1 <= int(link) <= EXPECTED_MAX_ID:
             raise ValueError(
-                f'after: {link!r} is not a method id. Use zero-padded string ids "01" to "30".'
+                f"after: {link!r} is not a method id. Use zero-padded string ids "
+                f'"01" to "{EXPECTED_MAX_ID:02d}".'
             )
     if len(set(links)) != len(links):
         raise ValueError("after: remove duplicate method ids.")

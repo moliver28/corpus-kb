@@ -45,7 +45,8 @@ Route families (the Route order below is the original single-file order):
                                clusters-inspect, duplicates-screen,
                                outliers-rank, nli-classify,
                                contradictions-screen, sentiment-screen,
-                               active-learn-next}  (AMR program)
+                               active-learn-next, survey-openend-codes,
+                               usability-severity, emotion-tag}  (AMR program)
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
   api/routes_demo.py           POST /api/demo/load (UI SPA Task 5a)
 """
@@ -70,6 +71,7 @@ from corpus_kb.api.routes_analysis_methods import (
     duplicates_screen_route,
     keyphrases_extract_route,
     lexical_classify_route,
+    method_routes,
     neighbors_classify_route,
     nli_classify_route,
     outliers_rank_route,
@@ -160,10 +162,7 @@ from corpus_kb.api.routes_search import (
     search_similar,
     verify,
 )
-from corpus_kb.api.routes_statements import (
-    statements_list_route,
-    statements_timeline_route,
-)
+from corpus_kb.api.routes_statements import statements_list_route, statements_timeline_route
 from corpus_kb.api.routes_tags_metadata import (
     add_tag_route,
     get_document_tags_route,
@@ -230,6 +229,7 @@ def create_http_app() -> FastAPI:
         Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
         Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
         Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
+        *method_routes(),
         # Living Corpus W6: the meta-embedding build op.
         Route("/api/analysis/embed-meta", analysis_embed_meta_route, methods=["POST"]),
         # Living Corpus W2: the statement-atom read ops.

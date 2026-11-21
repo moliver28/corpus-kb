@@ -16,6 +16,7 @@ from pathlib import Path
 
 import uxr_commands
 import uxr_files
+import uxr_merge
 import uxr_rollup
 import uxr_store
 from uxr_common import root_of, slug_for
@@ -37,6 +38,7 @@ def cmd_uxr_write_themes(args) -> int:
         from uxr_common import UxrError
 
         raise UxrError(f"cannot read the narrative file: {exc}") from exc
+    text = uxr_merge.merge_coded_evidence(text, uxr_merge.coded_rows(args.study_slug))
     target = uxr_files.write_themes(root_of(args), text)
     print(f"ok: themes written to {target.name} between the corpus markers.")
     print("analysis/codes.md is never opened by this command.")

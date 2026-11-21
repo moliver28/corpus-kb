@@ -1,7 +1,7 @@
 """Tests for the analysis method register (AMR program, wave 1, agent A).
 
 Covers: schema conformance, controlled vocabularies with remediation text,
-the sources floor, the exactly-30-ids ledger, status/op consistency, the
+the sources floor, the exactly-33-ids ledger, status/op consistency, the
 byte-identical packaged mirror, and the deterministic selector rubric with
 golden snapshots.
 """
@@ -59,6 +59,9 @@ NEW_OP_IDS = {
     "28",
     "29",
     "30",
+    "31",
+    "32",
+    "33",
 }
 EXISTING_OP_IDS = {
     "02",
@@ -104,6 +107,9 @@ EXPECTED_NEW_OPS = {
     "28": "contradictions_screen",
     "29": "duplicates_screen",
     "30": "outliers_rank",
+    "31": "survey_openend_codes",
+    "32": "usability_severity",
+    "33": "emotion_tag",
 }
 
 
@@ -157,10 +163,10 @@ def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
     assert "MMR" in register.adjacent_candidates
 
 
-def test_exactly_ids_01_to_30_each_once(register: MethodRegister) -> None:
+def test_exactly_ids_01_to_33_each_once(register: MethodRegister) -> None:
     ids = [record.id for record in register.methods]
-    assert sorted(ids) == [f"{i:02d}" for i in range(1, 31)]
-    assert len(set(ids)) == 30
+    assert sorted(ids) == [f"{i:02d}" for i in range(1, 34)]
+    assert len(set(ids)) == 33
 
 
 def test_descriptive_axes_present_on_every_row(register: MethodRegister) -> None:
@@ -191,7 +197,7 @@ def test_packaged_fallback_when_repo_file_missing(
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
     assert register.register_version == "3.3.0"
-    assert len(register.methods) == 30
+    assert len(register.methods) == 33
 
 
 def test_missing_register_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -286,8 +292,8 @@ def test_id_must_be_zero_padded_in_range() -> None:
     record["id"] = "1"
     with pytest.raises(ValueError, match="zero-padded"):
         MethodRegister.model_validate(_single_register(record))
-    record["id"] = "31"
-    with pytest.raises(ValueError, match="31"):
+    record["id"] = "34"
+    with pytest.raises(ValueError, match="34"):
         MethodRegister.model_validate(_single_register(record))
 
 
@@ -499,22 +505,24 @@ def test_golden_labels_ranking(register: MethodRegister) -> None:
         inputs_available=["raw_text", "embeddings", "labels"],
     )
     # The labels block leads in exactly this order; other families follow.
-    assert [r.id for r in ranked[:9]] == [
+    assert [r.id for r in ranked[:11]] == [
         "04",
         "13",
         "14",
         "15",
         "16",
+        "31",
         "27",
         "17",
         "18",
+        "33",
         "19",
     ]
-    assert all(r.output_family == "labels" for r in ranked[:9])
-    assert all(r.output_family != "labels" for r in ranked[9:])
+    assert all(r.output_family == "labels" for r in ranked[:11])
+    assert all(r.output_family != "labels" for r in ranked[11:])
     assert ranked[0].missing_inputs == []
-    assert ranked[7].missing_inputs == ["llm"]
-    assert ranked[8].missing_inputs == ["predictions"]
+    assert ranked[8].missing_inputs == ["llm"]
+    assert ranked[7].missing_inputs == []
 
 
 def test_golden_themes_ranking(register: MethodRegister) -> None:
@@ -542,7 +550,7 @@ def test_golden_themes_ranking(register: MethodRegister) -> None:
 
 def test_loader_enforces_full_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rows = []
-    for index in range(1, 31):
+    for index in range(1, 34):
         if index == 15:
             continue
         rows.append(_mutate(_valid_record(), id=f"{index:02d}", name=f"M{index:02d}"))
@@ -556,7 +564,7 @@ def test_loader_enforces_full_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyP
     path = tmp_path / "register.yaml"
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
     config = {"analysis": {"method_register_path": str(path)}}
-    with pytest.raises(ValidationError, match="01 to 30"):
+    with pytest.raises(ValidationError, match="01 to 33"):
         load_method_register(config)
 
 
@@ -1074,6 +1082,9 @@ TABLE_IDS = {
     "28",
     "29",
     "30",
+    "31",
+    "32",
+    "33",
 }
 TABLE_FREE_IDS = {
     "01",

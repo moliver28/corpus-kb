@@ -1,10 +1,11 @@
-"""Analysis method routes (AMR program wave 2).
+"""Analysis method routes (AMR program wave 2 + wave-4 methods).
 
-Twelve thin adapters, one per catalogue row: POST
+Fifteen thin adapters, one per catalogue row: POST
 /api/analysis/<kebab of the op name>. Each route parses JSON, calls the
 shared handler, and returns JSONResponse through ``@route_errors``
 (api._body) — ONE error path. Handler imports stay in the route bodies
 so tests can monkeypatch them. ``unavailable`` answers 503.
+``method_routes`` builds the three wave-4 routes for http.py.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
@@ -235,6 +237,58 @@ async def sentiment_screen_route(request: Request) -> JSONResponse:
 
 
 @route_errors
+async def survey_openend_codes_route(request: Request) -> JSONResponse:
+    """POST /api/analysis/survey-openend-codes — survey answer codes."""
+    from corpus_kb.tools.uxr_survey_codes import survey_openend_codes
+
+    body = await parse_body(request)
+    min_cluster_size = body.get("min_cluster_size")
+    return await _respond(
+        survey_openend_codes,
+        {
+            "chunk_ids": body.get("chunk_ids"),
+            "min_cluster_size": opt_int(min_cluster_size, None, name="min_cluster_size"),
+            "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
+        },
+    )
+
+
+@route_errors
+async def usability_severity_route(request: Request) -> JSONResponse:
+    """POST /api/analysis/usability-severity — fixed 0-4 rubric scores."""
+    from corpus_kb.tools.uxr_method_tools import usability_severity
+
+    body = await parse_body(request)
+    limit = body.get("limit")
+    return await _respond(
+        usability_severity,
+        {
+            "chunk_ids": body.get("chunk_ids"),
+            "limit": opt_int(limit, None, name="limit"),
+            "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
+        },
+    )
+
+
+@route_errors
+async def emotion_tag_route(request: Request) -> JSONResponse:
+    """POST /api/analysis/emotion-tag — fixed eight-emotion entailment tags."""
+    from corpus_kb.tools.uxr_method_tools import emotion_tag
+
+    body = await parse_body(request)
+    model = body.get("model")
+    return await _respond(
+        emotion_tag,
+        {
+            "chunk_ids": body.get("chunk_ids"),
+            "limit": opt_int(body.get("limit"), 50, name="limit"),
+            "model": str(model) if model is not None else None,
+            "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
+        },
+    )
+
+
+@route_errors
 async def active_learn_next_route(request: Request) -> JSONResponse:
     """POST /api/analysis/active-learn-next — next labeling batch."""
     from corpus_kb.tools.active_learn_tools import active_learn_next
@@ -248,3 +302,12 @@ async def active_learn_next_route(request: Request) -> JSONResponse:
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
+
+
+def method_routes() -> list[Route]:
+    """The three wave-4 method routes for the main Starlette app."""
+    return [
+        Route("/api/analysis/survey-openend-codes", survey_openend_codes_route, methods=["POST"]),
+        Route("/api/analysis/usability-severity", usability_severity_route, methods=["POST"]),
+        Route("/api/analysis/emotion-tag", emotion_tag_route, methods=["POST"]),
+    ]

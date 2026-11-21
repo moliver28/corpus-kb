@@ -60,6 +60,16 @@
     "required": []
   },
   {
+    "description": "Tag chunks with the fixed eight-emotion set via entailment.",
+    "id": "emotion-tag",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/emotion-tag",
+    "required": []
+  },
+  {
     "description": "Rank keyphrase candidates (tfidf, embedding, or llm variant).",
     "id": "keyphrases-extract",
     "longRunning": false,
@@ -137,6 +147,26 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/analysis/sentiment-screen",
+    "required": []
+  },
+  {
+    "description": "Code open-ended survey answers per question (cluster, label, count).",
+    "id": "survey-openend-codes",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/survey-openend-codes",
+    "required": []
+  },
+  {
+    "description": "Score findings with the fixed 0-4 severity rubric.",
+    "id": "usability-severity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/usability-severity",
     "required": []
   },
   {

@@ -33,6 +33,8 @@ _CLUST = "corpus_kb.tools.cluster_tools"
 _VSCREEN = "corpus_kb.tools.vector_screen_tools"
 _NLI = "corpus_kb.tools.nli_tools"
 _SENT = "corpus_kb.tools.sentiment_tools"
+_SURVEY = "corpus_kb.tools.uxr_survey_codes"
+_UXRM = "corpus_kb.tools.uxr_method_tools"
 _ACTIVE = "corpus_kb.tools.active_learn_tools"
 _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
@@ -114,6 +116,19 @@ _SPECS: dict[str, _Spec] = {
     ),
     "sentiment_screen": _Spec(
         _SENT, "sentiment_screen", opts=(_Opt("chunk_ids", "raw"), _Opt("limit", "int"))
+    ),
+    "survey_openend_codes": _Spec(
+        _SURVEY,
+        "survey_openend_codes",
+        opts=(_Opt("chunk_ids", "raw"), _Opt("min_cluster_size", "int")),
+    ),
+    "usability_severity": _Spec(
+        _UXRM, "usability_severity", opts=(_Opt("chunk_ids", "raw"), _Opt("limit", "int"))
+    ),
+    "emotion_tag": _Spec(
+        _UXRM,
+        "emotion_tag",
+        opts=(_Opt("chunk_ids", "raw"), _Opt("limit", "int", 50), _Opt("model", "str")),
     ),
     "active_learn_next": _Spec(
         _ACTIVE,

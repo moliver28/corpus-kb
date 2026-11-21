@@ -15,6 +15,8 @@ member.
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path as _Path
 from typing import NamedTuple
 
 # --------------------------------------------------------------------------
@@ -468,6 +470,27 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="active_learn_next",
         description="Rank stored predictions for the next human-labeling batch.",
         http_route="/api/analysis/active-learn-next",
+    ),
+    Surface(
+        name="survey-openend-codes",
+        cli_path="survey-openend-codes",
+        mcp_tool="survey_openend_codes",
+        description="Code open-ended survey answers per question (cluster, label, count).",
+        http_route="/api/analysis/survey-openend-codes",
+    ),
+    Surface(
+        name="usability-severity",
+        cli_path="usability-severity",
+        mcp_tool="usability_severity",
+        description="Score findings with the fixed 0-4 severity rubric.",
+        http_route="/api/analysis/usability-severity",
+    ),
+    Surface(
+        name="emotion-tag",
+        cli_path="emotion-tag",
+        mcp_tool="emotion_tag",
+        description="Tag chunks with the fixed eight-emotion set via entailment.",
+        http_route="/api/analysis/emotion-tag",
     ),
     # -- core search op (the last surface it was missing): full cli+mcp+http --
     Surface(
@@ -1028,77 +1051,21 @@ dormant until you enable the analysis flags it needs.
 """
 
 # -- AMR program (wave 2): the register-backed method cards -----------------
-# Each card teaches the axis walk (the register's selection rules): state
-# the question, match the output family, check the inputs, budget
-# calibration and autonomy, read the cautions, run, then attach the
-# validation and the permitted claims. Axis facts come from
-# config/analysis_methods.yaml (the register rows for the op), verbatim
-# in meaning; the docs table is docs/ANALYSIS-METHODS.md.
+# The card builder and the three wave-4 method cards live in amr_cards.py
+# (also stdlib-only). This file loads it by path, like its own consumers
+# do, so the zero-import rule here stays true.
 
-_AMR_WALK = """## The axis walk (before you run)
+_cards_spec = importlib.util.spec_from_file_location(
+    "corpus_kb._amr_cards", _Path(__file__).with_name("amr_cards.py")
+)
+assert _cards_spec is not None and _cards_spec.loader is not None
+_cards = importlib.util.module_from_spec(_cards_spec)
+_cards_spec.loader.exec_module(_cards)
 
-1. State the research question in one sentence.
-2. Match the output family this op serves: {family}.
-3. Check the inputs it needs: {inputs}.
-4. Budget the calibration effort ({calibration}) and autonomy ({autonomy}).
-5. Read the cautions. Run. Then do the validation step.
-
-"""
-
-_AMR_FOOT = """- Cautions: {cautions}
-- Validation: {validation}
-- Claim only: {claims}
-- A guard path (disabled, empty, unavailable) returns a reason and a
-  remedy, never a guessed result. Exit codes: 0 answered, 1 failed,
-  3 unavailable.
-- All flags: `corpus-kb {cli} --help`
-- Method rows: docs/ANALYSIS-METHODS.md (the register is the source).
-"""
-
-
-def _amr_body(
-    name: str,
-    family: str,
-    inputs: str,
-    calibration: str,
-    autonomy: str,
-    run: str,
-    cautions: str,
-    validation: str,
-    claims: str,
-    difficulty: str | None = None,
-    teaches: str | None = None,
-    requires: str | None = None,
-    next_step: str | None = None,
-) -> str:
-    """One method card: axis walk + run + cautions (all plain English).
-
-    The optional progression lines (novice-UX program, wave 1) mirror the
-    register's difficulty/concepts/prerequisites/next fields; they render
-    only when the caller supplies them, so the front-door cards stay bare.
-    """
-    progression: list[str] = []
-    if difficulty:
-        progression.append(f"- Difficulty: `{difficulty}`.")
-    if teaches:
-        progression.append(f"- Teaches: {teaches}.")
-    if requires:
-        progression.append(f"- Run first: {requires}.")
-    if next_step:
-        progression.append(f"- Next step: {next_step}.")
-    progression_block = (
-        "## Progression (the register's ladder)\n\n" + "\n".join(progression) + "\n\n"
-        if progression
-        else ""
-    )
-    return (
-        f"# corpus-{name} — analysis method card\n\n"
-        + _AMR_WALK.format(family=family, inputs=inputs, calibration=calibration, autonomy=autonomy)
-        + progression_block
-        + f"## Run\n\n  ```\n  corpus-kb {run}\n  ```\n\n"
-        + _AMR_FOOT.format(cautions=cautions, validation=validation, claims=claims, cli=name)
-    )
-
+_amr_body = _cards._amr_body
+_SURVEY_CODES_BODY = _cards._SURVEY_CODES_BODY
+_SEVERITY_BODY = _cards._SEVERITY_BODY
+_EMOTION_BODY = _cards._EMOTION_BODY
 
 _SELECT_BODY = _amr_body(
     "analysis-select-method",
@@ -1591,6 +1558,30 @@ WRAPPERS: tuple[Wrapper, ...] = (
         covers=("sentiment-screen",),
     ),
     Wrapper(
+        name="corpus-survey-openend-codes",
+        title="corpus-survey-openend-codes",
+        description="Code open-ended survey answers per question with counts",
+        argument_hint="[--chunk-id <id> ...] [--min-cluster-size N]",
+        body=_SURVEY_CODES_BODY,
+        covers=("survey-openend-codes",),
+    ),
+    Wrapper(
+        name="corpus-usability-severity",
+        title="corpus-usability-severity",
+        description="Score findings with the fixed 0-4 severity rubric",
+        argument_hint="[--chunk-id <id> ...] [--limit N]",
+        body=_SEVERITY_BODY,
+        covers=("usability-severity",),
+    ),
+    Wrapper(
+        name="corpus-emotion-tag",
+        title="corpus-emotion-tag",
+        description="Tag chunks with the fixed eight-emotion set",
+        argument_hint="[--chunk-id <id> ...] [--limit N] [--model <tag>]",
+        body=_EMOTION_BODY,
+        covers=("emotion-tag",),
+    ),
+    Wrapper(
         name="corpus-active-learn-next",
         title="corpus-active-learn-next",
         description="Next human-labeling batch ranked from stored predictions",
@@ -1723,6 +1714,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "contradictions_screen",
     "doctor",
     "duplicates_screen",
+    "emotion_tag",
     "events_summary",
     "get_document_tags",
     "get_entity_relations",
@@ -1759,7 +1751,9 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "sentiment_screen",
     "statements_list",
     "statements_timeline",
+    "survey_openend_codes",
     "topics_list",
+    "usability_severity",
     "verify_answer",
 )
 

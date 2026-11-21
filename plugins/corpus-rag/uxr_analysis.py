@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 import uxr_commands
+import uxr_merge
 import uxr_rollup
 import uxr_rows
 import uxr_store
@@ -51,6 +52,10 @@ def cmd_uxr_rollup(args) -> int:
     researcher = uxr_rollup.researcher_from_dir(root_of(args))
     report = uxr_rollup.build(rows, researcher)
     print_rollup(report)
+    evidence_rows = uxr_merge.coded_rows(args.study_slug)
+    evidence_section = uxr_merge.render_coded_evidence(evidence_rows)
+    if evidence_section:
+        print(evidence_section)
     if uxr_rollup.over_limit(report, args.max_unverified):
         share = report["totals"]["share"]
         print(
@@ -87,9 +92,13 @@ def cmd_uxr_contract_test(args) -> int:
     report = uxr_rollup.rollup_json(
         uxr_rollup.build(rows, uxr_rollup.researcher_from_dir(root_of(args)))
     )
-    evidence = _evidence(args, report)
+    evidence, degraded = _evidence(args, report)
     if evidence is None:
         return 1
+    if degraded:
+        print("evidence check ran in degraded mode: no report tool is set,")
+        print("so the rollup is its own evidence. Configure uxr_report_tool")
+        print("or pass --evidence-file for a real parity check.")
     diffs = uxr_rollup.contract_diff(report, evidence)
     if diffs:
         print("not ok: the report tool output differs from the rollup.")
@@ -100,27 +109,26 @@ def cmd_uxr_contract_test(args) -> int:
     return 0
 
 
-def _evidence(args, payload: dict) -> dict | None:
+def _evidence(args, payload: dict) -> tuple[dict | None, bool]:
     """The evidence-weight JSON: the file flag, else the configured tool."""
     if args.evidence_file:
         try:
             data = json.loads(Path(args.evidence_file).read_text(encoding="utf-8"))
         except OSError as exc:
             print(f"not ok: cannot read the evidence file: {exc}")
-            return None
+            return None, False
         except ValueError as exc:
             print(f"not ok: the evidence file is not valid JSON: {exc}")
-            return None
-        return data if isinstance(data, dict) else None
+            return None, False
+        return (data, False) if isinstance(data, dict) else (None, False)
     tool = os.environ.get("CLAUDE_PLUGIN_OPTION_UXR_REPORT_TOOL", "")
     if not tool:
-        print(
-            "not ok: no report tool. Set the uxr_report_tool userConfig "
-            "option, or pass --evidence-file."
-        )
-        return None
+        # D7(d): the rollup is the default evidence source. Honest
+        # degraded note instead of a dead end; parity stays exit 1 when
+        # a real tool or file is configured and disagrees.
+        return payload, True
     try:
-        return uxr_rollup.evidence_from_tool(tool, payload)
+        return uxr_rollup.evidence_from_tool(tool, payload), False
     except uxr_rollup.ContractError as exc:
         print(f"not ok: {exc}")
         return None

@@ -1746,3 +1746,213 @@ methods:
       precision: 6
       denominators: ["screened_count"]
       caveats: []
+  - id: "31"
+    name: "Survey open-end coding"
+    summary: "Group open-ended survey answers per question into labeled clusters, then report each cluster with its answer count."
+    paradigm: "unsupervised"
+    evidence_label: "model_based"
+    inputs_required: ["raw_text", "embeddings"]
+    calibration_effort: "moderate"
+    autonomy: "human_in_loop"
+    complexity_tier: "standard"
+    selection_priority: "first"
+    selection_notes: "First for open-ended survey answers stored by the survey strategy. Each answer is one chunk; its question rides the chunk metadata, so codes group per question."
+    robustness_caveat: "Cluster shapes change with the representation, and small but important groups can hide in the noise."
+    bias_risk: "Common wording can dominate the clusters, and rare answers can disappear into them."
+    efficiency_workload: "Read the survey chunks, cluster the answers per question, and label each cluster. One pass over n answers."
+    output_family: "labels"
+    output_shape: "Per question: labeled answer clusters, per-cluster counts, and one exemplar answer per cluster."
+    usage_guidance: "Use it to count recurring themes in open-ended survey answers before any close reading."
+    validation_required: "Check a sample of coded answers by hand. Compare the cluster labels against the raw answers for mixed or sarcastic cases."
+    permitted_claims: "Per-question code labels, counts, and exemplar answers from the stored survey chunks."
+    do_not_claim: "Do not claim the cluster labels are verified themes without a hand check."
+    implementation_status: "implemented_new"
+    op: "survey_openend_codes"
+    sources:
+      - "https://scikit-learn.org/stable/modules/clustering.html (Documentation)"
+      - "https://hdbscan.readthedocs.io/en/latest/ (Documentation)"
+    task_type: "discovery"
+    comparison_structure: "none"
+    output_form: "cluster_map"
+    evidence_basis: "vector"
+    statistical_rigor: "descriptive"
+    cost_tier: "interactive"
+    question_phrases:
+      - "How do I group open-ended survey answers?"
+      - "Summarize the answers to each survey question."
+      - "Count the recurring themes in my survey answers."
+      - "Code my open-ended survey responses for me."
+      - "Which survey answers say the same thing?"
+      - "Show the main themes per survey question with counts."
+    failure_modes: "Cluster labels can hide mixed answers, sarcasm, and small but important groups."
+    scope_limits: "Counts and exemplar answers only; they are not verified themes."
+    suggests:
+      - "Which answers does each cluster miss?"
+      - "Do the labels match a hand-read sample?"
+      - "How does the count change with the cluster size floor?"
+    difficulty: "intermediate"
+    concepts: ["clustering", "qualitative_coding"]
+    produces: ["codes"]
+    consumes: ["answers"]
+    after: []
+    output_table:
+      columns:
+        - name: "question"
+          type: "text"
+          description: "The survey question the answers answer."
+        - name: "code_id"
+          type: "id"
+          description: "The stable code id inside one question (c-1, c-2, ...)."
+        - name: "label"
+          type: "text"
+          description: "The cluster label: the exemplar answer, trimmed."
+        - name: "count"
+          type: "integer"
+          description: "The number of answers coded into this cluster."
+        - name: "exemplar_chunk_ids"
+          type: "id_list"
+          description: "The stored chunk ids nearest the cluster centroid."
+      order_by: ["question", "-count", "code_id"]
+      ties: "Equal counts order by code id ascending."
+      denominators: ["screened_count"]
+      caveats:
+        - "Cluster labels come from exemplar answers. Check a sample by hand."
+  - id: "32"
+    name: "Usability severity rating"
+    summary: "Rate each usability finding from 0 to 4 with a fixed anchor rubric, and flag unmatched rows for review."
+    paradigm: "weak_supervision"
+    evidence_label: "preset_composition"
+    inputs_required: ["raw_text"]
+    calibration_effort: "low"
+    autonomy: "automated_with_audit"
+    complexity_tier: "baseline"
+    selection_priority: "next"
+    selection_notes: "Next after findings exist. The rubric matches anchor words; a row with no anchor match scores 0 and routes to review."
+    robustness_caveat: "Anchor words miss indirect wording, and the score reflects wording, not measured impact."
+    bias_risk: "Dramatic wording can score high, while quiet but costly problems score low."
+    efficiency_workload: "One lexicon scan per finding. Compute is minor."
+    output_family: "scores"
+    output_shape: "One severity score from 0 to 4 per finding, the matched anchor words, and review flags."
+    usage_guidance: "Use it to rank usability findings before the report. Review the flagged rows by hand."
+    validation_required: "Read a sample of scored findings against the severity anchors. Recalibrate the anchor word lists per study."
+    permitted_claims: "Rubric-based screening scores under the fixed 0 to 4 anchors."
+    do_not_claim: "Do not claim measured user impact; the rubric reads wording only."
+    implementation_status: "implemented_new"
+    op: "usability_severity"
+    sources:
+      - "https://www.nngroup.com/articles/how-to-rate-the-severity-of-a-usability-problem/ (Guide)"
+      - "https://www.nngroup.com/articles/severity-ratings-usability-problems/ (Guide)"
+    task_type: "measurement"
+    comparison_structure: "none"
+    output_form: "statistic"
+    evidence_basis: "lexical"
+    statistical_rigor: "descriptive"
+    cost_tier: "batch"
+    question_phrases:
+      - "Rate how severe each usability problem is."
+      - "Score my usability findings from 0 to 4."
+      - "Which issues are catastrophic and which are minor?"
+      - "Prioritize my usability problems by their severity."
+      - "Apply the Nielsen severity scale to my findings."
+      - "Help me rank usability issues for the report."
+    failure_modes: "Anchor words miss indirect wording, and severity can reflect wording, not impact."
+    scope_limits: "A screening rubric, not a validated severity judgment."
+    suggests:
+      - "Which findings scored 0 and need a hand read?"
+      - "Do the top scores match the real impact?"
+      - "Which anchor words need study-specific terms?"
+    difficulty: "novice"
+    concepts: ["keyword_rules"]
+    produces: ["scores"]
+    consumes: ["summaries"]
+    after: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The scored finding."
+        - name: "severity"
+          type: "integer"
+          description: "The rubric score from 0 (no problem) to 4 (catastrophic)."
+          unit: "severity"
+        - name: "matched_terms"
+          type: "id_list"
+          description: "The anchor words that matched, highest anchor first."
+        - name: "review"
+          type: "boolean"
+          description: "True when no anchor word matched and the row scored 0 by default."
+      order_by: ["-severity", "chunk_id"]
+      ties: "Equal severities order by chunk id ascending."
+      denominators: ["screened_count"]
+      caveats:
+        - "Preset anchor words, not a trained model. Check a sample by hand."
+  - id: "33"
+    name: "Emotion tagging (fixed taxonomy)"
+    summary: "Tag each record with one of eight fixed emotions using entailment judgments against written statements."
+    paradigm: "zero_shot"
+    evidence_label: "model_based"
+    inputs_required: ["raw_text", "llm"]
+    calibration_effort: "moderate"
+    autonomy: "automated_with_audit"
+    complexity_tier: "standard"
+    selection_priority: "next"
+    selection_notes: "Next for affect tagging under the fixed Plutchik set. The taxonomy is fixed; no custom labels and no abstention."
+    robustness_caveat: "Mixed feelings, irony, and statement wording can flip entailment judgments."
+    bias_risk: "The statement wording and the model's training domain shape the judgments."
+    efficiency_workload: "Eight entailment judgments per record. Workload grows with record count."
+    output_family: "labels"
+    output_shape: "One emotion label per record, entailment scores for all eight emotions, and the model tag."
+    usage_guidance: "Use it when the fixed eight-emotion set fits your question. Check a sample before you count the labels."
+    validation_required: "Test the statements against paraphrased, negated, and mixed-affect records. Check a sample of tags by hand."
+    permitted_claims: "Zero-shot emotion tags under the fixed Plutchik set, with per-emotion scores."
+    do_not_claim: "Do not treat zero-shot scores as established probabilities or clinical measures."
+    implementation_status: "implemented_new"
+    op: "emotion_tag"
+    sources:
+      - "https://aclanthology.org/D19-1404/ (Conference 2019)"
+      - "https://en.wikipedia.org/wiki/Plutchik%27s_wheel_of_emotions (Reference)"
+    task_type: "measurement"
+    comparison_structure: "none"
+    output_form: "point_answer"
+    evidence_basis: "claims"
+    statistical_rigor: "inferential_calibrated"
+    cost_tier: "batch"
+    question_phrases:
+      - "Which emotions do these messages express?"
+      - "Tag each comment with a basic emotion."
+      - "I want emotion labels from a fixed set."
+      - "Classify reactions into the eight basic emotions."
+      - "Score each record against my emotion statements."
+      - "Help me tag the emotional tone of feedback."
+    failure_modes: "Mixed feelings, irony, and label wording can flip entailment judgments."
+    scope_limits: "The fixed eight labels only; not a clinical measure."
+    suggests:
+      - "Which records show mixed or weak emotions?"
+      - "Do the tags match a hand-read sample?"
+      - "Does the model choice change the tags?"
+    difficulty: "novice"
+    concepts: ["classification", "sentiment_analysis"]
+    produces: ["labels"]
+    consumes: []
+    after: []
+    output_table:
+      columns:
+        - name: "chunk_id"
+          type: "id"
+          description: "The tagged chunk."
+        - name: "label"
+          type: "text"
+          description: "The winning emotion from the fixed eight-label set."
+        - name: "entailment_score"
+          type: "number"
+          description: "The winning emotion's entailment score."
+          unit: "entailment score"
+        - name: "scores"
+          type: "object_list"
+          description: "Every emotion with its score, score descending then label ascending."
+      order_by: ["chunk_id"]
+      ties: "Score ties pick the alphabetically first emotion."
+      precision: 6
+      denominators: ["screened_count"]
+      caveats:
+        - "Zero-shot entailment judgments, not a trained emotion model."

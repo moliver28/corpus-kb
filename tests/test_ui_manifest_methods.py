@@ -23,7 +23,7 @@ def test_one_row_per_register_method_sorted_by_id() -> None:
     entries = build_method_entries(REPO)
     ids = [str(entry["id"]) for entry in entries]
     assert ids == sorted(ids)
-    assert ids == [f"{index:02d}" for index in range(1, 31)]
+    assert ids == [f"{index:02d}" for index in range(1, 34)]
 
 
 def test_rows_carry_exactly_the_guidance_keys() -> None:

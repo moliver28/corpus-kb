@@ -91,6 +91,12 @@ PARITY_OPS: ParityLegs = (
     "active_learn_next",
     "nli_classify",
     "contradictions_screen",
+    # W3 UXR methods: the survey read runs through the same chunk-read
+    # seam the sentiment leg uses; severity is lexical-only; emotion
+    # rides the NLI pair's seams (store read + honest unavailable).
+    "survey_openend_codes",
+    "usability_severity",
+    "emotion_tag",
     "labeling_build",
     "classification_build",
     "topics_build",

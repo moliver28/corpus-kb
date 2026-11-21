@@ -115,3 +115,11 @@ class SkippedOperation:
 def surfaces_of(op: Operation, kind: str) -> tuple[SurfaceSpec, ...]:
     """All surfaces of one kind (``http``, ``socket``, ``mcp``, ``cli``)."""
     return tuple(s for s in op.surfaces if s.kind == kind)
+
+
+# The tenant ParamSpec + the two prediction envelopes shared by the
+# analysis catalogue modules (one definition each, per the single-source
+# rule).
+TENANT_PARAM = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
+PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")
+NLI_PREDICTIONS_ENVELOPE = ("status", "predictions", "model", "screened_count")
