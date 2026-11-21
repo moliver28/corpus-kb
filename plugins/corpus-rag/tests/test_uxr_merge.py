@@ -15,8 +15,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 PLUGIN = str(Path(__file__).resolve().parents[1])
 if PLUGIN not in sys.path:
     sys.path.insert(0, PLUGIN)
@@ -76,12 +74,45 @@ def test_second_opinion_none_on_op_error() -> None:
 def test_second_opinion_returns_envelope() -> None:
     def sender(name: str, pairs: list[str]) -> dict:
         assert name == "search"
-        return {"status": "success", "result": [{"chunk_id": "c9"}]}
+        return {"status": "success", "result": [REALISTIC_HIT]}
 
     out = uxr_merge.quote_second_opinion("a quote", sender)
     assert out is not None
     assert out["advisory"] is True
-    assert out["result"] == [{"chunk_id": "c9"}]
+    assert out["result"] == [REALISTIC_HIT]
+
+
+# Search hits carry ``source``/``file_path`` (domain models), not
+# ``document_source``; the printed name must be the file, never a UUID.
+REALISTIC_HIT = {
+    "source": "interviews/p1.vtt",
+    "file_path": "interviews/p1.vtt",
+    "chunk_id": "0f0e0d0c-1a2b-3c4d-5e6f-708090a0b0c0",
+}
+
+
+def test_second_opinion_prints_file_name_not_uuid(monkeypatch, capsys) -> None:
+    import uxr_commands
+
+    monkeypatch.setattr(
+        uxr_commands.uxr_merge,
+        "search_sender",
+        lambda slug: lambda name, pairs: {},
+    )
+    monkeypatch.setattr(
+        uxr_commands.uxr_merge,
+        "quote_second_opinion",
+        lambda quote, sender: {"result": [REALISTIC_HIT]},
+    )
+
+    class Args:
+        quote = "a quote"
+        study_slug = "q3"
+
+    uxr_commands._print_second_opinion(Args())
+    out = capsys.readouterr().out
+    assert "interviews/p1.vtt" in out
+    assert "0f0e0d0c" not in out
 
 
 def test_second_opinion_skips_empty_quote() -> None:
@@ -100,9 +131,7 @@ def _isolate_store(monkeypatch, tmp_path: Path, rows: list[dict] | None = None) 
     monkeypatch.setattr(
         uxr_analysis.uxr_store, "rows", lambda conn: rows if rows is not None else []
     )
-    monkeypatch.setattr(
-        uxr_analysis.uxr_rollup, "researcher_from_dir", lambda root: {}
-    )
+    monkeypatch.setattr(uxr_analysis.uxr_rollup, "researcher_from_dir", lambda root: {})
 
 
 VERIFIED_ROW = {
@@ -134,8 +163,13 @@ def test_contract_parity_difference_still_exits_one(tmp_path: Path, monkeypatch)
     _isolate_store(monkeypatch, tmp_path, rows=[VERIFIED_ROW])
     evidence = tmp_path / "evidence.json"
     evidence.write_text(
-        json.dumps({"units": {"RQ1": {"Supports": 99}}, "researcher": {}, "totals": {
-            "verified": 0, "unverified": 0, "share": 0.0}}),
+        json.dumps(
+            {
+                "units": {"RQ1": {"Supports": 99}},
+                "researcher": {},
+                "totals": {"verified": 0, "unverified": 0, "share": 0.0},
+            }
+        ),
         encoding="utf-8",
     )
     args = Args()
@@ -147,8 +181,13 @@ def test_contract_parity_pass_is_unchanged(tmp_path: Path, monkeypatch) -> None:
     _isolate_store(monkeypatch, tmp_path)
     evidence = tmp_path / "evidence.json"
     evidence.write_text(
-        json.dumps({"units": {}, "researcher": {}, "totals": {
-            "verified": 0, "unverified": 0, "share": 0.0}}),
+        json.dumps(
+            {
+                "units": {},
+                "researcher": {},
+                "totals": {"verified": 0, "unverified": 0, "share": 0.0},
+            }
+        ),
         encoding="utf-8",
     )
     args = Args()

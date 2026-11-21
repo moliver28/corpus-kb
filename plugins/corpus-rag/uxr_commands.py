@@ -168,11 +168,33 @@ def cmd_uxr_classify(args) -> int:
         print(f"{row['class']}\t{row['path']}\tspeakers: {speakers}{flag}")
     unmatched = [row for row in rows if row["class"] == uxr_classify.UNMATCHED]
     if unmatched:
-        print(f"{len(unmatched)} unmatched file(s). Show them to the researcher; never guess a class.")
+        print(
+            f"{len(unmatched)} unmatched file(s). Show them to the researcher; never guess a class."
+        )
         _print_unmatched_assist(args, unmatched)
     payload = [{"path": row["path"], "class": row["class"]} for row in rows]
     print("payload: " + json.dumps(payload))
     return 0
+
+
+def _hit_names(result: list) -> list[str]:
+    """Show search-hit file names, never a raw chunk UUID.
+
+    Search hits carry ``source``/``file_path``; the UUID is the last resort.
+    """
+    names: list[str] = []
+    for hit in result[:3]:
+        if not isinstance(hit, dict):
+            continue
+        name = (
+            hit.get("source")
+            or hit.get("file_path")
+            or hit.get("document_source")
+            or hit.get("chunk_id")
+            or "?"
+        )
+        names.append(str(name))
+    return names
 
 
 def _print_unmatched_assist(args, unmatched: list[dict]) -> None:
@@ -188,11 +210,7 @@ def _print_unmatched_assist(args, unmatched: list[dict]) -> None:
         if not isinstance(result, list) or not result:
             continue
         hits_seen = True
-        names = ", ".join(
-            str(hit.get("document_source") or hit.get("chunk_id") or "?")
-            for hit in result[:3]
-            if isinstance(hit, dict)
-        )
+        names = ", ".join(_hit_names(result))
         print(f"nearest corpus text for {row['path']}: {names} (advisory only)")
     if hits_seen:
         print("These are search hits, not classes. Ask the researcher to decide.")
@@ -267,9 +285,5 @@ def _print_second_opinion(args) -> None:
     result = second.get("result")
     if not isinstance(result, list) or not result:
         return
-    names = ", ".join(
-        str(hit.get("document_source") or hit.get("chunk_id") or "?")
-        for hit in result[:3]
-        if isinstance(hit, dict)
-    )
+    names = ", ".join(_hit_names(result))
     print(f"second opinion (advisory; the difflib gate stands): {names}")
