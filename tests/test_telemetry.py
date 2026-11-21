@@ -244,7 +244,7 @@ def _run(awaitable: object) -> object:
 # ---------------------------------------------------------------------------
 
 
-def test_attribution_map_names_all_18_ops() -> None:
+def test_attribution_map_names_all_21_ops() -> None:
     from corpus_kb.telemetry.attribution import METHOD_FOR_OP
 
     assert set(METHOD_FOR_OP) == {
@@ -266,6 +266,9 @@ def test_attribution_map_names_all_18_ops() -> None:
         "contradictions_screen",
         "duplicates_screen",
         "outliers_rank",
+        "survey_openend_codes",
+        "usability_severity",
+        "emotion_tag",
     }
     assert METHOD_FOR_OP["clusters_inspect"] == "12"
     assert METHOD_FOR_OP["outliers_rank"] == "30"

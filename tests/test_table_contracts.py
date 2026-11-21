@@ -566,7 +566,7 @@ async def test_20_active_learn_next_contract(both_pool: Any) -> None:
 
 
 def test_every_declared_method_appears_in_this_gate() -> None:
-    """The declared set is exactly the fourteen methods this gate pins."""
+    """The declared set is exactly the seventeen methods this gate pins."""
     declared = {row.id for row in load_method_register({}).methods if row.output_table is not None}
     assert declared == {
         "05",
@@ -583,6 +583,9 @@ def test_every_declared_method_appears_in_this_gate() -> None:
         "28",
         "29",
         "30",
+        "31",
+        "32",
+        "33",
     }
 
 

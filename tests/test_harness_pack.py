@@ -36,9 +36,10 @@ _validate_spec.loader.exec_module(validate_configs)
 
 def test_registry_is_stdlib_only() -> None:
     """r9: the agent-config-consistency job installs NO deps — any import
-    beyond __future__/typing here is a ModuleNotFoundError it cannot catch."""
+    beyond the stdlib set here is a ModuleNotFoundError it cannot catch.
+    importlib/pathlib load the stdlib-only amr_cards companion by path."""
     tree = ast.parse(REGISTRY_PATH.read_text(encoding="utf-8"))
-    allowed = {"__future__", "typing", "dataclasses"}
+    allowed = {"__future__", "typing", "dataclasses", "importlib", "pathlib"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert all(alias.name.split(".")[0] in allowed for alias in node.names)
@@ -79,13 +80,17 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-nli-classify",
         "corpus-contradictions-screen",
         "corpus-sentiment-screen",
+        # Analysis method register program (wave 4 UXR method cards).
+        "corpus-survey-openend-codes",
+        "corpus-usability-severity",
+        "corpus-emotion-tag",
         "corpus-active-learn-next",
         # Issue #350: the chunk-coding ops card + the event-store health read.
         "corpus-coding-ops",
         "corpus-events",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 28
+    assert len(reg.WRAPPERS) == 31
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:
@@ -171,6 +176,11 @@ def test_mutation_hand_edited_wrapper_fails_check(tmp_path: Path) -> None:
     (project / "scripts").mkdir(parents=True)
     (project / REGISTRY_PATH.relative_to(ROOT)).write_text(
         REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    # The registry loads its stdlib-only companion by path; the copy needs it.
+    cards = ROOT / "src" / "corpus_kb" / "amr_cards.py"
+    (project / "src" / "corpus_kb" / "amr_cards.py").write_text(
+        cards.read_text(encoding="utf-8"), encoding="utf-8"
     )
     (project / GEN_PATH.relative_to(ROOT)).write_text(
         GEN_PATH.read_text(encoding="utf-8"), encoding="utf-8"
