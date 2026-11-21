@@ -97,8 +97,8 @@ describe("ProgressionRail", () => {
     }
     // Every generated method id renders exactly once across the rungs.
     await within(rail).findByText(METHODS[0].name, {}, { timeout: 15_000 });
-    const ids = within(rail).getAllByText(/^(0[1-9]|[12][0-9]|30)$/);
+    const ids = within(rail).getAllByText(/^(0[1-9]|[12][0-9]|3[0-3])$/);
     expect(ids.length).toBe(METHODS.length);
-    expect(METHODS.length).toBe(30);
+    expect(METHODS.length).toBe(33);
   });
 });

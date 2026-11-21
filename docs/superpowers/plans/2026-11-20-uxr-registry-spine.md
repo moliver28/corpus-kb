@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the corpus-rag plugin apply the engine's 12 method ops + router to novice UXR tasks, add 3 new UXR engine methods, and derive hooks from live route data — on both backends, no plugin bloat.
+**Goal:** Make the corpus-rag plugin apply the engine's 12 method ops and router to novice UXR tasks. Add 3 new UXR engine methods. Derive hooks from live route data. Support both backends with no plugin bloat.
 
 **Architecture:** Registry stays the spine; plugin becomes a registry client through the existing op_runner path (no new runner). Hooks gain one mark-gated, fail-open shell-out to `corpus-kb analysis-route`. Three new engine methods land registry-first through the full surface checklist.
 
@@ -14,7 +14,9 @@
 
 - Branches: `feature/uxr-plugin-wiring` (Tasks 1-6) and `feature/uxr-engine-methods` (Tasks 7-9), both off master @ 5c80450; conventional single-line commits (`feat:`/`test:`/`chore:`).
 - Plugin: stdlib only, zero new deps; new code in NEW small modules; never grow `codify_commands.py` (321 lines).
-- Engine: register rows in BOTH `config/analysis_methods.yaml` and `src/corpus_kb/config/analysis_methods.yaml`, byte-identical; import direction `api → tools → handlers → storage`; no `type: ignore`; `from __future__ import annotations`; 250-line soft limit; ASD-STE100 plain English for all new user-facing strings.
+- Engine: register rows in BOTH `config/analysis_methods.yaml` and `src/corpus_kb/config/analysis_methods.yaml`. The two mirrors stay byte-identical.
+- Import direction `api → tools → handlers → storage`; no `type: ignore`; `from __future__ import annotations`; 250-line soft limit.
+- Use ASD-STE100 plain English for all new user-facing strings.
 - Error taxonomy for new ops (typed errors, one failure class = one code); auto-approve classification in `surface_registry.py` (`SERVER_AUTO_APPROVE`/`AUTO_APPROVE_WRITE_TOOLS`) locked by `tests/test_auto_approve_lockstep.py`.
 - Zero regression: no new warnings; `poe gen --check` clean after any register change.
 - Hook lane: marks checked BEFORE any CLI call; 10 s timeout; fail-open to static text; plain stdout, exit 0 always.
@@ -61,7 +63,7 @@
 - Test: `plugins/corpus-rag/tests/test_skill_tables.py` (extend)
 
 **Interfaces:**
-- Produces: a "method support pass" step: run `keyphrases-extract` on the question set, `clusters-inspect` to group, `sentiment-screen` per question, `contradictions-screen` across stances — each with one plain-English sentence of why, and the rule that method output ADVISES, researcher judgment decides (matches `epistemological-caution.md`).
+- Produces: a "method support pass" step. Run `keyphrases-extract` on the question set. Use `clusters-inspect` to group, `sentiment-screen` per question, and `contradictions-screen` across stances. Each op gets one plain-English sentence of why. Method output ADVISES; researcher judgment decides (matches `epistemological-caution.md`).
 
 - [x] **Step 1:** Insert the step + rationale prose; reference `references/epistemological-caution.md`.
 - [x] **Step 2:** Test: assert SKILL.md names all four ops and "advises". PASS then commit `feat: corpus-uxr chains registry methods into themes`.
@@ -75,10 +77,10 @@
 
 **Interfaces:**
 - Consumes: route envelope keys `status`, `ranked[{method_id,name,why,run_hint{op,params}}]` (verbatim from `analysis_route_envelope.py:127-138`).
-- Produces: `route_nudge_text(route: dict, question: str) -> str` — first line names top method + why (≤20 words), second line the run command from `run_hint`, degraded status prepends "Routing ran in degraded mode."; empty/malformed route → `""` (caller keeps static text).
+- Produces: `route_nudge_text(route: dict, question: str) -> str`. The first line names the top method plus why (≤20 words). The second line is the run command from `run_hint`. Degraded status prepends "Routing ran in degraded mode.". An empty or malformed route returns `""` (caller keeps static text).
 - Mark ordering: the daily mark `prompt-<slug>-analyze-<YYYYMMDD>` check happens BEFORE the subprocess (today's order already gates first — keep it).
 
-- [x] **Step 1:** Write failing tests: happy path (top method + command line), degraded prefix, malformed JSON → "", subprocess timeout path (monkeypatched) keeps static text.
+- [x] **Step 1:** Write failing tests: happy path (top method + command line), degraded prefix, malformed JSON → `""`. Also test that the subprocess timeout path (patched) keeps static text.
 - [x] **Step 2:** Run: `python -m pytest plugins/corpus-rag/tests/test_hook_route_text.py -v`. Expected FAIL (module missing).
 - [x] **Step 3:** Implement `hook_route_text.py` + wire the lane in `hook_events.py` (subprocess inside try, timeout=10, fail-open).
 - [x] **Step 4:** Run full plugin suite: `python -m pytest plugins/corpus-rag/tests/ -v`. PASS.
@@ -88,14 +90,19 @@
 
 **Files:**
 - Create: `plugins/corpus-rag/uxr_merge.py` (merge helpers, pure functions)
-- Modify: `plugins/corpus-rag/uxr_summaries.py` (themes writer: append coded-evidence section between markers at :32-41), `plugins/corpus-rag/uxr_rollup.py:91,140` (evidence section), `plugins/corpus-rag/uxr_commands.py` (unmatched-class assist calls `search_similar` op via op_client pattern used by study_query), `plugins/corpus-rag/uxr_analysis.py` (Contract step handler: no report tool → run rollup as evidence source with "evidence check ran in degraded mode" note, exit 0)
+- Modify: `plugins/corpus-rag/uxr_summaries.py` (themes writer: append coded-evidence section between markers at :32-41).
+- Modify: `plugins/corpus-rag/uxr_rollup.py:91,140` (evidence section).
+- Modify: `plugins/corpus-rag/uxr_commands.py` (unmatched-class assist calls the `search_similar` op through the op client pattern used by `study_query`).
+- Modify: `plugins/corpus-rag/uxr_analysis.py` (Contract step handler: with no report tool, run rollup as evidence source. Add an "evidence check ran in degraded mode" note and exit 0).
 - Test: `plugins/corpus-rag/tests/test_uxr_merge.py` (new)
 
 **Interfaces:**
-- Produces: `merge_coded_evidence(themes_text: str, rows: list[dict]) -> str` (idempotent: replaces its own previous section between its markers, never touches model narrative); `quote_second_opinion(quote: str) -> dict | None` via `search_similar` (advisory flag only — difflib contract unchanged); contract-parity default path.
+- Produces: `merge_coded_evidence(themes_text: str, rows: list[dict]) -> str`. It is idempotent: it replaces its own previous section between its markers and never touches model narrative.
+- Produces: `quote_second_opinion(quote: str) -> dict | None` via `search_similar` (advisory flag only; difflib contract unchanged).
+- Produces: the contract-parity default path.
 - The coding_export call site: the uxr themes handler runs `corpus-rag op coding_export` output parsing — reuse `op_runner`/op_client patterns from `codify_commands.py` WITHOUT editing that file.
 
-- [x] **Step 1:** Failing tests: idempotent double-merge (same output twice), narrative untouched, degraded contract path exit 0, second-opinion returns None when op errors.
+- [x] **Step 1:** Failing tests: idempotent double-merge (same output twice) and narrative untouched. Also: degraded contract path exits 0, and second opinion returns None when the op errors.
 - [x] **Step 2:** Implement helpers + wire the four call sites.
 - [x] **Step 3:** Suite PASS; commit `feat: merge codify evidence into uxr themes and rollup`.
 
@@ -107,7 +114,7 @@
 
 **Interfaces:**
 - Consumes: contract catalogue names (`corpus_kb.contracts`); plugin SKILL.md table rows (`corpus-rag op <name>`).
-- Produces: test asserting every op row in `plugins/corpus-rag/skills/corpus-research/SKILL.md` + `commands/*.md` matches a real catalogue op name (and lists all 12 method ops + analysis-route after Tasks 1-2).
+- Produces: a test asserting every op row in `plugins/corpus-rag/skills/corpus-research/SKILL.md` and `commands/*.md` matches a real catalogue op name. It also lists all 12 method ops plus `analysis-route` after Tasks 1-2.
 
 - [x] **Step 1:** Write test parsing SKILL.md rows → assert each name in the catalogue; assert the 13 expected names present. Run against current master first: the 12 method rows FAIL (they don't exist yet) → this pins Tasks 1-2. After Task 2: PASS.
 - [x] **Step 2:** Commit `test: gate plugin op table against engine catalogue`.
@@ -115,12 +122,15 @@
 ### Task 7: register grows to 33 (engine)
 
 **Files:**
-- Modify: `config/analysis_methods.yaml` + `src/corpus_kb/config/analysis_methods.yaml` (rows 31-33), `src/corpus_kb/analysis/method_register.py:111-117` (widen id range — make the bound data-driven: `len(EXPECTED_IDS)` from the loader, keep the validator), `src/corpus_kb/analysis/method_register_loader.py:20,56-64` (EXPECTED_IDS ledger → 01-33), `tests/test_method_register.py:160-163,194` (pins 30 → 33)
+- Modify: `config/analysis_methods.yaml` and `src/corpus_kb/config/analysis_methods.yaml` (rows 31-33).
+- Modify: `src/corpus_kb/analysis/method_register.py:111-117` (widen the id range). Make the bound data-driven: `len(EXPECTED_IDS)` from the loader. Keep the validator.
+- Modify: `src/corpus_kb/analysis/method_register_loader.py:20,56-64` (EXPECTED_IDS ledger → 01-33).
+- Modify: `tests/test_method_register.py:160-163,194` (pins 30 → 33).
 - Test: `tests/test_method_register.py` (extend)
 
 **Interfaces:**
 - Produces: register rows (fields per existing 38-field schema; every field populated):
-  - `31 survey-openend-codes`: op `survey_openend_codes`, task_type `count`, output_family `counts`; consumes survey responses (shape per Task 9 entry check — adjust `consumes`/`produces` fields to the real storage shape, document in row `selection_notes`).
+  - `31 survey-openend-codes`: op `survey_openend_codes`, task type `count`, output family `counts`. It consumes survey responses. Shape follows the Task 9 entry check. Adjust the `consumes`/`produces` fields to the real storage shape, and document them in row `selection_notes`.
   - `32 usability-severity`: op `usability_severity`, task_type `score`, outputs 0-4 severity per finding with rubric basis in `usage_guidance`.
   - `33 emotion-tag`: op `emotion_tag`, fixed taxonomy (Plutchik 8), `nli` evidence basis like method `nli-classify`.
 
@@ -133,11 +143,17 @@
 
 **Files (per method, identical pattern):**
 - Create: `src/corpus_kb/tools/uxr_method_tools.py` (three handlers, one file if ≤250 lines else split)
-- Modify: `src/corpus_kb/cli/cli_analysis_methods.py` (3 wrappers), `src/corpus_kb/api/routes_analysis_methods.py` + `api/http.py:231` (3 routes), `src/corpus_kb/api/_socket_rows.py` (3 `_Spec` arms), `src/corpus_kb/contracts/catalogue_analysis.py` (3 rows, HTTP+MCP+CLI+SOCKET specs), `src/corpus_kb/surface_registry.py` (op rows, help, skill entries, auto-approve sets), `tests/test_surface_parity_deep.py` (3 `_Leg` rows following sentiment-screen at :1523-1526), `src/corpus_kb/telemetry/attribution.py:39`, `src/corpus_kb/_setup/doctor_journey_maps.py:36`
+- Modify: `src/corpus_kb/cli/cli_analysis_methods.py` (3 wrappers).
+- Modify: `src/corpus_kb/api/routes_analysis_methods.py` and `api/http.py:231` (3 routes).
+- Modify: `src/corpus_kb/api/_socket_rows.py` (3 `_Spec` arms).
+- Modify: `src/corpus_kb/contracts/catalogue_analysis.py` (3 rows; HTTP, MCP, CLI, and SOCKET specs).
+- Modify: `src/corpus_kb/surface_registry.py` (op rows, help, skill entries, auto-approve sets).
+- Modify: `tests/test_surface_parity_deep.py` (3 `_Leg` rows, following sentiment-screen at :1523-1526).
+- Modify: `src/corpus_kb/telemetry/attribution.py:39` and `src/corpus_kb/_setup/doctor_journey_maps.py:36`.
 - Test: `tests/test_uxr_method_tools.py` (new), parity rows
 
 **Interfaces:**
-- Produces: `async def survey_openend_codes(...)`, `async def usability_severity(...)`, `async def emotion_tag(...)` — signatures copied from `sentiment_screen` (`tools/sentiment_tools.py:128`): same request/response envelope pattern, typed errors. Handlers: survey = cluster answers (embedding + HDBSCAN-free: reuse `clusters_inspect` primitives), label per cluster, count; severity = NLI/lexical rubric match to Nielsen 0-4 anchors; emotion = fixed-taxonomy NLI classify reusing `nli_classify` primitives.
+- Produces: `async def survey_openend_codes(...)`, `async def usability_severity(...)`, `async def emotion_tag(...)` — signatures copied from `sentiment_screen` (`tools/sentiment_tools.py:128`): same request/response envelope pattern, typed errors. Handlers: survey clusters answers, labels each cluster, then counts (embedding-based; reuse `clusters_inspect` primitives, no HDBSCAN). Severity matches an NLI and lexical rubric to the Nielsen 0-4 anchors. Emotion is a fixed-taxonomy NLI classify reusing `nli_classify` primitives.
 - Names: `survey_openend_codes`, `usability_severity`, `emotion_tag` (verified collision-free).
 
 - [x] **Step 1:** Parity/catalogue/registry rows FIRST (registry-first rule). Parity test legs fail → then implement.
