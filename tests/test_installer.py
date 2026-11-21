@@ -57,6 +57,15 @@ async def test_doctor_cpu_only() -> None:
     assert "ollama pull qwen3-embedding:4b" in output
 
 
+def _host_has_gpu() -> bool:
+    """The real host GPU probe (never raises; False when no NVIDIA GPU)."""
+    return bool(install_module._detect_gpu_vram_gb()[1])
+
+
+@pytest.mark.skipif(
+    not _host_has_gpu(),
+    reason="the performance-profile path is only exercised on a GPU host (issue #532)",
+)
 @pytest.mark.asyncio
 async def test_doctor_gpu_detected() -> None:
     """A high-RAM machine with 8GB VRAM is recommended the performance profile."""
