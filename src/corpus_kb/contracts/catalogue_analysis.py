@@ -62,6 +62,7 @@ OUTLIERS_ENVELOPE = ("status", "outliers", "screened_count", "excluded_zero_coun
 CONTRADICTIONS_ENVELOPE = ("status", "pairs", "screened_count")
 RANKED_ENVELOPE = ("status", "ranked", "strategy", "requested_batch")
 META_EMBED_ENVELOPE = ("status", "kinds", "built", "per_kind", "notes")
+SURVEY_CODES_ENVELOPE = ("status", "codes", "screened_count")
 
 ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -363,6 +364,74 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "sentiment-screen"),
             SurfaceSpec(HTTP, "/api/analysis/sentiment-screen", "POST"),
             SurfaceSpec(SOCKET, "sentiment_screen"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="survey_openend_codes",
+        family="analysis",
+        description=(
+            "Group open-ended survey answers per question into labeled "
+            "clusters; report each code with its answer count. Register "
+            "method 31."
+        ),
+        handler="corpus_kb.tools.uxr_survey_codes:survey_openend_codes",
+        params=(
+            ParamSpec("chunk_ids", default=None),
+            ParamSpec("min_cluster_size", default=None),
+            _TENANT,
+        ),
+        envelope_keys=SURVEY_CODES_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "survey_openend_codes"),
+            SurfaceSpec(CLI, "survey-openend-codes"),
+            SurfaceSpec(HTTP, "/api/analysis/survey-openend-codes", "POST"),
+            SurfaceSpec(SOCKET, "survey_openend_codes"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="usability_severity",
+        family="analysis",
+        description=(
+            "Rate each finding from 0 to 4 with the fixed anchor rubric; "
+            "unmatched rows route to review. Register method 32."
+        ),
+        handler="corpus_kb.tools.uxr_method_tools:usability_severity",
+        params=(
+            ParamSpec("chunk_ids", default=None),
+            ParamSpec("limit", default=None),
+            _TENANT,
+        ),
+        envelope_keys=PREDICTIONS_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "usability_severity"),
+            SurfaceSpec(CLI, "usability-severity"),
+            SurfaceSpec(HTTP, "/api/analysis/usability-severity", "POST"),
+            SurfaceSpec(SOCKET, "usability_severity"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="emotion_tag",
+        family="analysis",
+        description=(
+            "Tag each chunk with one of eight fixed emotions through "
+            "entailment judgments. Register method 33."
+        ),
+        handler="corpus_kb.tools.uxr_method_tools:emotion_tag",
+        params=(
+            ParamSpec("chunk_ids", default=None),
+            ParamSpec("limit", default=50),
+            ParamSpec("model", default=None),
+            _TENANT,
+        ),
+        envelope_keys=NLI_PREDICTIONS_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "emotion_tag"),
+            SurfaceSpec(CLI, "emotion-tag"),
+            SurfaceSpec(HTTP, "/api/analysis/emotion-tag", "POST"),
+            SurfaceSpec(SOCKET, "emotion_tag"),
         ),
         exit_codes=(0, 1, 2, 3),
     ),

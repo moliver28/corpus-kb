@@ -469,6 +469,27 @@ SURFACES: tuple[Surface, ...] = (
         description="Rank stored predictions for the next human-labeling batch.",
         http_route="/api/analysis/active-learn-next",
     ),
+    Surface(
+        name="survey-openend-codes",
+        cli_path="survey-openend-codes",
+        mcp_tool="survey_openend_codes",
+        description="Code open-ended survey answers per question (cluster, label, count).",
+        http_route="/api/analysis/survey-openend-codes",
+    ),
+    Surface(
+        name="usability-severity",
+        cli_path="usability-severity",
+        mcp_tool="usability_severity",
+        description="Score findings with the fixed 0-4 severity rubric.",
+        http_route="/api/analysis/usability-severity",
+    ),
+    Surface(
+        name="emotion-tag",
+        cli_path="emotion-tag",
+        mcp_tool="emotion_tag",
+        description="Tag chunks with the fixed eight-emotion set via entailment.",
+        http_route="/api/analysis/emotion-tag",
+    ),
     # -- core search op (the last surface it was missing): full cli+mcp+http --
     Surface(
         name="search",
@@ -1297,6 +1318,55 @@ _SENTIMENT_BODY = _amr_body(
     difficulty="novice for method 26; intermediate for method 27",
     teaches="`sentiment_analysis`, `keyword_rules`",
 )
+_SURVEY_CODES_BODY = _amr_body(
+    "survey-openend-codes",
+    family="labels (method 31)",
+    inputs="raw_text, embeddings",
+    calibration="moderate",
+    autonomy="human_in_loop",
+    run="survey-openend-codes [--chunk-id <id> ...] [--min-cluster-size N]",
+    cautions="cluster labels come from exemplar answers. Small but "
+    "important groups can hide in the noise. This is not human coding.",
+    validation="check a sample of coded answers by hand. Compare the "
+    "labels against the raw answers for mixed or sarcastic cases.",
+    claims="per-question code labels, counts, and exemplar answers.",
+    difficulty="novice",
+    teaches="`clustering`, `qualitative_coding`",
+    requires="method 24, ask or a survey ingest, so survey answers exist as chunks",
+)
+_SEVERITY_BODY = _amr_body(
+    "usability-severity",
+    family="scores (method 32)",
+    inputs="raw_text",
+    calibration="low",
+    autonomy="automated_with_audit",
+    run="usability-severity [--chunk-id <id> ...] [--limit N]",
+    cautions="anchor words miss indirect wording, and the score reads "
+    "wording, not measured impact. Unmatched rows score 0 and route to "
+    "review.",
+    validation="read a sample of scored findings against the severity "
+    "anchors. Recalibrate the anchor word lists per study.",
+    claims="rubric-based screening scores under the fixed 0 to 4 anchors.",
+    difficulty="novice",
+    teaches="`keyword_rules`",
+    requires="method 22, analyze_run summaries, so findings exist as chunks",
+)
+_EMOTION_BODY = _amr_body(
+    "emotion-tag",
+    family="labels (method 33)",
+    inputs="raw_text, llm",
+    calibration="moderate",
+    autonomy="automated_with_audit",
+    run="emotion-tag [--chunk-id <id> ...] [--limit N] [--model <tag>]",
+    cautions="zero-shot entailment scores are not established "
+    "probabilities. Mixed feelings, irony, and statement wording can "
+    "flip the judgments.",
+    validation="test the statements against paraphrased, negated, and "
+    "mixed-affect records. Check a sample of tags by hand.",
+    claims="zero-shot emotion tags under the fixed eight-label set.",
+    difficulty="intermediate",
+    teaches="`classification`, `sentiment_analysis`",
+)
 _ACTIVE_LEARN_BODY = _amr_body(
     "active-learn-next",
     family="recommendations (method 20)",
@@ -1591,6 +1661,30 @@ WRAPPERS: tuple[Wrapper, ...] = (
         covers=("sentiment-screen",),
     ),
     Wrapper(
+        name="corpus-survey-openend-codes",
+        title="corpus-survey-openend-codes",
+        description="Code open-ended survey answers per question with counts",
+        argument_hint="[--chunk-id <id> ...] [--min-cluster-size N]",
+        body=_SURVEY_CODES_BODY,
+        covers=("survey-openend-codes",),
+    ),
+    Wrapper(
+        name="corpus-usability-severity",
+        title="corpus-usability-severity",
+        description="Score findings with the fixed 0-4 severity rubric",
+        argument_hint="[--chunk-id <id> ...] [--limit N]",
+        body=_SEVERITY_BODY,
+        covers=("usability-severity",),
+    ),
+    Wrapper(
+        name="corpus-emotion-tag",
+        title="corpus-emotion-tag",
+        description="Tag chunks with the fixed eight-emotion set",
+        argument_hint="[--chunk-id <id> ...] [--limit N] [--model <tag>]",
+        body=_EMOTION_BODY,
+        covers=("emotion-tag",),
+    ),
+    Wrapper(
         name="corpus-active-learn-next",
         title="corpus-active-learn-next",
         description="Next human-labeling batch ranked from stored predictions",
@@ -1723,6 +1817,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "contradictions_screen",
     "doctor",
     "duplicates_screen",
+    "emotion_tag",
     "events_summary",
     "get_document_tags",
     "get_entity_relations",
@@ -1759,7 +1854,9 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "sentiment_screen",
     "statements_list",
     "statements_timeline",
+    "survey_openend_codes",
     "topics_list",
+    "usability_severity",
     "verify_answer",
 )
 

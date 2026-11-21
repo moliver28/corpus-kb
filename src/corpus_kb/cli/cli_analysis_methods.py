@@ -47,6 +47,9 @@ def register(app: typer.Typer) -> None:
     app.command("contradictions-screen")(contradictions_screen)
     app.command("sentiment-screen")(sentiment_screen)
     app.command("active-learn-next")(active_learn_next)
+    app.command("survey-openend-codes")(survey_openend_codes)
+    app.command("usability-severity")(usability_severity)
+    app.command("emotion-tag")(emotion_tag)
 
 
 def _emit(result: dict[str, object], json_output: bool) -> None:
@@ -207,6 +210,46 @@ def sentiment_screen(
     return _run_sync(
         lambda: flow("sentiment_tools", "sentiment_screen", kwargs, json_output, _emit)
     )
+
+
+def survey_openend_codes(
+    chunk_ids: list[str] = _IDS_OPT,
+    min_cluster_size: int = typer.Option(
+        None, "--min-cluster-size", help="Smallest code cluster (2 or more)"
+    ),
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """Code open-ended survey answers per question (cluster, label, count)."""
+    kwargs: dict[str, Any] = {
+        "chunk_ids": _ids(chunk_ids),
+        "min_cluster_size": min_cluster_size,
+    }
+    return _run_sync(
+        lambda: flow("uxr_survey_codes", "survey_openend_codes", kwargs, json_output, _emit)
+    )
+
+
+def usability_severity(
+    chunk_ids: list[str] = _IDS_OPT,
+    limit: int = typer.Option(None, "--limit", help="Max rows to return"),
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """Score findings with the fixed 0-4 severity rubric."""
+    kwargs: dict[str, Any] = {"chunk_ids": _ids(chunk_ids), "limit": limit}
+    return _run_sync(
+        lambda: flow("uxr_method_tools", "usability_severity", kwargs, json_output, _emit)
+    )
+
+
+def emotion_tag(
+    chunk_ids: list[str] = _IDS_OPT,
+    limit: int = typer.Option(50, "--limit", help="Max chunks to tag"),
+    model: str = typer.Option(None, "--model", help="Override the NLI model tag"),
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """Tag chunks with the fixed eight-emotion set (entailment)."""
+    kwargs: dict[str, Any] = {"chunk_ids": _ids(chunk_ids), "limit": limit, "model": model}
+    return _run_sync(lambda: flow("uxr_method_tools", "emotion_tag", kwargs, json_output, _emit))
 
 
 def active_learn_next(

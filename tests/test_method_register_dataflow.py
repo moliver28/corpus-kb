@@ -21,15 +21,15 @@ from corpus_kb.analysis.method_register_dataflow import (
 from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.tools.analysis_route_next import next_methods_for
 
-ALL_IDS = [f"{index:02d}" for index in range(1, 31)]
+ALL_IDS = [f"{index:02d}" for index in range(1, 34)]
 
 # v1 hand-authored links (register 3.2.0), frozen from master.
 GOLDEN_PREREQS: dict[str, tuple[str, ...]] = dict.fromkeys(ALL_IDS, ())
 GOLDEN_PREREQS.update(
     {
-        "13": ("04",),
-        "14": ("04",),
-        "15": ("04",),
+        "13": ("04", "33"),
+        "14": ("04", "13", "33"),
+        "15": ("04", "33"),
         "20": ("16",),
     }
 )
@@ -59,15 +59,17 @@ EXPECTED_DERIVED_PREREQS.update(
         "04": ("12", "18"),
         "06": ("07",),
         "10": ("09",),
-        "11": ("04", "09"),
-        "13": ("04",),
-        "14": ("04", "13"),
-        "15": ("04",),
-        "16": ("04", "15", "19"),
-        "17": ("04", "15", "16"),
+        "11": ("04", "09", "33"),
+        "13": ("04", "33"),
+        "15": ("04", "33"),
+        "16": ("04", "15", "19", "33"),
+        "17": ("04", "15", "16", "33"),
         "20": ("16", "17"),
-        "27": ("04",),
+        "27": ("04", "33"),
         "28": ("23",),
+        "31": ("24",),
+        "32": ("22",),
+        "14": ("04", "13", "33"),
     }
 )
 
@@ -85,12 +87,15 @@ EXPECTED_DERIVED_NEXT.update(
         "17": ("20",),
         "18": ("04",),
         "19": ("16",),
+        "22": ("32",),
         "23": ("28",),
+        "24": ("31",),
+        "33": ("11", "13", "14", "15", "16", "17", "27"),
     }
 )
 
 
-def test_golden_tables_cover_all_30_ids() -> None:
+def test_golden_tables_cover_all_33_ids() -> None:
     for table in (GOLDEN_PREREQS, GOLDEN_NEXT, EXPECTED_DERIVED_PREREQS, EXPECTED_DERIVED_NEXT):
         assert list(table) == ALL_IDS
 
@@ -211,7 +216,14 @@ def test_route_next_methods_matches_v1_on_golden_fixture() -> None:
     ``next_methods_for`` still reads the hand-authored v1 chains.
     """
     register = load_method_register({})
-    expected = {"04": ["11", "13", "14"], "17": ["20"]}
+    expected = {
+        "04": ["11", "13", "14"],
+        "17": ["20"],
+        "18": ["04"],
+        "22": ["32"],
+        "24": ["31"],
+        "33": ["11", "13", "14"],
+    }
     for row in register.methods:
         derived = [item["method_id"] for item in next_methods_for(register, row)]
         if row.id in expected:

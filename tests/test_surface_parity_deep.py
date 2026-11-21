@@ -114,6 +114,8 @@ import corpus_kb.tools.sentiment_tools as sentiment_tools_module
 import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
+import corpus_kb.tools.uxr_method_tools as uxr_method_tools_module
+import corpus_kb.tools.uxr_survey_codes as uxr_survey_codes_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 from corpus_kb.analysis.method_register_dataflow import ladder_next
 from corpus_kb.analysis.method_register_loader import load_method_register
@@ -833,6 +835,18 @@ async def _shared_sentiment_screen(ctx: dict[str, Any]) -> dict[str, Any]:
     return await sentiment_tools_module.sentiment_screen(ctx["pool"], config=ctx["config"])
 
 
+async def _shared_survey_openend_codes(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await uxr_survey_codes_module.survey_openend_codes(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_usability_severity(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await uxr_method_tools_module.usability_severity(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_emotion_tag(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await uxr_method_tools_module.emotion_tag(ctx["pool"], config=ctx["config"])
+
+
 async def _shared_active_learn_next(ctx: dict[str, Any]) -> dict[str, Any]:
     return await active_learn_tools_module.active_learn_next(ctx["pool"], config=ctx["config"])
 
@@ -1530,6 +1544,24 @@ LEGS: dict[str, _Leg] = {
         _shared_active_learn_next,
         _post("/api/analysis/active-learn-next", {}),
         _sock("active_learn_next", {}),
+        _mcp({}),
+    ),
+    "survey_openend_codes": _Leg(
+        _shared_survey_openend_codes,
+        _post("/api/analysis/survey-openend-codes", {}),
+        _sock("survey_openend_codes", {}),
+        _mcp({}),
+    ),
+    "usability_severity": _Leg(
+        _shared_usability_severity,
+        _post("/api/analysis/usability-severity", {}),
+        _sock("usability_severity", {}),
+        _mcp({}),
+    ),
+    "emotion_tag": _Leg(
+        _shared_emotion_tag,
+        _post("/api/analysis/emotion-tag", {}),
+        _sock("emotion_tag", {}),
         _mcp({}),
     ),
     "search": _Leg(
@@ -2546,6 +2578,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
 
     # nli: canned space + canned verdicts keep the transport offline.
     monkeypatch.setattr(nli_tools_module, "_load_space", _canned_space_texts)
+    monkeypatch.setattr(uxr_method_tools_module, "_load_space", _canned_space_texts)
 
     async def _canned_verdict(prompt: str, model: str, base_url: str) -> str:
         return "ENTAIL"

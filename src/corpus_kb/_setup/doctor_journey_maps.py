@@ -37,6 +37,9 @@ OP_CLI: dict[str, str] = {
     "contradictions_screen": "contradictions-screen",
     "duplicates_screen": "duplicates-screen",
     "outliers_rank": "outliers-rank",
+    "survey_openend_codes": "survey-openend-codes",
+    "usability_severity": "usability-severity",
+    "emotion_tag": "emotion-tag",
 }
 
 # Build op -> (the state key it fills, the plain-English action). A build

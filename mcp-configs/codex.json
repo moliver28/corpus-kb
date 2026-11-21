@@ -32,6 +32,7 @@
         "contradictions_screen",
         "doctor",
         "duplicates_screen",
+        "emotion_tag",
         "events_summary",
         "get_document_tags",
         "get_entity_relations",
@@ -68,7 +69,9 @@
         "sentiment_screen",
         "statements_list",
         "statements_timeline",
+        "survey_openend_codes",
         "topics_list",
+        "usability_severity",
         "verify_answer"
       ]
     }

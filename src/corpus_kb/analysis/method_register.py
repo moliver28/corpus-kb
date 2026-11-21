@@ -1,4 +1,4 @@
-"""The analysis method register: 30 NLP methods as validated data.
+"""The analysis method register: 33 NLP methods as validated data.
 
 The register YAML (``analysis.method_register_path``, default
 ``config/analysis_methods.yaml``) is the single source of truth.
@@ -17,6 +17,7 @@ from corpus_kb.analysis.method_register_dataflow import (
     validate_dataflow_fields,
     validate_dataflow_graph,
 )
+from corpus_kb.analysis.method_register_ids import EXPECTED_MAX_ID
 from corpus_kb.analysis.method_register_progression import validate_progression_fields
 from corpus_kb.analysis.method_register_routing import validate_routing_axes
 from corpus_kb.analysis.method_register_tables import OutputTable, validate_table_fields
@@ -112,9 +113,11 @@ class MethodRecord(BaseModel):
     @classmethod
     def _id_shape(cls, value: str) -> str:
         if not re.fullmatch(r"[0-9]{2}", value):
-            raise ValueError('id: use zero-padded string ids "01" to "30".')
-        if not 1 <= int(value) <= 30:
-            raise ValueError(f'id: {value!r} is out of range. Use ids "01" to "30".')
+            raise ValueError(f'id: use zero-padded string ids "01" to "{EXPECTED_MAX_ID:02d}".')
+        if not 1 <= int(value) <= EXPECTED_MAX_ID:
+            raise ValueError(
+                f'id: {value!r} is out of range. Use ids "01" to "{EXPECTED_MAX_ID:02d}".'
+            )
         return value
 
     @field_validator("summary")
