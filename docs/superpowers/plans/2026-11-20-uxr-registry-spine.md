@@ -124,10 +124,10 @@
   - `32 usability-severity`: op `usability_severity`, task_type `score`, outputs 0-4 severity per finding with rubric basis in `usage_guidance`.
   - `33 emotion-tag`: op `emotion_tag`, fixed taxonomy (Plutchik 8), `nli` evidence basis like method `nli-classify`.
 
-- [ ] **Step 1:** Entry check FIRST: read `src/corpus_kb/ingestion/strategies/survey.py` + stored chunk/row shape for survey responses; write the real consumes/produces into row 31. If storage shape defeats open-end coding → STOP, report, owner re-scope (spec D8).
-- [ ] **Step 2:** Write failing test: `len(register.methods) == 33`, ids 01-33 unique, mirrors byte-identical. Run → FAIL.
-- [ ] **Step 3:** Edit validator/ledger/pins + both yaml rows. `poe gen` → clean. Run: `python -m pytest tests/test_method_register.py -v`. PASS.
-- [ ] **Step 4:** Commit `feat: register gains survey usability and emotion methods`.
+- [x] **Step 1:** Entry check FIRST: read `src/corpus_kb/ingestion/strategies/survey.py` + stored chunk/row shape for survey responses; write the real consumes/produces into row 31. If storage shape defeats open-end coding → STOP, report, owner re-scope (spec D8).
+- [x] **Step 2:** Write failing test: `len(register.methods) == 33`, ids 01-33 unique, mirrors byte-identical. Run → FAIL.
+- [x] **Step 3:** Edit validator/ledger/pins + both yaml rows. `poe gen` → clean. Run: `python -m pytest tests/test_method_register.py -v`. PASS.
+- [x] **Step 4:** Commit `feat: register gains survey usability and emotion methods`.
 
 ### Task 8: three method surfaces (engine)
 
@@ -140,9 +140,9 @@
 - Produces: `async def survey_openend_codes(...)`, `async def usability_severity(...)`, `async def emotion_tag(...)` — signatures copied from `sentiment_screen` (`tools/sentiment_tools.py:128`): same request/response envelope pattern, typed errors. Handlers: survey = cluster answers (embedding + HDBSCAN-free: reuse `clusters_inspect` primitives), label per cluster, count; severity = NLI/lexical rubric match to Nielsen 0-4 anchors; emotion = fixed-taxonomy NLI classify reusing `nli_classify` primitives.
 - Names: `survey_openend_codes`, `usability_severity`, `emotion_tag` (verified collision-free).
 
-- [ ] **Step 1:** Parity/catalogue/registry rows FIRST (registry-first rule). Parity test legs fail → then implement.
-- [ ] **Step 2:** Handlers + CLI + routes + socket arms. Run parity suite + `poe gen --check`. PASS/clean.
-- [ ] **Step 3:** `python -m pytest tests/test_surface_parity_deep.py tests/test_uxr_method_tools.py -v`. PASS. Commit `feat: survey usability emotion method surfaces`.
+- [x] **Step 1:** Parity/catalogue/registry rows FIRST (registry-first rule). Parity test legs fail → then implement.
+- [x] **Step 2:** Handlers + CLI + routes + socket arms. Run parity suite + `poe gen --check`. PASS/clean.
+- [x] **Step 3:** `python -m pytest tests/test_surface_parity_deep.py tests/test_uxr_method_tools.py -v`. PASS. Commit `feat: survey usability emotion method surfaces`.
 
 ### Task 9: method tests + twins + persona baseline (engine)
 
@@ -154,6 +154,6 @@
 - Consumes: duckdb gateway fixture pattern from `tests/test_research_retrieval_duckdb.py`.
 - Produces: each new handler proven on postgres + duckdb twins; persona-meter walk covers 33 methods within ceiling.
 
-- [ ] **Step 1:** Twin tests for the three handlers (degraded zero-vector mode included).
-- [ ] **Step 2:** Re-record persona baseline: `python scripts/persona_meter.py` → commit updated `report.v1.json` if only additive; ceiling violation → stop, report.
-- [ ] **Step 3:** `python -m pytest tests/test_uxr_method_tools.py -v` PASS. Commit `test: twins and persona baseline for new methods`.
+- [x] **Step 1:** Twin tests for the three handlers (degraded zero-vector mode included).
+- [x] **Step 2:** Re-record persona baseline: `python scripts/persona_meter.py` → commit updated `report.v1.json` if only additive; ceiling violation → stop, report.
+- [x] **Step 3:** `python -m pytest tests/test_uxr_method_tools.py -v` PASS. Commit `test: twins and persona baseline for new methods`.
