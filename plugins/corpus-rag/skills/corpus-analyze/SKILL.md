@@ -14,7 +14,7 @@ has a method selector; this skill wraps it in plain language.
 2. Run the router with the question:
 
    ```bash
-   corpus-rag op analysis_route --question "<question>"
+   corpus-rag op analysis_route -p <slug> question="<question>"
    ```
 
    The answer lists ranked methods. Each row has `method_id`, `name`,
