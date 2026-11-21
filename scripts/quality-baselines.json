@@ -81,7 +81,7 @@
     "src/corpus_kb/tools/ingest_store.py": 660,
     "src/corpus_kb/tools/ingest_tools.py": 294,
     "src/corpus_kb/tools/topics_tools.py": 317,
-    "src/corpus_kb/tools/uxr_survey_codes.py": 255,
+    "src/corpus_kb/tools/uxr_survey_codes.py": 273,
     "src/corpus_kb/topics/engine.py": 553,
     "src/corpus_kb/topics/reduction.py": 258,
     "src/corpus_kb/web/fetch.py": 396

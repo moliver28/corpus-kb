@@ -113,6 +113,48 @@ def _trim(text: str) -> str:
     return text if len(text) <= LABEL_MAX_CHARS else text[: LABEL_MAX_CHARS - 1] + "\u2026"
 
 
+def _min_cluster_floor(min_cluster_size: int | None) -> int:
+    """Resolve and check the caller's cluster floor (default wins on None)."""
+    if min_cluster_size is None:
+        return MIN_CLUSTER_SIZE_DEFAULT
+    if (
+        isinstance(min_cluster_size, bool)
+        or not isinstance(min_cluster_size, int)
+        or min_cluster_size < 2
+    ):
+        raise ValidationError("min_cluster_size must be a whole number of 2 or more.")
+    return min_cluster_size
+
+
+def _select_answers(
+    chunks: list[StoredChunk], chunk_ids: list[str] | None
+) -> list[tuple[str, str, str]]:
+    """The (question, chunk_id, answer) triples the requested chunks hold."""
+    if chunk_ids is not None:
+        wanted = {str(chunk_id) for chunk_id in chunk_ids}
+        chunks = [chunk for chunk in chunks if chunk.chunk_id in wanted]
+    answers: list[tuple[str, str, str]] = []  # (question, chunk_id, answer)
+    for chunk in chunks:
+        pair = _survey_answer(chunk)
+        if pair is not None:
+            answers.append((pair[0], chunk.chunk_id, pair[1]))
+    return answers
+
+
+def _group_by_vector(
+    answers: list[tuple[str, str, str]], positions: dict[str, int]
+) -> tuple[dict[str, list[tuple[str, str]]], int]:
+    """Group the answers per question; count the ones without a vector."""
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    excluded = 0
+    for question, chunk_id, answer in answers:
+        if chunk_id in positions:
+            grouped.setdefault(question, []).append((chunk_id, answer))
+        else:
+            excluded += 1
+    return grouped, excluded
+
+
 async def survey_openend_codes(
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
@@ -127,34 +169,15 @@ async def survey_openend_codes(
     ordered question asc, then count desc, then code_id asc. Answers
     without a stored vector are excluded and counted in ``params``.
     """
-    if min_cluster_size is not None and (
-        isinstance(min_cluster_size, bool)
-        or not isinstance(min_cluster_size, int)
-        or min_cluster_size < 2
-    ):
-        raise ValidationError("min_cluster_size must be a whole number of 2 or more.")
+    effective_min = _min_cluster_floor(min_cluster_size)
     cfg = load_config_or_pass(config)
     chunks = await engine.read_chunks(pg_pool, tenant_id, MAX_SURVEY_CHUNKS)
-    if chunk_ids is not None:
-        wanted = {str(chunk_id) for chunk_id in chunk_ids}
-        chunks = [chunk for chunk in chunks if chunk.chunk_id in wanted]
-    answers: list[tuple[str, str, str]] = []  # (question, chunk_id, answer)
-    for chunk in chunks:
-        pair = _survey_answer(chunk)
-        if pair is not None:
-            answers.append((pair[0], chunk.chunk_id, pair[1]))
+    answers = _select_answers(chunks, chunk_ids)
     if not answers:
         return _honest("empty", _EMPTY_REASON, _EMPTY_REMEDY)
     space = await _load_vectors(pg_pool, tenant_id, cfg)
     positions = {chunk_id: index for index, chunk_id in enumerate(space.ids)}
-    grouped: dict[str, list[tuple[str, str]]] = {}
-    excluded = 0
-    for question, chunk_id, answer in answers:
-        if chunk_id in positions:
-            grouped.setdefault(question, []).append((chunk_id, answer))
-        else:
-            excluded += 1
-    effective_min = MIN_CLUSTER_SIZE_DEFAULT if min_cluster_size is None else min_cluster_size
+    grouped, excluded = _group_by_vector(answers, positions)
     codes: list[dict[str, object]] = []
     reductions: set[str] = set()
     for question in sorted(grouped):
@@ -189,11 +212,6 @@ async def survey_openend_codes(
             "excluded_no_vector": excluded,
         },
     }
-
-
-def _dependency_guard() -> None:
-    """Reraise a missing ``[classify]`` extra as the survey-typed error."""
-    raise _SurveyDependencyError(_SurveyDependencyError.remediation)  # pragma: no cover
 
 
 def _single_code(question: str, members: list[tuple[str, str]]) -> dict[str, object]:
