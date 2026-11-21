@@ -21,7 +21,7 @@ enter this envelope; counts are integers.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 
 import asyncpg
 
@@ -81,7 +81,7 @@ def _honest(status: str, reason: str, remedy: str, screened: int = 0) -> dict[st
 
 def _survey_answer(chunk: StoredChunk) -> tuple[str, str] | None:
     """The (question, answer) pair for one survey chunk, else None."""
-    metadata: dict[str, Any] = chunk.metadata or {}
+    metadata: dict[str, object] = chunk.metadata or {}
     if metadata.get("strategy") != "survey" or "question" not in metadata:
         return None
     text = chunk.text
