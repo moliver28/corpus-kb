@@ -32,6 +32,7 @@ from corpus_kb.labeling.engine import StoredChunk
 from ..analysis import vectors
 from .cluster_tools import _cluster, _reduce
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
+from .uxr_survey_code_labels import cluster_code_rows, single_code
 
 __all__ = ["survey_openend_codes"]
 
@@ -43,12 +44,6 @@ MIN_CLUSTER_SIZE_DEFAULT = 5
 
 # One code per question holds every answer below this floor.
 SINGLE_CODE_FLOOR = 2
-
-# Exemplar chunk ids reported per code.
-EXEMPLAR_COUNT = 3
-
-# The cluster label is the exemplar answer, trimmed to this width.
-LABEL_MAX_CHARS = 80
 
 _EMPTY_REASON = (
     "the tenant has no stored survey answers (no chunks carry the survey strategy metadata)."
@@ -105,12 +100,6 @@ async def _load_vectors(
 ) -> vectors.VectorSpace:
     """The vector seam (tests substitute fakes here)."""
     return await vectors.load_tenant_vectors(pg_pool, tenant_id, config)
-
-
-def _trim(text: str) -> str:
-    """The cluster label: the exemplar answer, trimmed to the width cap."""
-    text = " ".join(text.split())
-    return text if len(text) <= LABEL_MAX_CHARS else text[: LABEL_MAX_CHARS - 1] + "\u2026"
 
 
 def _min_cluster_floor(min_cluster_size: int | None) -> int:
@@ -183,7 +172,7 @@ async def survey_openend_codes(
     for question in sorted(grouped):
         members = grouped[question]
         if len(members) < max(SINGLE_CODE_FLOOR, effective_min):
-            codes.append(_single_code(question, members))
+            codes.append(single_code(question, members))
             continue
         matrix = space.matrix[[positions[cid] for cid, _ in members]]
         try:
@@ -192,7 +181,7 @@ async def survey_openend_codes(
         except DependencyMissingError:
             raise _SurveyDependencyError(_SurveyDependencyError.remediation) from None
         reductions.add(reduction)
-        codes.extend(_cluster_codes(question, members, reduced, labels))
+        codes.extend(cluster_code_rows(question, members, reduced, labels))
     codes.sort(
         key=lambda row: (
             str(row["question"]),
@@ -212,62 +201,3 @@ async def survey_openend_codes(
             "excluded_no_vector": excluded,
         },
     }
-
-
-def _single_code(question: str, members: list[tuple[str, str]]) -> dict[str, object]:
-    """One code below the cluster floor; the label is the first answer."""
-    first = min(members, key=lambda member: member[0])
-    return {
-        "question": question,
-        "code_id": "c-1",
-        "label": _trim(first[1]),
-        "count": len(members),
-        "exemplar_chunk_ids": [member[0] for member in members[:EXEMPLAR_COUNT]],
-    }
-
-
-def _cluster_codes(
-    question: str,
-    members: list[tuple[str, str]],
-    reduced: Any,
-    labels: Any,
-) -> list[dict[str, object]]:
-    """Per-cluster code rows; noise members join one unclustered code."""
-    clusters: dict[int, list[int]] = {}
-    noise: list[int] = []
-    for position, label in enumerate(labels.tolist()):
-        if label < 0:
-            noise.append(position)
-        else:
-            clusters.setdefault(int(label), []).append(position)
-    ranked: list[tuple[int, list[int]]] = sorted(
-        clusters.items(), key=lambda item: (-len(item[1]), item[0])
-    )
-    rows: list[dict[str, object]] = []
-    for number, (_cluster_id, positions_) in enumerate(ranked, start=1):
-        centroid = reduced[positions_].mean(axis=0)
-        ordered = sorted(
-            positions_,
-            key=lambda p: (float(abs(reduced[p] - centroid).sum()), members[p][0]),
-        )
-        rows.append(
-            {
-                "question": question,
-                "code_id": f"c-{number}",
-                "label": _trim(members[ordered[0]][1]),
-                "count": len(positions_),
-                "exemplar_chunk_ids": [members[p][0] for p in ordered[:EXEMPLAR_COUNT]],
-            }
-        )
-    if noise:
-        ordered = sorted(noise, key=lambda p: members[p][0])
-        rows.append(
-            {
-                "question": question,
-                "code_id": f"c-{len(ranked) + 1}",
-                "label": "unclustered answers",
-                "count": len(noise),
-                "exemplar_chunk_ids": [members[p][0] for p in ordered[:EXEMPLAR_COUNT]],
-            }
-        )
-    return rows
