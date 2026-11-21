@@ -11,19 +11,29 @@ has a method selector; this skill wraps it in plain language.
 ## Steps
 
 1. Collect the question in one sentence. Ask the user if it is unclear.
-2. Ask the engine to name the method:
+2. Run the router with the question:
 
    ```bash
-   corpus-kb analysis-select-method
+   corpus-rag op analysis-route --question "<question>"
    ```
 
-   Follow the engine's prompt for the question text. The output names a
-   method and says why it fits.
-3. Explain the choice in plain English. One short paragraph: what the method
-   does, what data it needs, what the result will mean.
-4. Suggest the next question the user can ask. Offer to run the method.
-5. If the engine names more than one method, present them as a short list.
-   Say what each one answers and let the user pick.
+   The answer lists ranked methods. Each row has `method_id`, `name`,
+   `why`, and `run_hint`. Present the ranked rows as a short list in
+   plain English.
+3. Read the `status` field on the answer. When it says `degraded`, tell
+   the user routing ran in degraded mode. Do not claim a confident
+   winner then.
+4. Explain the top rows in plain English. One short paragraph each:
+   what the method does, what data it needs, what the result will mean.
+5. Ask the user to confirm a method. On confirm, run it with its run
+   hint:
+
+   ```bash
+   corpus-rag op <run_hint.op> <run_hint.params>
+   ```
+
+   Read the exact parameter names first with `corpus-rag ops` when the
+   hint is short. Do not guess parameter names.
 
 ## Notes
 
