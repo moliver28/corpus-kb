@@ -76,12 +76,29 @@ never guess a class. Never run analysis from a hook.
     a researcher line covers are skipped.
 11. **Rollup.** `corpus-rag uxr rollup --dir <path>`. Exit 1 means too
     many unverified rows; stop and show the researcher.
-12. **Contract.** `corpus-rag uxr contract-test --evidence-file <f>`,
+12. **Method support pass.** The engine registry adds a machine view
+    over the same rows. Send each op through `corpus-rag op <name>
+    -p <slug>`:
+
+    - `keyphrases_extract` on the question set. It names the words the
+      participants repeat.
+    - `clusters_inspect` to group the rows. It shows which answers
+      travel together.
+    - `sentiment_screen` per question. It scores the stance strength
+      per unit.
+    - `contradictions_screen` across stances. It flags units that pull
+      both ways.
+
+    Method output advises; the researcher decides. Read
+    `references/epistemological-caution.md` before you present any
+    method result. Show each result as one advisory line, never as a
+    finding.
+13. **Contract.** `corpus-rag uxr contract-test --evidence-file <f>`,
     or the `uxr_report_tool` userConfig option. Exit 1 means the report
     tool output differs; do not write the report.
-13. **One narrative call.** Write the themes narrative with one model
+14. **One narrative call.** Write the themes narrative with one model
     call over the rollup and the checked rows.
-14. **Themes.** `corpus-rag uxr write-themes --narrative-file <f>
+15. **Themes.** `corpus-rag uxr write-themes --narrative-file <f>
     --dir <path>`. The command writes only between the `corpus:begin`
     and `corpus:end` markers in `analysis/themes.md`. It never opens
     `analysis/codes.md`.
