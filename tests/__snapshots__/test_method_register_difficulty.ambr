@@ -262,8 +262,8 @@
       'depth': 0,
       'ei': 2,
       'id': '33',
-      'matches': False,
-      'stored': 'intermediate',
+      'matches': True,
+      'stored': 'novice',
     }),
   ])
 # ---

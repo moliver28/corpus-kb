@@ -1930,7 +1930,7 @@ methods:
       - "Which records show mixed or weak emotions?"
       - "Do the tags match a hand-read sample?"
       - "Does the model choice change the tags?"
-    difficulty: "intermediate"
+    difficulty: "novice"
     concepts: ["classification", "sentiment_analysis"]
     produces: ["labels"]
     consumes: []
