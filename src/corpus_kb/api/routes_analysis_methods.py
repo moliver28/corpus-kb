@@ -1,10 +1,11 @@
-"""Analysis method routes (AMR program wave 2).
+"""Analysis method routes (AMR program wave 2 + wave-4 methods).
 
-Twelve thin adapters, one per catalogue row: POST
+Fifteen thin adapters, one per catalogue row: POST
 /api/analysis/<kebab of the op name>. Each route parses JSON, calls the
 shared handler, and returns JSONResponse through ``@route_errors``
 (api._body) — ONE error path. Handler imports stay in the route bodies
 so tests can monkeypatch them. ``unavailable`` answers 503.
+``method_routes`` builds the three wave-4 routes for http.py.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
@@ -300,3 +302,12 @@ async def active_learn_next_route(request: Request) -> JSONResponse:
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
+
+
+def method_routes() -> list[Route]:
+    """The three wave-4 method routes for the main Starlette app."""
+    return [
+        Route("/api/analysis/survey-openend-codes", survey_openend_codes_route, methods=["POST"]),
+        Route("/api/analysis/usability-severity", usability_severity_route, methods=["POST"]),
+        Route("/api/analysis/emotion-tag", emotion_tag_route, methods=["POST"]),
+    ]

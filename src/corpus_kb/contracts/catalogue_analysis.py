@@ -1,39 +1,37 @@
 """The operation catalogue: the analysis family (analysis program W0 + AMR).
 
 ``analysis_backfill_dates`` is the one-shot date-provenance backfill
-(WP-1: chunks metadata -> ``documents.document_date``, the migration 027
-rule, callable after new ingests). ``analyze_run`` is the composed
-corpus analysis (WP-5): date coverage + labeling + classification +
-trends into one deterministic, snapshot-able report.
+(WP-1: chunks metadata -> ``documents.document_date``, migration 027,
+after new ingests). ``analyze_run`` is the composed corpus analysis
+(WP-5): date coverage + labeling + classification + trends into one
+deterministic, snapshot-able report.
 
-The twelve AMR rows (analysis method register program, wave 2) register
-the register-backed methods: the selector plus the keyphrase, lexical,
-vector-space, NLI, sentiment, and active-learning ops of wave 1. The
-routing row ``analysis_route`` (question-routing program, wave 3) is the
-question front door over the same register. Their
-handlers are real; the honest guard paths (``disabled``/``unavailable``/
-``empty``) carry the same contract keys. ``clusters_inspect`` also
-returns a ``params`` record on success (the reduction that ran, the
-random state, the resolved minimum) — declared per surface through
-``http_extra``/``socket_extra``. Registry-first rule: change the row
-first, then the surfaces, then the gates. All strings are plain English
-(ASD-STE100).
+The AMR rows (analysis method register program, wave 2) register the
+register-backed methods: the selector plus the keyphrase, lexical,
+vector-space, NLI, sentiment, and active-learning ops of wave 1, plus
+the three wave-4 UXR methods spliced in from ``catalogue_uxr_methods``.
+The routing row ``analysis_route`` (wave 3) is the question front door
+over the same register. Handlers are real; the honest guard paths
+(``disabled``/``unavailable``/``empty``) carry the same contract keys.
+Registry-first rule: change the row first, then the surfaces, then the
+gates. All strings are plain English (ASD-STE100).
 """
 
 from __future__ import annotations
 
+from corpus_kb.contracts.catalogue_uxr_methods import splice_uxr_methods
 from corpus_kb.contracts.model import (
     CLI,
-    DEFAULT_TENANT_ID,
     HTTP,
     MCP,
+    NLI_PREDICTIONS_ENVELOPE,
+    PREDICTIONS_ENVELOPE,
     SOCKET,
+    TENANT_PARAM,
     Operation,
     ParamSpec,
     SurfaceSpec,
 )
-
-_TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
 
 # Guaranteed-on-success keys only: the disabled/unavailable reasons stay
 # off the tuple (the envelopes.py rule).
@@ -54,15 +52,12 @@ SELECT_ENVELOPE = ("status", "register_version", "recommendations")
 # joins the guaranteed tuple (novice-UX W3c).
 ROUTE_ENVELOPE = ("status", "intent", "ranked", "next_methods", "trace")
 KEYPHRASES_ENVELOPE = ("status", "keyphrases", "variant", "screened_count")
-PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")
-NLI_PREDICTIONS_ENVELOPE = ("status", "predictions", "model", "screened_count")
 CLUSTERS_ENVELOPE = ("status", "clusters", "noise_count", "screened_count")
 DUPLICATES_ENVELOPE = ("status", "pairs", "threshold", "screened_count", "excluded_zero_count")
 OUTLIERS_ENVELOPE = ("status", "outliers", "screened_count", "excluded_zero_count")
 CONTRADICTIONS_ENVELOPE = ("status", "pairs", "screened_count")
 RANKED_ENVELOPE = ("status", "ranked", "strategy", "requested_batch")
 META_EMBED_ENVELOPE = ("status", "kinds", "built", "per_kind", "notes")
-SURVEY_CODES_ENVELOPE = ("status", "codes", "screened_count")
 
 ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -74,7 +69,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             "analysis.topics.over_time.enabled."
         ),
         handler="corpus_kb.tools.analysis_tools:analysis_backfill_dates",
-        params=(_TENANT,),
+        params=(TENANT_PARAM,),
         envelope_keys=BACKFILL_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "analysis_backfill_dates"),
@@ -93,7 +88,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             "while every analysis flag is false."
         ),
         handler="corpus_kb.tools.analysis_tools:analyze_run",
-        params=(ParamSpec("output", default=None), _TENANT),
+        params=(ParamSpec("output", default=None), TENANT_PARAM),
         envelope_keys=ANALYZE_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "analyze_run"),
@@ -117,7 +112,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("output_family", default=None),
             ParamSpec("inputs_available", default=None),
             ParamSpec("max_complexity_tier", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=SELECT_ENVELOPE,
         surfaces=(
@@ -141,7 +136,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("question", required=True),
             ParamSpec("method_id", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=ROUTE_ENVELOPE,
         surfaces=(
@@ -164,7 +159,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("variant", default="tfidf"),
             ParamSpec("limit", default=20),
             ParamSpec("chunk_ids", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=KEYPHRASES_ENVELOPE,
         surfaces=(
@@ -183,7 +178,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             "labels and score the corpus. Register method 15."
         ),
         handler="corpus_kb.tools.lexical_tools:lexical_classify",
-        params=(ParamSpec("chunk_ids", default=None), _TENANT),
+        params=(ParamSpec("chunk_ids", default=None), TENANT_PARAM),
         envelope_keys=PREDICTIONS_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "lexical_classify"),
@@ -203,7 +198,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("k", default=5),
             ParamSpec("chunk_ids", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=PREDICTIONS_ENVELOPE,
         surfaces=(
@@ -224,7 +219,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("abstain_margin", default=0.05),
             ParamSpec("chunk_ids", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=PREDICTIONS_ENVELOPE,
         surfaces=(
@@ -246,7 +241,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("min_cluster_size", default=None),
             ParamSpec("sample_cap", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=CLUSTERS_ENVELOPE,
         http_extra=frozenset({"params"}),
@@ -269,7 +264,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("threshold", default=0.98),
             ParamSpec("limit", default=100),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=DUPLICATES_ENVELOPE,
         surfaces=(
@@ -288,7 +283,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("k", default=10),
             ParamSpec("limit", default=20),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=OUTLIERS_ENVELOPE,
         surfaces=(
@@ -311,7 +306,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("chunk_ids", default=None),
             ParamSpec("limit", default=50),
             ParamSpec("model", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=NLI_PREDICTIONS_ENVELOPE,
         surfaces=(
@@ -334,7 +329,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("candidate_k", default=5),
             ParamSpec("limit", default=50),
             ParamSpec("model", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=CONTRADICTIONS_ENVELOPE,
         surfaces=(
@@ -356,7 +351,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("chunk_ids", default=None),
             ParamSpec("limit", default=None),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=PREDICTIONS_ENVELOPE,
         surfaces=(
@@ -364,74 +359,6 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "sentiment-screen"),
             SurfaceSpec(HTTP, "/api/analysis/sentiment-screen", "POST"),
             SurfaceSpec(SOCKET, "sentiment_screen"),
-        ),
-        exit_codes=(0, 1, 2, 3),
-    ),
-    Operation(
-        name="survey_openend_codes",
-        family="analysis",
-        description=(
-            "Group open-ended survey answers per question into labeled "
-            "clusters; report each code with its answer count. Register "
-            "method 31."
-        ),
-        handler="corpus_kb.tools.uxr_survey_codes:survey_openend_codes",
-        params=(
-            ParamSpec("chunk_ids", default=None),
-            ParamSpec("min_cluster_size", default=None),
-            _TENANT,
-        ),
-        envelope_keys=SURVEY_CODES_ENVELOPE,
-        surfaces=(
-            SurfaceSpec(MCP, "survey_openend_codes"),
-            SurfaceSpec(CLI, "survey-openend-codes"),
-            SurfaceSpec(HTTP, "/api/analysis/survey-openend-codes", "POST"),
-            SurfaceSpec(SOCKET, "survey_openend_codes"),
-        ),
-        exit_codes=(0, 1, 2, 3),
-    ),
-    Operation(
-        name="usability_severity",
-        family="analysis",
-        description=(
-            "Rate each finding from 0 to 4 with the fixed anchor rubric; "
-            "unmatched rows route to review. Register method 32."
-        ),
-        handler="corpus_kb.tools.uxr_method_tools:usability_severity",
-        params=(
-            ParamSpec("chunk_ids", default=None),
-            ParamSpec("limit", default=None),
-            _TENANT,
-        ),
-        envelope_keys=PREDICTIONS_ENVELOPE,
-        surfaces=(
-            SurfaceSpec(MCP, "usability_severity"),
-            SurfaceSpec(CLI, "usability-severity"),
-            SurfaceSpec(HTTP, "/api/analysis/usability-severity", "POST"),
-            SurfaceSpec(SOCKET, "usability_severity"),
-        ),
-        exit_codes=(0, 1, 2, 3),
-    ),
-    Operation(
-        name="emotion_tag",
-        family="analysis",
-        description=(
-            "Tag each chunk with one of eight fixed emotions through "
-            "entailment judgments. Register method 33."
-        ),
-        handler="corpus_kb.tools.uxr_method_tools:emotion_tag",
-        params=(
-            ParamSpec("chunk_ids", default=None),
-            ParamSpec("limit", default=50),
-            ParamSpec("model", default=None),
-            _TENANT,
-        ),
-        envelope_keys=NLI_PREDICTIONS_ENVELOPE,
-        surfaces=(
-            SurfaceSpec(MCP, "emotion_tag"),
-            SurfaceSpec(CLI, "emotion-tag"),
-            SurfaceSpec(HTTP, "/api/analysis/emotion-tag", "POST"),
-            SurfaceSpec(SOCKET, "emotion_tag"),
         ),
         exit_codes=(0, 1, 2, 3),
     ),
@@ -446,7 +373,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("strategy", default="margin"),
             ParamSpec("batch", default=10),
-            _TENANT,
+            TENANT_PARAM,
         ),
         envelope_keys=RANKED_ENVELOPE,
         surfaces=(
@@ -467,7 +394,7 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             "comma list or 'all'."
         ),
         handler="corpus_kb.tools.meta_embed_tools:analysis_embed_meta",
-        params=(ParamSpec("kinds"), _TENANT),
+        params=(ParamSpec("kinds"), TENANT_PARAM),
         envelope_keys=META_EMBED_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "analysis_embed_meta"),
@@ -478,3 +405,6 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
         exit_codes=(0, 1, 2, 3),
     ),
 )
+
+
+ANALYSIS_OPERATIONS = splice_uxr_methods(ANALYSIS_OPERATIONS)
