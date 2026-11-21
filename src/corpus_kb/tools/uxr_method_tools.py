@@ -141,9 +141,7 @@ async def usability_severity(
     severity, matched_terms, review) ordered severity desc then chunk id
     asc. Rows are screening flags, not measured impact.
     """
-    if limit is not None and (
-        isinstance(limit, bool) or not isinstance(limit, int) or limit < 1
-    ):
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
         raise ValidationError("limit must be a whole number of 1 or more.")
     chunks = await _load_texts(pg_pool, tenant_id, config)
     if chunk_ids is not None:
