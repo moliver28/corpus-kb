@@ -18,6 +18,7 @@ from corpus_kb.analysis.method_register_ids import EXPECTED_IDS
 from corpus_kb.analysis.settings import load_analysis_settings
 from corpus_kb.errors import ValidationError
 
+
 def _packaged_register_path(file_name: str) -> Path | None:
     """The packaged mirror inside the installed ``corpus_kb`` package."""
     ref = resources.files("corpus_kb") / "config" / file_name

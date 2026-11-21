@@ -92,7 +92,7 @@ def _check_after(record: DataflowRecord) -> None:
     for link in links:
         if not _ID_SHAPE.fullmatch(link) or not 1 <= int(link) <= EXPECTED_MAX_ID:
             raise ValueError(
-                f'after: {link!r} is not a method id. Use zero-padded string ids '
+                f"after: {link!r} is not a method id. Use zero-padded string ids "
                 f'"01" to "{EXPECTED_MAX_ID:02d}".'
             )
     if len(set(links)) != len(links):

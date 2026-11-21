@@ -234,9 +234,7 @@ def create_http_app() -> FastAPI:
         Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
         Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
         Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
-        Route(
-            "/api/analysis/survey-openend-codes", survey_openend_codes_route, methods=["POST"]
-        ),
+        Route("/api/analysis/survey-openend-codes", survey_openend_codes_route, methods=["POST"]),
         Route("/api/analysis/usability-severity", usability_severity_route, methods=["POST"]),
         Route("/api/analysis/emotion-tag", emotion_tag_route, methods=["POST"]),
         # Living Corpus W6: the meta-embedding build op.
