@@ -29,6 +29,25 @@ Pick the study first (`-p <slug>`), then send the stage's op:
 | Full cycle | `corpus-rag op research_cycle -p <slug> mode=in` |
 | Narrated demo | `corpus-rag op research_demo -p <slug>` |
 
+Analysis methods (each op needs the right input columns; read the exact
+arguments first with `corpus-rag ops --family analysis`):
+
+| Stage | Command |
+|---|---|
+| Route a question to a method | `corpus-rag op analysis_route -p <slug> question="<question>"` |
+| Active learning next | `corpus-rag op active_learn_next -p <slug>` |
+| Pick a method by hand | `corpus-rag op analysis_select_method -p <slug> question="<question>"` |
+| Centroids classify | `corpus-rag op centroids_classify -p <slug>` |
+| Cluster inspect | `corpus-rag op clusters_inspect -p <slug>` |
+| Contradictions screen | `corpus-rag op contradictions_screen -p <slug>` |
+| Duplicates screen | `corpus-rag op duplicates_screen -p <slug>` |
+| Keyphrases extract | `corpus-rag op keyphrases_extract -p <slug>` |
+| Lexical classify | `corpus-rag op lexical_classify -p <slug>` |
+| Neighbors classify | `corpus-rag op neighbors_classify -p <slug>` |
+| NLI classify | `corpus-rag op nli_classify -p <slug>` |
+| Outliers rank | `corpus-rag op outliers_rank -p <slug>` |
+| Sentiment screen | `corpus-rag op sentiment_screen -p <slug>` |
+
 Release stage (each op needs a `codebook_version_id`; read the exact
 arguments first with `corpus-rag ops --family release`):
 
