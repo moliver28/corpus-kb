@@ -323,6 +323,83 @@ async def test_30_outliers_rank_contract(both_pool: Any) -> None:
     assert [row["chunk_id"] for row in envelope["outliers"]] == [_AA, _BB, _CC]
 
 
+async def test_31_survey_openend_codes_contract(both_pool: Any) -> None:
+    """Answers group per question; below the floor each question gets one code."""
+    from corpus_kb.storage.tenant_conn import tenant_connection
+    from corpus_kb.tools import uxr_survey_codes
+
+    texts = {
+        _AA: "Q: onboarding\nA: the export failed once",
+        _BB: "Q: onboarding\nA: the export failed again",
+        _CC: "Q: pricing\nA: the plan is slow",
+        _DD: "Q: pricing\nA: the plan is slow too",
+    }
+    await _seed(
+        both_pool,
+        TENANT,
+        {_AA: _vec(1.0), _BB: _vec(1.0), _CC: _vec(0.0, 1.0), _DD: _vec(0.0, 1.0)},
+        texts,
+    )
+    questions = {_AA: "onboarding", _BB: "onboarding", _CC: "pricing", _DD: "pricing"}
+    async with tenant_connection(both_pool, TENANT) as conn:
+        for chunk_id, question in questions.items():
+            await conn.execute(
+                "UPDATE chunks SET metadata = $1::jsonb WHERE tenant_id = $2 AND chunk_id = $3",
+                json.dumps({"strategy": "survey", "question": question}),
+                TENANT,
+                chunk_id,
+            )
+    envelope = await uxr_survey_codes.survey_openend_codes(both_pool, {}, TENANT)
+    _assert_contract("31", envelope, "codes")
+    assert envelope["screened_count"] == 4
+    assert [row["question"] for row in envelope["codes"]] == ["onboarding", "pricing"]
+    assert all(row["code_id"] == "c-1" and row["count"] == 2 for row in envelope["codes"])
+    assert all(len(row["exemplar_chunk_ids"]) == 2 for row in envelope["codes"])
+
+
+async def test_32_usability_severity_contract(both_pool: Any) -> None:
+    """Anchor rubric: rows order severity desc, then chunk id on ties."""
+    from corpus_kb.tools import uxr_method_tools
+
+    await _seed(
+        both_pool,
+        TENANT,
+        texts={
+            _AA: "the app crashes and loses data",
+            _BB: "the export is slow and annoying",
+            _CC: "a minor typo in the wording",
+            _DD: "the chart is hard to read",
+        },
+    )
+    envelope = await uxr_method_tools.usability_severity(both_pool, {}, TENANT)
+    _assert_contract("32", envelope, "predictions")
+    rows = envelope["predictions"]
+    assert [row["chunk_id"] for row in rows] == [_AA, _DD, _BB, _CC]
+    assert rows[0]["severity"] == 4
+    assert rows[0]["matched_terms"] == ["crash", "loses data"]
+    assert [row["severity"] for row in rows[1:]] == [2, 1, 1]
+    assert all(row["review"] is False for row in rows)
+
+
+async def test_33_emotion_tag_contract(both_pool: Any, monkeypatch: Any) -> None:
+    """Canned ENTAIL verdicts: every label ties; the first label wins."""
+    import corpus_kb.analysis.nli_contract as nli_contract_module
+    from corpus_kb.tools import uxr_method_tools
+
+    async def canned(prompt: str, model: str, base_url: str) -> str:
+        return "ENTAIL"
+
+    monkeypatch.setattr(nli_contract_module, "judge_verdict", canned)
+    await _seed(both_pool, TENANT, {_AA: _vec(1.0, 0.0), _BB: _vec(0.0, 1.0)})
+    envelope = await uxr_method_tools.emotion_tag(both_pool, {}, TENANT, model="stub")
+    _assert_contract("33", envelope, "predictions")
+    rows = envelope["predictions"]
+    assert [row["chunk_id"] for row in rows] == [_AA, _BB]
+    assert all(row["label"] == "anger" for row in rows)  # the declared tiebreaker
+    assert all(row["entailment_score"] == 2.0 for row in rows)
+    assert all(len(row["scores"]) == 8 for row in rows)
+
+
 async def test_12_clusters_inspect_contract(both_pool: Any) -> None:
     """Two tight groups of six: equal-size clusters tie and order by cluster id.
 

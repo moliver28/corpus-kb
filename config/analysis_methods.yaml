@@ -1947,6 +1947,9 @@ methods:
           type: "number"
           description: "The winning emotion's entailment score."
           unit: "entailment score"
+        - name: "scores"
+          type: "object_list"
+          description: "Every emotion with its score, score descending then label ascending."
       order_by: ["chunk_id"]
       ties: "Score ties pick the alphabetically first emotion."
       precision: 6

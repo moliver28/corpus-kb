@@ -616,7 +616,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Ask it: "Which emotions do these messages express?" / "Tag each comment with a basic emotion." / "I want emotion labels from a fixed set."
   - Follow-ups: "Which records show mixed or weak emotions?" / "Do the tags match a hand-read sample?" / "Does the model choice change the tags?"
   - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
-  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, entailment score). Order: `chunk_id`. Round to 6 places.
+  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, entailment score), `scores` (object_list). Order: `chunk_id`. Round to 6 places.
   - Ties: Score ties pick the alphabetically first emotion.
   - Shares divide by `screened_count`.
   - Caveats: Zero-shot entailment judgments, not a trained emotion model.
