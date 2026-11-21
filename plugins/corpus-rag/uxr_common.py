@@ -101,6 +101,8 @@ def add_uxr_subparser(subs) -> None:
     uquote.add_argument("--quote", required=True, help="The quote text")
     uquote.add_argument("--unit-text", default=None, help="The unit text to check against")
     uquote.add_argument("--unit-file", default=None, help="A file holding the unit text")
+    uquote.add_argument("-p", "--study-slug", default=None,
+                        help="A study, for an advisory second opinion on near misses")
 
     urows = uxr_subs.add_parser(
         "validate-rows", help="Check stance rows; failed rows stay unverified."

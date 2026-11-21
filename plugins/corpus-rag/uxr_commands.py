@@ -24,6 +24,7 @@ import study_commands
 import study_server
 import uxr_classify
 import uxr_files
+import uxr_merge
 import uxr_store
 from uxr_common import UXR_POST_SEARCH, UxrError, json_payload, root_of, slug_for
 
@@ -165,12 +166,36 @@ def cmd_uxr_classify(args) -> int:
         speakers = ", ".join(row["speakers"]) or "-"
         flag = " (a line may hide a speaker)" if row["uncertain"] else ""
         print(f"{row['class']}\t{row['path']}\tspeakers: {speakers}{flag}")
-    unmatched = sum(1 for row in rows if row["class"] == uxr_classify.UNMATCHED)
+    unmatched = [row for row in rows if row["class"] == uxr_classify.UNMATCHED]
     if unmatched:
-        print(f"{unmatched} unmatched file(s). Show them to the researcher; never guess a class.")
+        print(f"{len(unmatched)} unmatched file(s). Show them to the researcher; never guess a class.")
+        _print_unmatched_assist(args, unmatched)
     payload = [{"path": row["path"], "class": row["class"]} for row in rows]
     print("payload: " + json.dumps(payload))
     return 0
+
+
+def _print_unmatched_assist(args, unmatched: list[dict]) -> None:
+    """Advisory nearest-corpus suggestions for unmatched files; fail-open.
+
+    The ``search`` op takes a plain query, so the file stem drives it.
+    The suggestion never sets a class; the researcher still decides.
+    """
+    hits_seen = False
+    for row in unmatched:
+        envelope = uxr_merge.nearest_documents(args.study_slug, Path(row["path"]).stem)
+        result = envelope.get("result") if isinstance(envelope, dict) else None
+        if not isinstance(result, list) or not result:
+            continue
+        hits_seen = True
+        names = ", ".join(
+            str(hit.get("document_source") or hit.get("chunk_id") or "?")
+            for hit in result[:3]
+            if isinstance(hit, dict)
+        )
+        print(f"nearest corpus text for {row['path']}: {names} (advisory only)")
+    if hits_seen:
+        print("These are search hits, not classes. Ask the researcher to decide.")
 
 
 def cmd_uxr_confirm_classes(args) -> int:
@@ -228,4 +253,23 @@ def cmd_uxr_check_quote(args) -> int:
         unit_text = str(args.unit_text or "")
     verdict = uxr_quotes.check_quote(args.quote, unit_text)
     print(f"check-quote: {verdict}")
+    if verdict == uxr_quotes.NEAR_MISS:
+        _print_second_opinion(args)
     return 0 if verdict != uxr_quotes.FAIL else 1
+
+
+def _print_second_opinion(args) -> None:
+    """An advisory engine search beside a near miss; the gate is difflib."""
+    sender = uxr_merge.search_sender(getattr(args, "study_slug", None))
+    second = uxr_merge.quote_second_opinion(args.quote, sender)
+    if not second:
+        return
+    result = second.get("result")
+    if not isinstance(result, list) or not result:
+        return
+    names = ", ".join(
+        str(hit.get("document_source") or hit.get("chunk_id") or "?")
+        for hit in result[:3]
+        if isinstance(hit, dict)
+    )
+    print(f"second opinion (advisory; the difflib gate stands): {names}")
