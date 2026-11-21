@@ -26,7 +26,7 @@ UXR_SKILL = (PLUGIN / "skills/corpus-uxr/SKILL.md").read_text(encoding="utf-8")
 
 
 def test_analyze_skill_names_the_router() -> None:
-    assert "analysis-route" in ANALYZE_SKILL
+    assert "analysis_route" in ANALYZE_SKILL
 
 
 def test_analyze_skill_presents_run_hint_rows() -> None:
@@ -44,15 +44,15 @@ def test_analyze_skill_renders_degraded_mode() -> None:
 
 
 def test_analyze_command_follows_the_router() -> None:
-    assert "analysis-route" in ANALYZE_COMMAND
+    assert "analysis_route" in ANALYZE_COMMAND
 
 
 def test_uxr_skill_names_the_four_method_ops() -> None:
     for op in (
-        "keyphrases-extract",
-        "clusters-inspect",
-        "sentiment-screen",
-        "contradictions-screen",
+        "keyphrases_extract",
+        "clusters_inspect",
+        "sentiment_screen",
+        "contradictions_screen",
     ):
         assert op in UXR_SKILL, op
 
