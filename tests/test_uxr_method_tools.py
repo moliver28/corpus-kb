@@ -182,6 +182,15 @@ async def test_severity_limit_and_empty(monkeypatch: pytest.MonkeyPatch) -> None
     assert len(result["predictions"]) == 1
 
 
+@pytest.mark.parametrize("bad_limit", [0, -3, True, 1.5, "2"])
+async def test_severity_rejects_bad_limit(bad_limit: object) -> None:
+    """Invalid limits raise the typed error before any read (issue #531)."""
+    with pytest.raises(ValidationError):
+        await uxr_method_tools.usability_severity(
+            None, config={}, tenant_id=TENANT, limit=bad_limit
+        )
+
+
 # ---------------------------------------------------------------------------
 # emotion_tag (33)
 # ---------------------------------------------------------------------------
