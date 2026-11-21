@@ -91,7 +91,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
 | 28 | NLI-based contradiction screening | `errors` | `raw_text`, LLM, `timestamps` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `contradictions_screen` |
 | 29 | Near-duplicate and paraphrase detection | `errors` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `baseline` | `novice` | new op | `duplicates_screen` |
 | 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | `novice` | new op | `outliers_rank` |
-| 31 | Survey open-end coding | `labels` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | `novice` | new op | `survey_openend_codes` |
+| 31 | Survey open-end coding | `labels` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `survey_openend_codes` |
 | 32 | Usability severity rating | `scores` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | new op | `usability_severity` |
 | 33 | Emotion tagging (fixed taxonomy) | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `intermediate` | new op | `emotion_tag` |
 
@@ -371,7 +371,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Wording, lexical overlap, and syntax can produce wrong support judgments. Bias: Label descriptions and training-domain assumptions shape the results.
   - Difficulty: `intermediate`.
   - Teaches: `classification`.
-  - Next: `04` Dictionary or rule-based classification, `33` Emotion tagging (fixed taxonomy).
+  - Next: `04` Dictionary or rule-based classification.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Lexical overlap and syntax can flip support judgments.
   - Limits: Pilot triage only; scores are not established probabilities.
@@ -570,7 +570,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Claim only: Per-question code labels, counts, and exemplar answers from the stored survey chunks.
   - Do not claim: Do not claim the cluster labels are verified themes without a hand check.
   - Cautions: Cluster shapes change with the representation, and small but important groups can hide in the noise. Bias: Common wording can dominate the clusters, and rare answers can disappear into them.
-  - Difficulty: `novice`.
+  - Difficulty: `intermediate`.
   - Teaches: `clustering`, `qualitative_coding`.
   - Requires: `24` Extractive question answering.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
@@ -608,7 +608,6 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Mixed feelings, irony, and statement wording can flip entailment judgments. Bias: The statement wording and the model's training domain shape the judgments.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `sentiment_analysis`.
-  - Requires: `18` Zero-shot NLI classification.
   - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
   - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `inferential_calibrated`, cost tier `batch`.
@@ -638,5 +637,5 @@ Method 08 computes novice; the register pins intermediate.
 Method 09 computes advanced; the register pins intermediate.
 Method 12 computes advanced; the register pins intermediate.
 Method 18 computes novice; the register pins intermediate.
-Method 31 computes intermediate; the register pins novice.
+Method 33 computes novice; the register pins intermediate.
 <!-- amr-register:generated:end -->

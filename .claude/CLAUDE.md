@@ -121,6 +121,9 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-nli-classify` | `corpus-kb nli-classify` | `nli_classify` | Zero-shot labels via entailment judgments per hypothesis. |
 | `corpus-contradictions-screen` | `corpus-kb contradictions-screen` | `contradictions_screen` | Candidate pairs the NLI model marks CONTRADICT, for human review. |
 | `corpus-sentiment-screen` | `corpus-kb sentiment-screen` | `sentiment_screen` | Preset lexicon sentiment screen (vote aggregation, honest note). |
+| `corpus-survey-openend-codes` | `corpus-kb survey-openend-codes` | `survey_openend_codes` | Code open-ended survey answers per question (cluster, label, count). |
+| `corpus-usability-severity` | `corpus-kb usability-severity` | `usability_severity` | Score findings with the fixed 0-4 severity rubric. |
+| `corpus-emotion-tag` | `corpus-kb emotion-tag` | `emotion_tag` | Tag chunks with the fixed eight-emotion set via entailment. |
 | `corpus-active-learn-next` | `corpus-kb active-learn-next` | `active_learn_next` | Rank stored predictions for the next human-labeling batch. |
 | `corpus-coding-ops` | `corpus-kb coding embed-codebook` | `coding_embed_codebook` | Validate, embed, and load one codebook; answers its version id. |
 | `corpus-coding-ops` | `corpus-kb coding pool` | `coding_pool` | Run pooling (keyword hits, similarity) and coverage reconciliation. |

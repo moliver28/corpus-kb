@@ -40,6 +40,9 @@ METHOD_FOR_OP: dict[str, str | None] = {
     "contradictions_screen": "28",
     "duplicates_screen": "29",
     "outliers_rank": "30",
+    "survey_openend_codes": "31",
+    "usability_severity": "32",
+    "emotion_tag": "33",
 }
 
 # keyphrases_extract variant -> method id (SUPPORTED_VARIANTS order).

@@ -45,7 +45,8 @@ Route families (the Route order below is the original single-file order):
                                clusters-inspect, duplicates-screen,
                                outliers-rank, nli-classify,
                                contradictions-screen, sentiment-screen,
-                               active-learn-next}  (AMR program)
+                               active-learn-next, survey-openend-codes,
+                               usability-severity, emotion-tag}  (AMR program)
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
   api/routes_demo.py           POST /api/demo/load (UI SPA Task 5a)
 """
@@ -68,12 +69,15 @@ from corpus_kb.api.routes_analysis_methods import (
     clusters_inspect_route,
     contradictions_screen_route,
     duplicates_screen_route,
+    emotion_tag_route,
     keyphrases_extract_route,
     lexical_classify_route,
     neighbors_classify_route,
     nli_classify_route,
     outliers_rank_route,
     sentiment_screen_route,
+    survey_openend_codes_route,
+    usability_severity_route,
 )
 from corpus_kb.api.routes_analysis_route import analysis_route_route
 from corpus_kb.api.routes_ask import ask
@@ -230,6 +234,11 @@ def create_http_app() -> FastAPI:
         Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
         Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
         Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
+        Route(
+            "/api/analysis/survey-openend-codes", survey_openend_codes_route, methods=["POST"]
+        ),
+        Route("/api/analysis/usability-severity", usability_severity_route, methods=["POST"]),
+        Route("/api/analysis/emotion-tag", emotion_tag_route, methods=["POST"]),
         # Living Corpus W6: the meta-embedding build op.
         Route("/api/analysis/embed-meta", analysis_embed_meta_route, methods=["POST"]),
         # Living Corpus W2: the statement-atom read ops.
