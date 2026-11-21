@@ -38,9 +38,9 @@
 **Interfaces:**
 - Produces: prose flow "run `corpus-rag op analysis-route --question <q>` → present `ranked` rows (`method_id`, `name`, `why`, `run_hint`) → on user confirm run `corpus-rag op <run_hint.op>` with `run_hint.params`". Degraded status renders "routing ran in degraded mode" note.
 
-- [ ] **Step 1:** Rewrite skill step 2 + command file to the route-then-run flow above (plain English, ≤20-word sentences). Replace the dead-end "offer to run the method" with the run command template.
-- [ ] **Step 2:** Test: new `test_skill_tables.py` asserts SKILL.md contains `analysis-route`, `run_hint`, and no longer contains "offer to run the method". Run: `python -m pytest plugins/corpus-rag/tests/test_skill_tables.py -v`. Expected: PASS (write test first, see it fail, then edit).
-- [ ] **Step 3:** Commit `feat: corpus-analyze routes then runs methods`.
+- [x] **Step 1:** Rewrite skill step 2 + command file to the route-then-run flow above (plain English, ≤20-word sentences). Replace the dead-end "offer to run the method" with the run command template.
+- [x] **Step 2:** Test: new `test_skill_tables.py` asserts SKILL.md contains `analysis-route`, `run_hint`, and no longer contains "offer to run the method". Run: `python -m pytest plugins/corpus-rag/tests/test_skill_tables.py -v`. Expected: PASS (write test first, see it fail, then edit).
+- [x] **Step 3:** Commit `feat: corpus-analyze routes then runs methods`.
 
 ### Task 2: corpus-research op table gains method rows (plugin)
 
@@ -51,8 +51,8 @@
 **Interfaces:**
 - Produces: one table row per method op (12) + `analysis-route`, format `corpus-rag op <name> ...` matching existing rows.
 
-- [ ] **Step 1:** Append rows after existing ones (grouped: router first, then methods alphabetical). One line each, plain English.
-- [ ] **Step 2:** Commit `feat: corpus-research op table lists analysis methods`.
+- [x] **Step 1:** Append rows after existing ones (grouped: router first, then methods alphabetical). One line each, plain English.
+- [x] **Step 2:** Commit `feat: corpus-research op table lists analysis methods`.
 
 ### Task 3: corpus-uxr method-chain steps (plugin)
 
@@ -63,8 +63,8 @@
 **Interfaces:**
 - Produces: a "method support pass" step: run `keyphrases-extract` on the question set, `clusters-inspect` to group, `sentiment-screen` per question, `contradictions-screen` across stances — each with one plain-English sentence of why, and the rule that method output ADVISES, researcher judgment decides (matches `epistemological-caution.md`).
 
-- [ ] **Step 1:** Insert the step + rationale prose; reference `references/epistemological-caution.md`.
-- [ ] **Step 2:** Test: assert SKILL.md names all four ops and "advises". PASS then commit `feat: corpus-uxr chains registry methods into themes`.
+- [x] **Step 1:** Insert the step + rationale prose; reference `references/epistemological-caution.md`.
+- [x] **Step 2:** Test: assert SKILL.md names all four ops and "advises". PASS then commit `feat: corpus-uxr chains registry methods into themes`.
 
 ### Task 4: analyze-lane route-derived nudge (plugin)
 
@@ -78,11 +78,11 @@
 - Produces: `route_nudge_text(route: dict, question: str) -> str` — first line names top method + why (≤20 words), second line the run command from `run_hint`, degraded status prepends "Routing ran in degraded mode."; empty/malformed route → `""` (caller keeps static text).
 - Mark ordering: the daily mark `prompt-<slug>-analyze-<YYYYMMDD>` check happens BEFORE the subprocess (today's order already gates first — keep it).
 
-- [ ] **Step 1:** Write failing tests: happy path (top method + command line), degraded prefix, malformed JSON → "", subprocess timeout path (monkeypatched) keeps static text.
-- [ ] **Step 2:** Run: `python -m pytest plugins/corpus-rag/tests/test_hook_route_text.py -v`. Expected FAIL (module missing).
-- [ ] **Step 3:** Implement `hook_route_text.py` + wire the lane in `hook_events.py` (subprocess inside try, timeout=10, fail-open).
-- [ ] **Step 4:** Run full plugin suite: `python -m pytest plugins/corpus-rag/tests/ -v`. PASS.
-- [ ] **Step 5:** Commit `feat: analyze-lane nudge derives from analysis-route`.
+- [x] **Step 1:** Write failing tests: happy path (top method + command line), degraded prefix, malformed JSON → "", subprocess timeout path (monkeypatched) keeps static text.
+- [x] **Step 2:** Run: `python -m pytest plugins/corpus-rag/tests/test_hook_route_text.py -v`. Expected FAIL (module missing).
+- [x] **Step 3:** Implement `hook_route_text.py` + wire the lane in `hook_events.py` (subprocess inside try, timeout=10, fail-open).
+- [x] **Step 4:** Run full plugin suite: `python -m pytest plugins/corpus-rag/tests/ -v`. PASS.
+- [x] **Step 5:** Commit `feat: analyze-lane nudge derives from analysis-route`.
 
 ### Task 5: data merges (plugin)
 
@@ -95,9 +95,9 @@
 - Produces: `merge_coded_evidence(themes_text: str, rows: list[dict]) -> str` (idempotent: replaces its own previous section between its markers, never touches model narrative); `quote_second_opinion(quote: str) -> dict | None` via `search_similar` (advisory flag only — difflib contract unchanged); contract-parity default path.
 - The coding_export call site: the uxr themes handler runs `corpus-rag op coding_export` output parsing — reuse `op_runner`/op_client patterns from `codify_commands.py` WITHOUT editing that file.
 
-- [ ] **Step 1:** Failing tests: idempotent double-merge (same output twice), narrative untouched, degraded contract path exit 0, second-opinion returns None when op errors.
-- [ ] **Step 2:** Implement helpers + wire the four call sites.
-- [ ] **Step 3:** Suite PASS; commit `feat: merge codify evidence into uxr themes and rollup`.
+- [x] **Step 1:** Failing tests: idempotent double-merge (same output twice), narrative untouched, degraded contract path exit 0, second-opinion returns None when op errors.
+- [x] **Step 2:** Implement helpers + wire the four call sites.
+- [x] **Step 3:** Suite PASS; commit `feat: merge codify evidence into uxr themes and rollup`.
 
 ### Task 6: engine-side SKILL-table gate
 
@@ -109,8 +109,8 @@
 - Consumes: contract catalogue names (`corpus_kb.contracts`); plugin SKILL.md table rows (`corpus-rag op <name>`).
 - Produces: test asserting every op row in `plugins/corpus-rag/skills/corpus-research/SKILL.md` + `commands/*.md` matches a real catalogue op name (and lists all 12 method ops + analysis-route after Tasks 1-2).
 
-- [ ] **Step 1:** Write test parsing SKILL.md rows → assert each name in the catalogue; assert the 13 expected names present. Run against current master first: the 12 method rows FAIL (they don't exist yet) → this pins Tasks 1-2. After Task 2: PASS.
-- [ ] **Step 2:** Commit `test: gate plugin op table against engine catalogue`.
+- [x] **Step 1:** Write test parsing SKILL.md rows → assert each name in the catalogue; assert the 13 expected names present. Run against current master first: the 12 method rows FAIL (they don't exist yet) → this pins Tasks 1-2. After Task 2: PASS.
+- [x] **Step 2:** Commit `test: gate plugin op table against engine catalogue`.
 
 ### Task 7: register grows to 33 (engine)
 
