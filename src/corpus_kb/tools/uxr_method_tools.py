@@ -19,6 +19,7 @@ text; ties cannot happen because anchors are checked 4 down to 1.
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 import asyncpg
@@ -140,6 +141,10 @@ async def usability_severity(
     severity, matched_terms, review) ordered severity desc then chunk id
     asc. Rows are screening flags, not measured impact.
     """
+    if limit is not None and (
+        isinstance(limit, bool) or not isinstance(limit, int) or limit < 1
+    ):
+        raise ValidationError("limit must be a whole number of 1 or more.")
     chunks = await _load_texts(pg_pool, tenant_id, config)
     if chunk_ids is not None:
         wanted = {str(chunk_id) for chunk_id in chunk_ids}
@@ -148,7 +153,7 @@ async def usability_severity(
         return _honest("empty", _EMPTY_REASON, _EMPTY_REMEDY)
     rows = [_severity_row(chunk) for chunk in chunks]
     rows.sort(key=lambda row: (-int(cast(int, row["severity"])), str(row["chunk_id"])))
-    bounded = rows if limit is None else rows[: max(1, int(limit))]
+    bounded = rows if limit is None else rows[:limit]
     return {
         "status": "success",
         "predictions": bounded,
@@ -212,9 +217,18 @@ async def emotion_tag(
     else:
         targets = space.ids[:limit]
     predictions: list[dict[str, object]] = []
+    # Bounded concurrency: nli_client._generate builds a fresh Ollama client
+    # per call in its own worker thread (no shared state), so a small gather
+    # is safe. asyncio.gather keeps the request order, so the output stays
+    # deterministic. No other concurrency mechanism is introduced.
+    semaphore = asyncio.Semaphore(8)
+
+    async def _score(target: str) -> dict[str, object]:
+        async with semaphore:
+            return await _score_emotion(target, texts[target], effective_model)
+
     try:
-        for target in targets:
-            predictions.append(await _score_emotion(target, texts[target], effective_model))
+        predictions = list(await asyncio.gather(*[_score(target) for target in targets]))
     except contract.NliError as failure:
         return _unavailable(failure.kind, "predictions", effective_model)
     return {
