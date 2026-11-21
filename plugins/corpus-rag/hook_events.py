@@ -23,12 +23,16 @@ Stdlib only.
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import time
 import zlib
 from pathlib import Path
 
+import engine_paths
 import folder_state
+import hook_route_text
 import hook_state
 import ingest_queue
 import setup_offer
@@ -140,6 +144,9 @@ def run_prompt_submit(data: dict) -> str | None:
     return None
 
 
+ROUTE_TIMEOUT_SECONDS = 10
+
+
 def lane_nudge(prompt: str, fs: folder_state.FolderState) -> str | None:
     """One lane per prompt, once per study per day, unless declined."""
     for lane, pattern in LANE_PATTERNS:
@@ -152,8 +159,36 @@ def lane_nudge(prompt: str, fs: folder_state.FolderState) -> str | None:
         if hook_state.mark_exists(mark):
             return None
         hook_state.touch_mark(mark)
+        if lane == "analyze":
+            route_text = route_nudge(prompt, fs.root)
+            if route_text:
+                return route_text
         return LANE_TEXT[lane].replace("{slug}", fs.slug or "")
     return None
+
+
+def route_nudge(prompt: str, root: Path) -> str:
+    """The analyze-lane nudge from one ``corpus-kb analysis-route`` call.
+
+    The daily mark check happens before this runs, so the cost only
+    lands on nudge-eligible prompts. Fail-open: on any failure the
+    caller keeps the static lane text.
+    """
+    try:
+        cli = engine_paths.engine_cli(root)
+        if not cli:
+            return ""
+        result = subprocess.run(
+            [cli, "analysis-route", prompt, "--json"],
+            capture_output=True,
+            text=True,
+            timeout=ROUTE_TIMEOUT_SECONDS,
+            check=False,
+        )
+        route = json.loads(result.stdout)
+        return hook_route_text.route_nudge_text(route, prompt)
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
