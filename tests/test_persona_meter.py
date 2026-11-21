@@ -58,8 +58,8 @@ def test_llm_gated_methods_never_reach_runnable_offline():
 def test_visit_order_covers_every_method_once():
     register = _register()
     order = visit_order(register, walk_phases(register, ollama_ok=False))
-    assert sorted(order) == [f"{i:02d}" for i in range(1, 31)]
-    assert len(set(order)) == 30
+    assert sorted(order) == [f"{i:02d}" for i in range(1, 34)]
+    assert len(set(order)) == 33
 
 
 def test_visit_order_matches_the_phase_derivation():
@@ -94,7 +94,7 @@ async def test_walk_never_constructs_the_ollama_embedder(monkeypatch):
     monkeypatch.setattr("corpus_kb.rag.embedder.OllamaEmbedder", _boom)
     assert WALK_CONFIG["embedding"]["provider"] != "ollama"
     report = await run_walk(_register(), WALK_CONFIG)
-    assert len(report.metrics) == 30
+    assert len(report.metrics) == 33
 
 
 async def test_every_method_reaches_success():

@@ -1,6 +1,6 @@
 """Golden bench for the question router's phrase path (wave 2, Task 3).
 
-Loads ``tests/fixtures/routing_golden.jsonl`` (60 rows, two per method
+Loads ``tests/fixtures/routing_golden.jsonl`` (66 rows, two per method
 id 01-30) and runs every row through ``route_question`` with
 ``embedder=None`` — the deterministic phrase path, no Ollama. The gate
 is twofold: the measured primary accuracy must stay at or above the
@@ -154,15 +154,15 @@ def _register() -> MethodRegister:
 
 
 def test_fixture_covers_each_method_exactly_twice() -> None:
-    """60 rows; every id 01-30 is expected[0] in exactly two rows; no dupes."""
+    """66 rows; every id 01-33 is expected[0] in exactly two rows; no dupes."""
     rows = load_golden_rows()
-    assert len(rows) == 60
+    assert len(rows) == 66
     primaries = [row.expected_method_ids[0] for row in rows]
     counts = Counter(primaries)
-    expected_ids = {f"{index:02d}" for index in range(1, 31)}
+    expected_ids = {f"{index:02d}" for index in range(1, 34)}
     assert set(counts) == expected_ids
     assert all(count == 2 for count in counts.values())
-    assert len({row.question for row in rows}) == 60
+    assert len({row.question for row in rows}) == 66
     for row in rows:
         assert row.question.strip()
         assert row.expected_method_ids

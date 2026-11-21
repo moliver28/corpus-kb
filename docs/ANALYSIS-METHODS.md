@@ -91,6 +91,9 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
 | 28 | NLI-based contradiction screening | `errors` | `raw_text`, LLM, `timestamps` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `contradictions_screen` |
 | 29 | Near-duplicate and paraphrase detection | `errors` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `baseline` | `novice` | new op | `duplicates_screen` |
 | 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | `novice` | new op | `outliers_rank` |
+| 31 | Survey open-end coding | `labels` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | `novice` | new op | `survey_openend_codes` |
+| 32 | Usability severity rating | `scores` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | new op | `usability_severity` |
+| 33 | Emotion tagging (fixed taxonomy) | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `intermediate` | new op | `emotion_tag` |
 
 ## Method guidance
 
@@ -251,7 +254,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Description wording and thresholds affect assignment versus discovery. Bias: Familiar topics can absorb material that merits a different reading.
   - Difficulty: `intermediate`.
   - Teaches: `topic_modeling`, `clustering`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification, `09` Unsupervised BERTopic.
+  - Requires: `04` Dictionary or rule-based classification, `09` Unsupervised BERTopic, `33` Emotion tagging (fixed taxonomy).
   - Routing axes: task `measurement`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Familiar topics can absorb material that merits a different reading.
   - Limits: Similarity routing only; not NLI classification.
@@ -283,7 +286,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: One mean can hide distinct subgroups when examples do not cover the category spread. Bias: Example selection defines the category prototype.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification.
+  - Requires: `04` Dictionary or rule-based classification, `33` Emotion tagging (fixed taxonomy).
   - Next: `14` Nearest-neighbor classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: One centroid can hide distinct subgroups inside a category.
@@ -301,7 +304,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Sensitive to neighbor coverage, distance choice, and local label errors. Bias: Overrepresented examples can dominate nearby votes.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
-  - Requires: `04` Dictionary or rule-based classification, `13` Embedding-centroid classification.
+  - Requires: `04` Dictionary or rule-based classification, `13` Embedding-centroid classification, `33` Emotion tagging (fixed taxonomy).
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Overrepresented examples dominate nearby votes; local label errors propagate.
   - Limits: Example-backed labels only; coverage stops where labels stop.
@@ -318,7 +321,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Vocabulary shift and shortcut words can reduce transfer. Bias: Labels can attach to names, groups, or formatting instead of the concept.
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `term_weighting`.
-  - Requires: `04` Dictionary or rule-based classification.
+  - Requires: `04` Dictionary or rule-based classification, `33` Emotion tagging (fixed taxonomy).
   - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `lexical`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Vocabulary shift and shortcut words cut transfer; labels can attach to names.
@@ -337,7 +340,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Difficulty: `intermediate`.
   - Teaches: `classification`, `vector_similarity`.
   - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM.
-  - Requires: `19` Programmatic weak supervision (Snorkel).
+  - Requires: `19` Programmatic weak supervision (Snorkel), `33` Emotion tagging (fixed taxonomy).
   - Next: `17` SetFit few-shot classification, `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `vector`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: A fixed encoder cannot learn distinctions it does not represent.
@@ -353,7 +356,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Difficulty: `advanced`.
   - Teaches: `classification`, `vector_similarity`.
   - Requires: `04` Dictionary or rule-based classification, `15` TF-IDF with logistic regression or linear SVM.
-  - Requires: `16` Frozen embeddings with a linear classifier.
+  - Requires: `16` Frozen embeddings with a linear classifier, `33` Emotion tagging (fixed taxonomy).
   - Next: `20` Active learning loop.
   - Routing axes: task `prediction`, comparison `none`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Noisy or analyst-chosen few examples can amplify bias.
@@ -368,7 +371,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Wording, lexical overlap, and syntax can produce wrong support judgments. Bias: Label descriptions and training-domain assumptions shape the results.
   - Difficulty: `intermediate`.
   - Teaches: `classification`.
-  - Next: `04` Dictionary or rule-based classification.
+  - Next: `04` Dictionary or rule-based classification, `33` Emotion tagging (fixed taxonomy).
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Lexical overlap and syntax can flip support judgments.
   - Limits: Pilot triage only; scores are not established probabilities.
@@ -430,6 +433,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Early extraction omissions cannot be repaired by later clustering or summaries. Bias: Extraction rules, grouping, and summary selection can each drop minority evidence.
   - Difficulty: `advanced`.
   - Teaches: `clustering`, `vector_similarity`.
+  - Next: `32` Usability severity rating.
   - Routing axes: task `discovery`, comparison `none`, output `narrative`, evidence `vector`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Early extraction omissions cannot be repaired by later clustering or summaries.
   - Limits: A discovery aid only; not end-to-end accuracy claims.
@@ -457,6 +461,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Some passage must state the answer; a plausible span can still be wrong or unsupported. No-answer behavior matters. Bias: Question wording and passage selection constrain the possible answers.
   - Difficulty: `novice`.
   - Teaches: `information_retrieval`.
+  - Next: `31` Survey open-end coding.
   - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: A plausible span can be wrong or unsupported.
   - Limits: Stated answers only; open questions need close reading.
@@ -500,7 +505,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Cautions: Correct sentiment requires the correct target and aspect link. Bias: Predefined aspects can exclude concerns outside the team's framework.
   - Difficulty: `intermediate`.
   - Teaches: `sentiment_analysis`, `classification`.
-  - Requires: `04` Dictionary or rule-based classification.
+  - Requires: `04` Dictionary or rule-based classification, `33` Emotion tagging (fixed taxonomy).
   - Routing axes: task `measurement`, comparison `subset_vs_subset`, output `point_answer`, evidence `labels`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Wrong target links flip sentiment; declared aspects exclude unlisted concerns.
   - Limits: Declared aspects only; uncovered aspects stay unmeasured.
@@ -560,6 +565,62 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Table: `chunk_id` (id), `knn_distance` (number, cosine distance). Order: `-knn_distance`, `chunk_id`. Round to 6 places.
   - Ties: Equal distances order by chunk id ascending.
   - Shares divide by `screened_count`.
+- **31 — Survey open-end coding** (op: `survey_openend_codes`). Use it to count recurring themes in open-ended survey answers before any close reading.
+  - Validate: Check a sample of coded answers by hand. Compare the cluster labels against the raw answers for mixed or sarcastic cases.
+  - Claim only: Per-question code labels, counts, and exemplar answers from the stored survey chunks.
+  - Do not claim: Do not claim the cluster labels are verified themes without a hand check.
+  - Cautions: Cluster shapes change with the representation, and small but important groups can hide in the noise. Bias: Common wording can dominate the clusters, and rare answers can disappear into them.
+  - Difficulty: `novice`.
+  - Teaches: `clustering`, `qualitative_coding`.
+  - Requires: `24` Extractive question answering.
+  - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
+  - Watch for: Cluster labels can hide mixed answers, sarcasm, and small but important groups.
+  - Limits: Counts and exemplar answers only; they are not verified themes.
+  - Ask it: "How do I group open-ended survey answers?" / "Summarize the answers to each survey question." / "Count the recurring themes in my survey answers."
+  - Follow-ups: "Which answers does each cluster miss?" / "Do the labels match a hand-read sample?" / "How does the count change with the cluster size floor?"
+  - Evidence: https://scikit-learn.org/stable/modules/clustering.html (Documentation)
+  - Table: `question` (text), `code_id` (id), `label` (text), `count` (integer), `exemplar_chunk_ids` (id_list). Order: `question`, `-count`, `code_id`.
+  - Ties: Equal counts order by code id ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Cluster labels come from exemplar answers. Check a sample by hand.
+- **32 — Usability severity rating** (op: `usability_severity`). Use it to rank usability findings before the report. Review the flagged rows by hand.
+  - Validate: Read a sample of scored findings against the severity anchors. Recalibrate the anchor word lists per study.
+  - Claim only: Rubric-based screening scores under the fixed 0 to 4 anchors.
+  - Do not claim: Do not claim measured user impact; the rubric reads wording only.
+  - Cautions: Anchor words miss indirect wording, and the score reflects wording, not measured impact. Bias: Dramatic wording can score high, while quiet but costly problems score low.
+  - Difficulty: `novice`.
+  - Teaches: `keyword_rules`.
+  - Requires: `22` Extract, embed, cluster, summarize (EECS).
+  - Routing axes: task `measurement`, comparison `none`, output `statistic`, evidence `lexical`, rigor `descriptive`, cost tier `batch`.
+  - Watch for: Anchor words miss indirect wording, and severity can reflect wording, not impact.
+  - Limits: A screening rubric, not a validated severity judgment.
+  - Ask it: "Rate how severe each usability problem is." / "Score my usability findings from 0 to 4." / "Which issues are catastrophic and which are minor?"
+  - Follow-ups: "Which findings scored 0 and need a hand read?" / "Do the top scores match the real impact?" / "Which anchor words need study-specific terms?"
+  - Evidence: https://www.nngroup.com/articles/how-to-rate-the-severity-of-a-usability-problem/ (Guide)
+  - Table: `chunk_id` (id), `severity` (integer, severity), `matched_terms` (id_list), `review` (boolean). Order: `-severity`, `chunk_id`.
+  - Ties: Equal severities order by chunk id ascending.
+  - Shares divide by `screened_count`.
+  - Caveats: Preset anchor words, not a trained model. Check a sample by hand.
+- **33 — Emotion tagging (fixed taxonomy)** (op: `emotion_tag`). Use it when the fixed eight-emotion set fits your question. Check a sample before you count the labels.
+  - Validate: Test the statements against paraphrased, negated, and mixed-affect records. Check a sample of tags by hand.
+  - Claim only: Zero-shot emotion tags under the fixed Plutchik set, with per-emotion scores.
+  - Do not claim: Do not treat zero-shot scores as established probabilities or clinical measures.
+  - Cautions: Mixed feelings, irony, and statement wording can flip entailment judgments. Bias: The statement wording and the model's training domain shape the judgments.
+  - Difficulty: `intermediate`.
+  - Teaches: `classification`, `sentiment_analysis`.
+  - Requires: `18` Zero-shot NLI classification.
+  - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
+  - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
+  - Routing axes: task `measurement`, comparison `none`, output `point_answer`, evidence `claims`, rigor `inferential_calibrated`, cost tier `batch`.
+  - Watch for: Mixed feelings, irony, and label wording can flip entailment judgments.
+  - Limits: The fixed eight labels only; not a clinical measure.
+  - Ask it: "Which emotions do these messages express?" / "Tag each comment with a basic emotion." / "I want emotion labels from a fixed set."
+  - Follow-ups: "Which records show mixed or weak emotions?" / "Do the tags match a hand-read sample?" / "Does the model choice change the tags?"
+  - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
+  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, entailment score). Order: `chunk_id`. Round to 6 places.
+  - Ties: Score ties pick the alphabetically first emotion.
+  - Shares divide by `screened_count`.
+  - Caveats: Zero-shot entailment judgments, not a trained emotion model.
 
 ## Backend proof
 
@@ -577,4 +638,5 @@ Method 08 computes novice; the register pins intermediate.
 Method 09 computes advanced; the register pins intermediate.
 Method 12 computes advanced; the register pins intermediate.
 Method 18 computes novice; the register pins intermediate.
+Method 31 computes intermediate; the register pins novice.
 <!-- amr-register:generated:end -->

@@ -1,9 +1,9 @@
 """Loader for the analysis method register.
 
 Reads the register YAML (repo path first, packaged mirror next), validates
-it against the models, and enforces the complete 01-30 id ledger. The
-schema models live in ``method_register``; the routing checks live in
-``method_register_routing``. One loader, many callers.
+it against the models, and enforces the complete id ledger. The schema
+models and the ``EXPECTED_IDS`` ledger live in ``method_register``; the
+routing checks live in ``method_register_routing``. One loader, many callers.
 """
 
 from __future__ import annotations
@@ -14,11 +14,9 @@ from pathlib import Path
 import yaml
 
 from corpus_kb.analysis.method_register import MethodRegister
+from corpus_kb.analysis.method_register_ids import EXPECTED_IDS
 from corpus_kb.analysis.settings import load_analysis_settings
 from corpus_kb.errors import ValidationError
-
-EXPECTED_IDS = frozenset(f"{index:02d}" for index in range(1, 31))
-
 
 def _packaged_register_path(file_name: str) -> Path | None:
     """The packaged mirror inside the installed ``corpus_kb`` package."""
@@ -59,7 +57,8 @@ def load_method_register(config: dict[str, object] | None = None) -> MethodRegis
     duplicated = sorted({one for one in ids if ids.count(one) > 1})
     if missing or duplicated:
         raise ValidationError(
-            f"Analysis method register {source}: expected ids 01 to 30 exactly once. "
+            f"Analysis method register {source}: expected ids "
+            f"{min(EXPECTED_IDS)} to {max(EXPECTED_IDS)} exactly once. "
             f"missing: {missing or 'none'}. duplicated: {duplicated or 'none'}."
         )
     return register

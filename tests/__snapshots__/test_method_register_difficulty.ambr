@@ -241,5 +241,29 @@
       'matches': True,
       'stored': 'novice',
     }),
+    dict({
+      'computed': 'intermediate',
+      'depth': 1,
+      'ei': 3,
+      'id': '31',
+      'matches': True,
+      'stored': 'intermediate',
+    }),
+    dict({
+      'computed': 'novice',
+      'depth': 1,
+      'ei': 1,
+      'id': '32',
+      'matches': True,
+      'stored': 'novice',
+    }),
+    dict({
+      'computed': 'novice',
+      'depth': 0,
+      'ei': 2,
+      'id': '33',
+      'matches': False,
+      'stored': 'intermediate',
+    }),
   ])
 # ---

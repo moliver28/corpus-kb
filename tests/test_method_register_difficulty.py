@@ -22,7 +22,7 @@ from corpus_kb.analysis.method_register_difficulty import (
 from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.analysis.method_register_progression import DIFFICULTY_LEVELS
 
-ALL_IDS = [f"{index:02d}" for index in range(1, 31)]
+ALL_IDS = [f"{index:02d}" for index in range(1, 34)]
 
 # The agreement table, one row per method: id, graph depth, element
 # interactivity, computed rung. Frozen from the 3.3.0 register; the
@@ -58,6 +58,9 @@ _GOLDEN_TABLE = """
 28 1 3 intermediate
 29 0 1 novice
 30 0 2 novice
+31 1 3 intermediate
+32 1 1 novice
+33 0 2 novice
 """
 
 _golden_rows = [line.split() for line in _GOLDEN_TABLE.splitlines() if line.strip()]
@@ -204,7 +207,7 @@ def test_threshold_table_is_monotone() -> None:
 
 
 def test_difficulty_score_snapshot(snapshot: Any) -> None:
-    """All 30 rows' scores in one pinned snapshot (deterministic, id-sorted)."""
+    """All 33 rows' scores in one pinned snapshot (deterministic, id-sorted)."""
     scores = difficulty_scores(load_method_register({}))
     payload = [
         {
