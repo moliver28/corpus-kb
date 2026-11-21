@@ -46,7 +46,7 @@ export const METHODS: readonly MethodGuidance[] = [
   { id: "30", name: "Outlier or novelty detection", summary: "Rank records that differ from a reference distribution or from their neighbors.", op: "outliers_rank", difficulty: "novice", concepts: ["vector_similarity"], prerequisites: [], next: [] },
   { id: "31", name: "Survey open-end coding", summary: "Group open-ended survey answers per question into labeled clusters, then report each cluster with its answer count.", op: "survey_openend_codes", difficulty: "intermediate", concepts: ["clustering", "qualitative_coding"], prerequisites: ["24"], next: [] },
   { id: "32", name: "Usability severity rating", summary: "Rate each usability finding from 0 to 4 with a fixed anchor rubric, and flag unmatched rows for review.", op: "usability_severity", difficulty: "novice", concepts: ["keyword_rules"], prerequisites: ["22"], next: [] },
-  { id: "33", name: "Emotion tagging (fixed taxonomy)", summary: "Tag each record with one of eight fixed emotions using entailment judgments against written statements.", op: "emotion_tag", difficulty: "intermediate", concepts: ["classification", "sentiment_analysis"], prerequisites: [], next: ["11", "13", "14", "15", "16", "17", "27"] },
+  { id: "33", name: "Emotion tagging (fixed taxonomy)", summary: "Tag each record with one of eight fixed emotions using entailment judgments against written statements.", op: "emotion_tag", difficulty: "novice", concepts: ["classification", "sentiment_analysis"], prerequisites: [], next: ["11", "13", "14", "15", "16", "17", "27"] },
 ];
 
 /** One method's guidance row, or undefined when the id is not registered. */

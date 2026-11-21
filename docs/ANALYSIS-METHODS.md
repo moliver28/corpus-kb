@@ -93,7 +93,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
 | 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | `novice` | new op | `outliers_rank` |
 | 31 | Survey open-end coding | `labels` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | `intermediate` | new op | `survey_openend_codes` |
 | 32 | Usability severity rating | `scores` | `raw_text` | `low` | `automated_with_audit` | `baseline` | `novice` | new op | `usability_severity` |
-| 33 | Emotion tagging (fixed taxonomy) | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `intermediate` | new op | `emotion_tag` |
+| 33 | Emotion tagging (fixed taxonomy) | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | `novice` | new op | `emotion_tag` |
 
 ## Method guidance
 
@@ -606,7 +606,7 @@ Register version: 3.3.0. Source: the research document named in `config/analysis
   - Claim only: Zero-shot emotion tags under the fixed Plutchik set, with per-emotion scores.
   - Do not claim: Do not treat zero-shot scores as established probabilities or clinical measures.
   - Cautions: Mixed feelings, irony, and statement wording can flip entailment judgments. Bias: The statement wording and the model's training domain shape the judgments.
-  - Difficulty: `intermediate`.
+  - Difficulty: `novice`.
   - Teaches: `classification`, `sentiment_analysis`.
   - Next: `11` Zero-shot BERTopic, `13` Embedding-centroid classification, `14` Nearest-neighbor classification, `15` TF-IDF with logistic regression or linear SVM.
   - Next: `16` Frozen embeddings with a linear classifier, `17` SetFit few-shot classification, `27` Aspect-based sentiment analysis.
@@ -637,5 +637,4 @@ Method 08 computes novice; the register pins intermediate.
 Method 09 computes advanced; the register pins intermediate.
 Method 12 computes advanced; the register pins intermediate.
 Method 18 computes novice; the register pins intermediate.
-Method 33 computes novice; the register pins intermediate.
 <!-- amr-register:generated:end -->
