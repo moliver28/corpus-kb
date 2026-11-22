@@ -348,3 +348,11 @@ class TestFewShotCap:
         few_shot_examples(ontology)
         _batch, note = few_shot_examples(ontology)
         assert "reused" in note and "capped" in note
+
+    def test_reused_note_omits_the_cap_when_not_trimmed(self) -> None:
+        """An uncapped ontology says reused with no cap clause."""
+        ontology = _small_ontology()
+        few_shot_examples(ontology)
+        _batch, note = few_shot_examples(ontology)
+        assert "reused" in note
+        assert "capped" not in note

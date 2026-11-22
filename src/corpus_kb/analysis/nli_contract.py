@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 
 import httpx
+
+_LOG = logging.getLogger(__name__)
 
 __all__ = [
     "NLI_BASE_URL",
@@ -163,6 +166,11 @@ def parse_batch_verdicts(raw: str, statements: dict[str, str]) -> dict[str, str 
             continue
         verdict = str(row.get("verdict", "")).upper()
         if verdict in VERDICT_SCORES:
+            if number in by_number:
+                _LOG.debug(
+                    "Duplicate NLI row for statement %d; the last verdict wins.",
+                    number,
+                )
             by_number[number] = verdict
     return {label: by_number.get(number) for number, label in enumerate(statements, 1)}
 

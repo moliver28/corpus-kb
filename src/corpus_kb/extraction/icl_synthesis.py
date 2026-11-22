@@ -207,11 +207,10 @@ def few_shot_examples(
     fingerprint = ontology_fingerprint(ontology)
     cached = _CACHE.get(fingerprint)
     if cached is not None:
-        return cached, (
-            f"Few-shot examples: reused {len(cached)} cached examples"
-            f" (capped from {len(ontology.relation_types)}) for"
-            f" ontology {fingerprint[:8]}."
-        )
+        note = f"Few-shot examples: reused {len(cached)} cached examples"
+        if len(cached) < len(ontology.relation_types):
+            note += f" (capped from {len(ontology.relation_types)})"
+        return cached, f"{note} for ontology {fingerprint[:8]}."
     full, note = _adopt_batch(synthesize_exemplars(ontology), ontology, fingerprint)
     batch = full[:FEW_SHOT_MAX]
     if len(full) > FEW_SHOT_MAX:
