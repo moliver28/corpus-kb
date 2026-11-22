@@ -13,6 +13,8 @@ from corpus_kb.errors import ConfigError
 from corpus_kb.rag.embedder import FakeEmbedder, OllamaEmbedder, PgmlEmbedder
 from corpus_kb.rag.embedder_factory import create_embedder
 
+pytestmark = [pytest.mark.ollama]
+
 _LIVE_CONFIG: dict[str, object] = {
     "embedding": {
         "provider": "ollama",

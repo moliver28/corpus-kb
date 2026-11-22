@@ -17,8 +17,12 @@ edges as BEGIN/COMMIT so statement order is asserted offline.
 
 from __future__ import annotations
 
+import pytest
+
 from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.utils.models import Chunk, Entity, Relation
+
+pytestmark = [pytest.mark.ollama]
 
 TENANT = "00000000-0000-0000-0000-000000000003"
 

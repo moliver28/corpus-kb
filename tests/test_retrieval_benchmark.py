@@ -32,7 +32,7 @@ from corpus_kb.projections.research_projection import ResearchProjection
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.research.retrieval import ResearchQuery, research_search
 
-pytestmark = [pytest.mark.requires_postgres, pytest.mark.requires_ollama]
+pytestmark = [pytest.mark.requires_postgres, pytest.mark.requires_ollama, pytest.mark.ollama]
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "research"
 TENANT = UUID(TEST_TENANT)

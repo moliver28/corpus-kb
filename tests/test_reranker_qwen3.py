@@ -42,6 +42,8 @@ from corpus_kb.rag.reranker import (
 )
 from tests.mock_pg import transaction_cm
 
+pytestmark = [pytest.mark.ollama]
+
 # Recorded qwen3:4b completions (live, 2026-10-15; see module docstring).
 _RECORDED_YES = (
     'First, the query is: "capital of France". I need to judge if the document meets the '

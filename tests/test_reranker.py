@@ -28,6 +28,8 @@ from corpus_kb.rag.reranker import (
 )
 from tests.mock_pg import transaction_cm
 
+pytestmark = [pytest.mark.ollama]
+
 PGML_CONFIG = {
     "search": {
         "reranker": "pgml",

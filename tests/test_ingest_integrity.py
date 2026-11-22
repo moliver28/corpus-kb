@@ -27,6 +27,8 @@ import pytest
 from corpus_kb.errors import ConfigError
 from tests.research_db import RLS_PROBE_ROLE, ensure_rls_probe, super_dsn_for
 
+pytestmark = [pytest.mark.ollama]
+
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
 MIGRATION_022 = MIGRATIONS / "022_ingest_integrity.sql"

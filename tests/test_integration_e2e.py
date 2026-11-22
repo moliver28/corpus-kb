@@ -32,7 +32,7 @@ from uuid import UUID
 import asyncpg
 import pytest
 
-pytestmark = pytest.mark.requires_postgres
+pytestmark = [pytest.mark.requires_postgres, pytest.mark.ollama]
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 

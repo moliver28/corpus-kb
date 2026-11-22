@@ -25,6 +25,8 @@ from corpus_kb.tools.ingest_store import (
 )
 from corpus_kb.utils.models import Chunk
 
+pytestmark = [pytest.mark.ollama]
+
 TENANT = "00000000-0000-0000-0000-000000000003"
 TYPEMOD_SQL_FRAGMENT = "chunks_vectors'::regclass"
 

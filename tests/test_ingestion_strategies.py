@@ -39,6 +39,8 @@ from corpus_kb.ingestion.strategies.default import DefaultStrategy
 from corpus_kb.ingestion.strategies.transcript import TranscriptStrategy
 from corpus_kb.utils.models import Chunk
 
+pytestmark = [pytest.mark.ollama]
+
 REPO = Path(__file__).resolve().parent.parent
 FIXTURE = REPO / "tests" / "fixtures" / "transcripts" / "sample_interview.txt"
 

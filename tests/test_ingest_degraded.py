@@ -12,6 +12,8 @@ from corpus_kb.domain.models import DEFAULT_TENANT_ID
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.tools.ingest_tools import ingest_file
 
+pytestmark = [pytest.mark.ollama]
+
 _FIXTURE_DIR = Path(__file__).with_name("fixtures") / "langextract_recorded"
 _SAMPLE_MD = Path(__file__).with_name("fixtures") / "ontology_sample.md"
 

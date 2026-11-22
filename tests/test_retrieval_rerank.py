@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from corpus_kb.research.citations import Citation
 from corpus_kb.research.retrieval_rerank import _rerank, _rerank_children
+
+pytestmark = [pytest.mark.ollama]
 
 
 def _citation(seq: int, score: float = 0.5) -> Citation:

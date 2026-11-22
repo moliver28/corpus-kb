@@ -41,6 +41,8 @@ from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.domain.models import IngestFileCommand, IngestTextCommand
 
+pytestmark = [pytest.mark.ollama]
+
 TENANT = "00000000-0000-0000-0000-000000000001"
 
 # The declared additive HTTP/socket wrapper over the shared tool envelope.

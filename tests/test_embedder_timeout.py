@@ -30,6 +30,8 @@ from ollama import Client as RealOllamaClient
 from corpus_kb.rag import embedder as embedder_module
 from corpus_kb.rag.embedder import OllamaEmbedder
 
+pytestmark = [pytest.mark.ollama]
+
 _STUB_TIMEOUT = 1.0
 _DIMENSIONS = 8
 

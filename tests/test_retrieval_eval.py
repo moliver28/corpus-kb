@@ -24,6 +24,8 @@ from corpus_kb.research.retrieval_eval import (
 )
 from corpus_kb.research.retrieval_settings import RetrievalSettings
 
+pytestmark = [pytest.mark.ollama]
+
 
 def test_recall_at_k_counts_relevant_in_top_k() -> None:
     ranked = [1, 2, 3, 4, 5]
