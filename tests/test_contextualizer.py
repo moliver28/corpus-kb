@@ -318,3 +318,81 @@ def test_defaults_are_three_way_synced() -> None:
         for key, value in CONTEXTUAL_CONFIG_DEFAULTS.items():
             assert block[key] == value, f"{rel}: {key} drifted"
     assert get_default_config()["ingest"]["contextualize"]["model"] == "qwen3:8b"
+
+
+# ---------------------------------------------------------------------------
+# Bounded-parallel batching (issue #541)
+# ---------------------------------------------------------------------------
+
+
+def _batch_gen(live_fallback: bool = True) -> ContextGenerator:
+    return ContextGenerator(
+        {
+            "ingest": {
+                "contextualize": {"fixture_dir": str(_FIXTURE_DIR), "live_fallback": live_fallback}
+            }
+        }
+    )
+
+
+def test_generate_blurbs_runs_bounded_parallel_and_keeps_order(monkeypatch) -> None:
+    """Blurbs come back one-per-chunk in INPUT order, gathered at most 8
+    at a time; each worker still degrades to empty on failure."""
+    gen = _batch_gen()
+    seen: list[str] = []
+    active = 0
+    peak = 0
+
+    def _fake_generate(document_text: str, chunk_text: str) -> str:
+        nonlocal active, peak
+        import time
+
+        active += 1
+        peak = max(peak, active)
+        time.sleep(0.01)
+        seen.append(chunk_text)
+        active -= 1
+        return f"blurb for {chunk_text}"
+
+    monkeypatch.setattr(gen, "_client_generate", _fake_generate)
+    chunks = [f"chunk {i}" for i in range(20)]
+    blurbs = gen.generate_blurbs("doc", chunks)
+
+    assert blurbs == [f"blurb for chunk {i}" for i in range(20)]
+    assert sorted(seen) == sorted(chunks)  # every chunk ran exactly once
+    assert peak <= 8
+
+
+def test_generate_blurbs_worker_failure_degrades_to_empty(monkeypatch) -> None:
+    gen = _batch_gen()
+
+    def _raise(*_args: object, **_kwargs: object) -> str:
+        raise ConnectionError("no ollama")
+
+    monkeypatch.setattr(gen, "_client_generate", _raise)
+    assert gen.generate_blurbs("doc", ["a", "b"]) == ["", ""]
+
+
+def test_generate_calls_carry_keep_alive_for_prefix_reuse(monkeypatch) -> None:
+    """The generate call pins keep_alive so the model (and KV cache) stays
+    loaded across the batch — the documented Ollama prefix-reuse hook."""
+    gen = _batch_gen()
+    captured: dict[str, object] = {}
+
+    class _Client:
+        def generate(self, **kwargs: object) -> object:
+            captured.update(kwargs)
+            return {"response": "  short blurb  "}
+
+    gen._client = _Client()
+    assert gen.generate_blurb("doc", "chunk") == "short blurb"
+    assert captured["keep_alive"] == "10m"
+
+
+def test_document_first_prompt_puts_the_shared_prefix_first() -> None:
+    """Prefix reuse needs the shared text FIRST in the prompt; the default
+    document-first template orders the document before the chunk."""
+    template = PROMPT_TEMPLATES[("generic", True)]
+    doc_pos = template.index("{document}")
+    chunk_pos = template.index("{chunk}")
+    assert doc_pos < chunk_pos

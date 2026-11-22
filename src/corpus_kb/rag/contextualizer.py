@@ -24,8 +24,10 @@ W3 contextualize v2 (settings in rag/contextual_settings.py):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ollama import Client
@@ -38,6 +40,21 @@ logger = logging.getLogger(__name__)
 _CHARS_PER_TOKEN = 4
 
 _MAX_DOC_CHARS = 8000  # bound cost of the prompt sent to the LLM
+
+# Bounded parallelism for generate_blurbs (issue #541): at most 8
+# generate calls in flight. asyncio.gather preserves input order, so the
+# blurbs stay deterministic per chunk.
+_BLURB_CONCURRENCY = 8
+
+# keep_alive for the generate calls (issue #541): holds the model (and
+# its KV cache) loaded across the batch, so Ollama's automatic prompt
+# caching can reuse the shared document prefix between calls. Prefix
+# reuse works when the shared text comes FIRST in the prompt — true for
+# the document_first templates (the default); chunk-first templates
+# still parallelize but rebuild the KV state per call. Semantics per the
+# Ollama FAQ (docs.ollama.com/faq): keep_alive controls how long the
+# model stays loaded; prefix caching is server-side and automatic.
+_CONTEXTUAL_KEEP_ALIVE = "10m"
 
 # Bound on every generate call (seconds), matching
 # nli_client.NLI_TIMEOUT_SECONDS / rag.judge.JUDGE_TIMEOUT_SECONDS: the
@@ -93,6 +110,13 @@ PROMPT_TEMPLATES: dict[tuple[str, bool], str] = {
 }
 
 
+# One dedicated worker thread: the bridge for calls that arrive inside a
+# running event loop (asyncio.run is illegal there). Module-level and
+# never shut down — the ollama client threads it hosts are daemonic by
+# default via the executor, and recreation would churn threads.
+_SINGLE_WORKER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="contextualizer")
+
+
 class ContextGenerator:
     def __init__(self, config: dict[str, object] | None = None) -> None:
         self.settings: ContextualSettings = load_contextual_settings(config or {})
@@ -131,12 +155,39 @@ class ContextGenerator:
             model=self.settings.model,
             prompt=prompt,
             options={"temperature": self.settings.temperature},
+            keep_alive=_CONTEXTUAL_KEEP_ALIVE,
         )
         text = response.get("response", "") if isinstance(response, dict) else str(response)
         return text.strip()
 
     def generate_blurbs(self, document_text: str, chunks: list[str]) -> list[str]:
-        return [self.generate_blurb(document_text, chunk) for chunk in chunks]
+        """Bounded-parallel blurbs, one per chunk, in input order (issue #541).
+
+        The per-chunk ``generate_blurb`` contract is unchanged: every
+        failure still degrades to an empty blurb inside the worker. The
+        shared document text rides in each prompt, and ``keep_alive``
+        holds the model loaded so Ollama's automatic prefix caching can
+        reuse it between calls (document_first templates put the document
+        first in the prompt).
+        """
+        semaphore = asyncio.Semaphore(_BLURB_CONCURRENCY)
+
+        async def _one(chunk: str) -> str:
+            async with semaphore:
+                return await asyncio.to_thread(self.generate_blurb, document_text, chunk)
+
+        async def _run() -> list[str]:
+            return list(await asyncio.gather(*(_one(chunk) for chunk in chunks)))
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(_run())
+        # Called inside a running loop (the async ingest pipeline): run
+        # the batch on a worker thread so the inner asyncio.run is legal.
+        # The caller already accepted blocking work here (the sequential
+        # path blocked the loop too).
+        return _SINGLE_WORKER.submit(lambda: asyncio.run(_run())).result()
 
 
 def _cap_blurb(blurb: str, max_tokens: int) -> str:
