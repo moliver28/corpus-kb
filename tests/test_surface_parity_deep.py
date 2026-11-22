@@ -2583,7 +2583,13 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     async def _canned_verdict(prompt: str, model: str, base_url: str) -> str:
         return "ENTAIL"
 
+    async def _canned_batch_verdicts(
+        prompt: str, statements: dict[str, str], model: str, base_url: str
+    ) -> dict[str, str]:
+        return dict.fromkeys(statements, "ENTAIL")
+
     monkeypatch.setattr(nli_contract_module, "judge_verdict", _canned_verdict)
+    monkeypatch.setattr(nli_contract_module, "judge_batch_verdicts", _canned_batch_verdicts)
 
     # keyphrases: canned candidates keep the tfidf arm sklearn-free.
     def _canned_candidates(_texts: list[str]) -> dict[str, float]:

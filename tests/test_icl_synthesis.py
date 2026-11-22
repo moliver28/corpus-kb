@@ -319,3 +319,40 @@ class TestBackendReceipt:
         )
         _entities, _relations, stats = extractor.extract([chunk], ontology, source_document_id="d1")
         assert stats.notes == ()
+
+
+class TestFewShotCap:
+    def test_batch_is_capped_at_three(self) -> None:
+        """The live prompt carries at most three exemplars (issue #542)."""
+        batch, _note = few_shot_examples(_shipped_ontology())
+        assert len(batch) == 3
+
+    def test_cap_keeps_first_three_in_ontology_order(self) -> None:
+        """The cap is deterministic: the first three relation types."""
+        ontology = _shipped_ontology()
+        batch, _note = few_shot_examples(ontology)
+        seen = [e["extractions"][-1]["extraction_class"] for e in batch]
+        assert seen == list(ontology.relation_types[:3])
+
+    def test_small_ontology_is_not_trimmed(self) -> None:
+        batch, note = few_shot_examples(_small_ontology())
+        assert len(batch) == len(_small_ontology().relation_types)
+        assert "capped" not in note
+
+    def test_cap_is_named_in_the_receipt(self) -> None:
+        _batch, note = few_shot_examples(_shipped_ontology())
+        assert "capped" in note and "built" in note
+
+    def test_reused_note_keeps_the_cap_fact(self) -> None:
+        ontology = _shipped_ontology()
+        few_shot_examples(ontology)
+        _batch, note = few_shot_examples(ontology)
+        assert "reused" in note and "capped" in note
+
+    def test_reused_note_omits_the_cap_when_not_trimmed(self) -> None:
+        """An uncapped ontology says reused with no cap clause."""
+        ontology = _small_ontology()
+        few_shot_examples(ontology)
+        _batch, note = few_shot_examples(ontology)
+        assert "reused" in note
+        assert "capped" not in note

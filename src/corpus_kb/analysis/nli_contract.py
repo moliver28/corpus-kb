@@ -14,20 +14,27 @@ Verdict to score mapping: ENTAIL 2, NEUTRAL 1, CONTRADICT 0.
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import re
 
 import httpx
+
+_LOG = logging.getLogger(__name__)
 
 __all__ = [
     "NLI_BASE_URL",
     "NLI_HYPOTHESIS_TEMPLATE",
     "VERDICT_SCORES",
     "NliError",
+    "build_batch_classification_prompt",
     "build_classification_prompt",
     "build_contradiction_prompt",
     "build_hypothesis",
+    "judge_batch_verdicts",
     "judge_raw",
     "judge_verdict",
+    "parse_batch_verdicts",
     "parse_verdict",
 ]
 
@@ -49,6 +56,23 @@ _CLASSIFY_PROMPT = (
     "Reply with exactly one word: ENTAIL if the hypothesis is true of the "
     "text, NEUTRAL if the text does not say, CONTRADICT if the hypothesis "
     "is false.\n/no_think"
+)
+
+_BATCH_PROMPT = (
+    "You are a natural language inference judge. Read one text.\n"
+    'Text: "{premise}"\n'
+    "Judge each numbered hypothesis below.\n"
+    "{numbered}\n"
+    "Reply with ONLY a JSON list, one object per hypothesis, in order: "
+    '[{{"n": 1, "verdict": "..."}}, ...]. '
+    "Each verdict is one word: ENTAIL if the hypothesis is true of the "
+    "text, NEUTRAL if the text does not say, CONTRADICT if the hypothesis "
+    "is false.\n/no_think"
+)
+
+_ENTRY_ROW = re.compile(
+    r'\{\s*"n"\s*:\s*(\d+)\s*,\s*"verdict"\s*:\s*"(ENTAIL|NEUTRAL|CONTRADICT)"\s*\}',
+    re.IGNORECASE,
 )
 
 _CONTRADICTION_PROMPT = (
@@ -84,6 +108,101 @@ def build_classification_prompt(premise: str, label: str) -> str:
 def build_contradiction_prompt(a: str, b: str) -> str:
     """The locked two-text contradiction prompt (bytes pinned)."""
     return _CONTRADICTION_PROMPT.format(a=a, b=b)
+
+
+def build_batch_classification_prompt(premise: str, statements: dict[str, str]) -> str:
+    """The locked one-text, many-hypothesis judgment prompt.
+
+    Labels arrive as ``{label: hypothesis}``; order follows the dict, so
+    callers pass a deterministic order. One call replaces one call per
+    label (issue #538).
+    """
+    numbered = "\n".join(
+        f"{index}. {statement}" for index, statement in enumerate(statements.values(), 1)
+    )
+    return _BATCH_PROMPT.format(premise=premise, numbered=numbered)
+
+
+def parse_batch_verdicts(raw: str, statements: dict[str, str]) -> dict[str, str | None]:
+    """Map each label to its verdict; a missing row maps to ``None``.
+
+    The reply must be a JSON list whose objects carry the statement
+    number as ``"n"`` and a verdict word. A leaked reasoning block is
+    stripped first; when JSON parsing fails, the entries are recovered
+    with a strict per-row pattern. ``None`` means "no honest verdict
+    for this label" — never a guess.
+    """
+    body = _THINK_BLOCK.sub(" ", str(raw))
+    body = body.replace("</think>", " ")
+    try:
+        data = json.loads(body)
+        rows = data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        # The list may ride after plain reasoning text; recover it.
+        rows = []
+        start = body.find("[")
+        end = body.rfind("]")
+        if start >= 0 and end > start:
+            try:
+                data = json.loads(body[start : end + 1])
+                rows = data if isinstance(data, list) else []
+            except json.JSONDecodeError:
+                rows = []
+        if not rows:
+            rows = [
+                {"n": match.group(1), "verdict": match.group(2)}
+                for match in _ENTRY_ROW.finditer(body)
+            ]
+    by_number: dict[int, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        raw_number = row.get("n")
+        if isinstance(raw_number, bool) or not isinstance(raw_number, (int, str)):
+            continue
+        try:
+            number = int(raw_number)
+        except ValueError:
+            continue
+        verdict = str(row.get("verdict", "")).upper()
+        if verdict in VERDICT_SCORES:
+            if number in by_number:
+                _LOG.debug(
+                    "Duplicate NLI row for statement %d; the last verdict wins.",
+                    number,
+                )
+            by_number[number] = verdict
+    return {label: by_number.get(number) for number, label in enumerate(statements, 1)}
+
+
+async def judge_batch_verdicts(
+    prompt: str, statements: dict[str, str], model: str, base_url: str
+) -> dict[str, str]:
+    """One call judges every statement; raises ``NliError`` on any degrade.
+
+    A transport failure raises ``unreachable``; a reply that lacks a
+    verdict for any label raises ``unusable`` — the caller answers the
+    honest unavailable envelope instead of guessing.
+    """
+    errors: tuple[type[BaseException], ...] = (ConnectionError, OSError, httpx.TransportError)
+    try:  # the transport error family of the ollama client (lazy, P0)
+        from ollama import ResponseError
+
+        errors = (*errors, ResponseError)
+    except ImportError:
+        pass
+    try:
+        raw = await judge_raw(prompt, model, base_url)
+    except errors as exc:
+        raise NliError("unreachable", f"the NLI model call failed: {exc}") from exc
+    parsed = parse_batch_verdicts(raw, statements)
+    missing = [label for label, verdict in parsed.items() if verdict is None]
+    if missing:
+        raise NliError(
+            "unusable",
+            f"the batch reply had no verdict for: {', '.join(missing)}.",
+        )
+    return {label: str(verdict) for label, verdict in parsed.items()}
 
 
 def parse_verdict(raw: str) -> str | None:

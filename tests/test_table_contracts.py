@@ -386,10 +386,12 @@ async def test_33_emotion_tag_contract(both_pool: Any, monkeypatch: Any) -> None
     import corpus_kb.analysis.nli_contract as nli_contract_module
     from corpus_kb.tools import uxr_method_tools
 
-    async def canned(prompt: str, model: str, base_url: str) -> str:
-        return "ENTAIL"
+    async def canned_batch(
+        prompt: str, statements: dict[str, str], model: str, base_url: str
+    ) -> dict[str, str]:
+        return dict.fromkeys(statements, "ENTAIL")
 
-    monkeypatch.setattr(nli_contract_module, "judge_verdict", canned)
+    monkeypatch.setattr(nli_contract_module, "judge_batch_verdicts", canned_batch)
     await _seed(both_pool, TENANT, {_AA: _vec(1.0, 0.0), _BB: _vec(0.0, 1.0)})
     envelope = await uxr_method_tools.emotion_tag(both_pool, {}, TENANT, model="stub")
     _assert_contract("33", envelope, "predictions")
