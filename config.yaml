@@ -251,6 +251,13 @@ judge:
   base_url: http://localhost:11434
   max_claims: 20
 
+# Grounded ask (src/corpus_kb/ask/, ask_settings.py is the typed reader).
+ask:
+  # Cap on reranked evidence blocks in the answer prompt and the returned
+  # sources (issue #540). Applied AFTER rerank, in rerank order; the
+  # reranker still scores its full candidate set.
+  max_sources: 8
+
 # Topic modeling over STORED chunk embeddings (src/corpus_kb/topics/).
 # topics_build consumes the vectors ingest already wrote; it never
 # re-embeds. Opt-in: the default keeps the feature dormant (bertopic is

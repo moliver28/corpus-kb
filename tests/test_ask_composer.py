@@ -617,3 +617,67 @@ def test_normalize_pair_hardens_duck_typed_verdicts() -> None:
     assert _normalize_pair(("entailed", -1)) == ("entailed", 0.0)
     assert _normalize_pair("junk") == ("unsupported", 0.0)
     assert _normalize_pair(("entailed",)) == ("unsupported", 0.0)
+
+
+# ---------------------------------------------------------------------------
+# ask.max_sources cap (issue #540): truncation AFTER rerank, in order
+# ---------------------------------------------------------------------------
+
+
+async def test_max_sources_truncates_after_rerank_in_rerank_order() -> None:
+    """The cap keeps the TOP reranked blocks, order and numbering intact."""
+    results = [_result(f"chunk {i}") for i in range(1, 6)]
+    handler = _FakeHandler(_envelope(results))
+    llm = _FakeLlm(text="Chunk 1 holds [1]. Chunk 2 holds too [2].")
+
+    payload = (await compose_answer("q", handler, llm, max_sources=2)).to_payload()
+
+    sources = payload["result"]["sources"]
+    assert [s["n"] for s in sources] == [1, 2]
+    assert [s["text"] for s in sources] == ["chunk 1", "chunk 2"]
+    # The prompt carries ONLY the capped blocks (the token saving).
+    user_content = str(llm.calls[0]["messages"][1]["content"])
+    assert "chunk 3" not in user_content
+
+
+async def test_max_sources_above_result_count_is_a_no_op() -> None:
+    handler = _FakeHandler(_envelope([_result("alpha"), _result("beta")]))
+    llm = _FakeLlm(text="Alpha holds [1].")
+
+    payload = (await compose_answer("q", handler, llm, max_sources=8)).to_payload()
+
+    assert len(payload["result"]["sources"]) == 2
+
+
+async def test_max_sources_none_keeps_every_source() -> None:
+    results = [_result(f"chunk {i}") for i in range(1, 5)]
+    handler = _FakeHandler(_envelope(results))
+    llm = _FakeLlm(text="Chunk 1 holds [1].")
+
+    payload = (await compose_answer("q", handler, llm)).to_payload()
+
+    assert [s["text"] for s in payload["result"]["sources"]] == [
+        "chunk 1",
+        "chunk 2",
+        "chunk 3",
+        "chunk 4",
+    ]
+
+
+async def test_stream_max_sources_caps_the_streamed_evidence() -> None:
+    """The streaming twin applies the SAME cap in the SAME order."""
+    from corpus_kb.ask.streaming import AskStreamFinal, compose_answer_stream
+
+    results = [_result(f"chunk {i}") for i in range(1, 5)]
+    llm = _StreamingLlm(["Chunk 1 holds [1]."])
+
+    events = []
+    async for event in compose_answer_stream(
+        "q", _FakeHandler(_envelope(results)), llm, max_sources=2
+    ):
+        events.append(event)
+    final = next(e for e in events if isinstance(e, AskStreamFinal))
+    sources = final.bundle.to_payload()["result"]["sources"]
+    assert [s["n"] for s in sources] == [1, 2]
+    user_content = str(llm.calls[0]["messages"][1]["content"])
+    assert "chunk 3" not in user_content

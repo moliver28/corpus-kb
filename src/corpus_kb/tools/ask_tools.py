@@ -77,6 +77,7 @@ async def ask(
                 judge=_resolve_judge(cfg),
                 tenant_id=tenant,
                 k=k,
+                max_sources=_max_sources(cfg),
             )
             payload = bundle.to_payload()
             return attach_trace_id(payload)
@@ -128,6 +129,7 @@ async def ask_stream(
                 judge=_resolve_judge(cfg),
                 tenant_id=tenant,
                 k=k,
+                max_sources=_max_sources(cfg),
             ):
                 yield event
         finally:
@@ -142,3 +144,10 @@ def _resolve_judge(cfg: dict[str, Any]) -> object | None:
     from corpus_kb.rag.judge import OllamaJudge
 
     return OllamaJudge(cfg)
+
+
+def _max_sources(cfg: dict[str, Any]) -> int:
+    """The ask.max_sources cap (issue #540), from the typed reader."""
+    from corpus_kb.ask.ask_settings import load_ask_settings
+
+    return load_ask_settings(cfg).max_sources

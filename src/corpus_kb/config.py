@@ -37,12 +37,10 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
-# The verify badge's "verified" bar (UI SPA program Task 3): at or above
-# this groundedness the judge entailed every claim it checked; below it
-# the answer is "partial". Hoisted from ui/view_models.py BEFORE that
-# file's deletion so the policy keeps one source. Task 4's manifest
-# generator codegens the SPA's thresholds.generated.ts from this default
-# (compile-time types; the value never travels over the wire).
+# The verify badge's "verified" bar (UI SPA program Task 3): at or above this
+# groundedness the judge entailed every claim it checked; below it the answer
+# is "partial". Hoisted from ui/view_models.py BEFORE that file's deletion so
+# the policy keeps one source. Task 4 codegens thresholds.generated.ts from it.
 VERIFY_FULL_GROUNDEDNESS = 0.99
 
 # ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount).
@@ -228,8 +226,8 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
     # Issue #348 overlays: deep-merge IN ORDER after the main file, before
     # the alias and env layers. `file_config` stays the MAIN file's tree —
-    # _follow_graph_backend's "did the operator choose a graph backend"
-    # question is about the main file, not the overlays.
+    # _follow_graph_backend's "did the operator choose" question is about
+    # the main file's graph backend, not the overlays.
     for overlay_path in config_overlay_paths():
         if not overlay_path.is_file():
             raise ConfigError(
@@ -245,22 +243,19 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         _deep_update(config, overlay_config)
 
     # Legacy namespace aliases (search.* / ingest.hierarchy.* / contextual.*):
-    # copied into the canonical keys when the canonical key is absent, with a
-    # deprecation warning. Runs BEFORE the typed readers and cross-field gates
-    # so every consumer only ever sees canonical keys.
+    # copied into the canonical keys when absent, with a deprecation warning.
+    # Runs BEFORE the typed readers and cross-field gates.
     apply_legacy_aliases(config)
 
     apply_env_overrides(config)
 
     apply_extraction_backend_alias(config)
 
-    # Issue #330: an UNCHOSEN graph.backend follows the database backend
-    # (see _follow_graph_backend).
+    # Issue #330: an UNCHOSEN graph.backend follows the database backend.
     _follow_graph_backend(config, file_config)
 
     # Storage-portability backend truth: Postgres-only engine selections are
-    # refused while database.backend is duckdb (the mix gate runs AFTER the
-    # alias layers, so it sees the effective extraction backend).
+    # refused while database.backend is duckdb (the mix gate sees the aliases).
     mix_errors = backend_mix_errors(config)
     if mix_errors:
         raise ValueError(mix_errors[0])
@@ -281,6 +276,7 @@ def _typed_gate_errors(config: dict[str, object]) -> str | None:
     settings, and the ui.spa reader here. Imports stay lazy (tool paths).
     """
     from corpus_kb.analysis.settings import analysis_settings_error
+    from corpus_kb.ask.ask_settings import ask_settings_error
     from corpus_kb.config_gates import matryoshka_mrl_error
     from corpus_kb.notebooks.settings import notebooks_settings_error
     from corpus_kb.rag.contextual_settings import contextualize_settings_error
@@ -289,6 +285,7 @@ def _typed_gate_errors(config: dict[str, object]) -> str | None:
 
     for gate in (
         matryoshka_mrl_error,
+        ask_settings_error,
         contextualize_settings_error,
         topics_settings_error,
         analysis_settings_error,
@@ -960,6 +957,9 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
 
     config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
+    from corpus_kb.ask.ask_settings import ASK_CONFIG_DEFAULTS  # issue #540
+
+    config.setdefault("ask", _detached_defaults(ASK_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

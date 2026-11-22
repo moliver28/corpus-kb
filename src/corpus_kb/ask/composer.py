@@ -175,6 +175,7 @@ async def compose_answer(
     judge: object | None = None,
     tenant_id: UUID = DEFAULT_TENANT_UUID,
     k: int | None = None,
+    max_sources: int | None = None,
 ) -> AnswerBundle:
     """Retrieve, generate with citations, filter sentences, verify claims.
 
@@ -182,10 +183,18 @@ async def compose_answer(
     ``degraded_excluded`` record rides along on every outcome. The answer
     carries ONLY sentences whose [n] index resolves to retrieved evidence
     (the grounded contract); everything else is dropped.
+
+    ``max_sources`` caps the reranked evidence (issue #540): truncation
+    happens AFTER rerank, in rerank order, so the evidence stays stably
+    ordered. The reranker still scores its full candidate set. ``None``
+    means no cap (direct callers keep the old behavior); the surfaces
+    pass ``ask.max_sources`` (default 8).
     """
     from corpus_kb.utils.tracing import ATTR_MODEL, SPAN_ASK_GENERATE, span
 
     envelope, sources, degraded = await retrieve_evidence(question, handler, tenant_id, k)
+    if max_sources is not None and max_sources < len(sources):
+        sources = sources[:max_sources]
     # Issue #136 receipt: the multi-query rewrites, when the flag ran.
     rewrites = envelope.query_rewrites
     model = model_name(llm)

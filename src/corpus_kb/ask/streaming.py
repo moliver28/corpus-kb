@@ -114,6 +114,7 @@ async def compose_answer_stream(
     judge: object | None = None,
     tenant_id: UUID = DEFAULT_TENANT_UUID,
     k: int | None = None,
+    max_sources: int | None = None,
 ) -> AsyncIterator[AskStreamEvent]:
     """Retrieve, stream cited deltas, then verify; end with the envelope.
 
@@ -122,10 +123,15 @@ async def compose_answer_stream(
     A generation seam that fails mid-stream ends the stream honestly: the
     deltas already sent stay, and the final event carries the degraded
     envelope with the evidence — never a fake completion.
+
+    ``max_sources`` caps the reranked evidence exactly as the batch
+    composer does (issue #540): truncation AFTER rerank, in rerank order.
     """
     from corpus_kb.utils.tracing import ATTR_MODEL, SPAN_ASK_GENERATE, span
 
     envelope, sources, degraded = await retrieve_evidence(question, handler, tenant_id, k)
+    if max_sources is not None and max_sources < len(sources):
+        sources = sources[:max_sources]
     # Issue #136 receipt: the multi-query rewrites, when the flag ran
     # (the streamed envelope carries the same receipt as the batch one).
     rewrites = envelope.query_rewrites
