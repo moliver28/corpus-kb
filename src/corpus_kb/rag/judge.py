@@ -135,8 +135,11 @@ class OllamaJudge:
         label = str(data.get("label", "unsupported"))
         if label not in VALID_LABELS:
             label = "unsupported"
+        raw = data.get("confidence", 0.0)
+        if not isinstance(raw, (int, float, str)):
+            return "unsupported", 0.0
         try:
-            confidence = float(data.get("confidence", 0.0))
+            confidence = float(raw)
         except (TypeError, ValueError):
             return "unsupported", 0.0
         if not 0.0 <= confidence <= 1.0:

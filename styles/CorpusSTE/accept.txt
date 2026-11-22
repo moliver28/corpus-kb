@@ -222,3 +222,17 @@ launchctl
 LaunchAgent
 plist
 Synology
+difflib
+mtime
+tfidf
+id_list
+object_list
+Plutchik
+RQn
+Hn
+momus
+uxr
+regen
+descope
+reimplementation
+yaml

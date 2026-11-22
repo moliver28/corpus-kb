@@ -1881,14 +1881,8 @@ LEGS: dict[str, _Leg] = {
     ),
     "coding_code_batch": _Leg(
         _shared_coding_code_batch,
-        _post(
-            "/api/coding/code-batch",
-            {"cells": [{"chunk_id": DOC_ID, "code_ids": ["code-1"]}]},
-        ),
-        _sock(
-            "coding_code_batch",
-            {"cells": [{"chunk_id": DOC_ID, "code_ids": ["code-1"]}]},
-        ),
+        _post("/api/coding/code-batch", {"cells": [{"chunk_id": DOC_ID, "code_ids": ["code-1"]}]}),
+        _sock("coding_code_batch", {"cells": [{"chunk_id": DOC_ID, "code_ids": ["code-1"]}]}),
         _mcp({"cells": [{"chunk_id": DOC_ID, "code_ids": ["code-1"]}]}),
     ),
     "coding_reliability": _Leg(
@@ -1899,14 +1893,8 @@ LEGS: dict[str, _Leg] = {
     ),
     "coding_calibrate_floors": _Leg(
         _shared_coding_calibrate_floors,
-        _post(
-            "/api/coding/calibrate-floors",
-            {"code_id": "code-1", "codebook_version_id": CV},
-        ),
-        _sock(
-            "coding_calibrate_floors",
-            {"code_id": "code-1", "codebook_version_id": CV},
-        ),
+        _post("/api/coding/calibrate-floors", {"code_id": "code-1", "codebook_version_id": CV}),
+        _sock("coding_calibrate_floors", {"code_id": "code-1", "codebook_version_id": CV}),
         _mcp({"code_id": "code-1", "codebook_version_id": CV}),
     ),
     "coding_saturation": _Leg(
