@@ -168,26 +168,6 @@ class OllamaEmbedder:
         self.last_usage = EmbedUsage(prompt_tokens=None, embedded_texts=0, cached_texts=text_count)
         return results
 
-    def _fill_from_persist_cache(
-        self, missing: list[tuple[int, str]], results: list[list[float]]
-    ) -> list[tuple[int, str]]:
-        """Serve SQL-tier hits (issue #539); return still-missing texts.
-
-        Degraded or skipped lookups change nothing, so the batch flows
-        to the model unchanged.
-        """
-        if self._persist_cache is None or not missing:
-            return missing
-        stored = self._persist_cache.lookup_sync([_sha256_key(text) for _, text in missing])
-        still_missing: list[tuple[int, str]] = []
-        for idx, text in missing:
-            vector = stored.get(_sha256_key(text))
-            if vector is None:
-                still_missing.append((idx, text))
-            else:
-                results[idx] = vector
-        return still_missing
-
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, using the cache and batching."""
         if not texts:
