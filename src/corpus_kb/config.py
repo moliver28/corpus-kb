@@ -281,6 +281,7 @@ def _typed_gate_errors(config: dict[str, object]) -> str | None:
     settings, and the ui.spa reader here. Imports stay lazy (tool paths).
     """
     from corpus_kb.analysis.settings import analysis_settings_error
+    from corpus_kb.ask.ask_settings import ask_settings_error
     from corpus_kb.config_gates import matryoshka_mrl_error
     from corpus_kb.notebooks.settings import notebooks_settings_error
     from corpus_kb.rag.contextual_settings import contextualize_settings_error
@@ -289,6 +290,7 @@ def _typed_gate_errors(config: dict[str, object]) -> str | None:
 
     for gate in (
         matryoshka_mrl_error,
+        ask_settings_error,
         contextualize_settings_error,
         topics_settings_error,
         analysis_settings_error,
@@ -960,6 +962,11 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
 
     config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
+    # Grounded ask (ask/ask_settings.py is the typed reader; issue #540:
+    # the ask.max_sources cap on reranked evidence in the answer prompt).
+    from corpus_kb.ask.ask_settings import ASK_CONFIG_DEFAULTS
+
+    config.setdefault("ask", _detached_defaults(ASK_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:
