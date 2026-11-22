@@ -488,7 +488,7 @@ State lives in `${CLAUDE_PLUGIN_DATA}` (or `~/.corpus-kb/plugin/`):
   atomic write. Windows uses `msvcrt.locking`; other systems use `flock`.
 - `gate-state.json` — the setup gate state, one entry per folder
   (issue #353), atomic write behind a lock.
-- `post-search.json` — the post_search command registry (issue #355).
+- `post-search.json` — the `post_search` command registry (issue #355).
 - `uxr/<slug>.sqlite` — one UXR store per study (issue #355).
 - `hook-errors.jsonl` — one line per swallowed hook failure.
 - `telemetry.jsonl` — one line per manual-read turn.
