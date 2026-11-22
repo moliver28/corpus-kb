@@ -10,6 +10,33 @@ This repository is also the plugin marketplace. The manifest is
 The plugin is built fresh in this repository. It has no older code inside.
 One tag, `corpus-rag-v<version>`, marks the engine commit for each release.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Step 1: Add the marketplace](#step-1-add-the-marketplace)
+- [Step 2: Install the plugin](#step-2-install-the-plugin)
+- [Step 3: Connect the engine](#step-3-connect-the-engine)
+  - [Install the engine from a release tag](#install-the-engine-from-a-release-tag)
+  - [Roll back to an older engine](#roll-back-to-an-older-engine)
+- [Three flows](#three-flows)
+  - [Ask with citations](#ask-with-citations)
+  - [Pick an analysis](#pick-an-analysis)
+  - [Ingest documents](#ingest-documents)
+  - [Code chunks in a study](#code-chunks-in-a-study)
+- [Skills](#skills)
+- [Studies](#studies)
+  - [Every command](#every-command)
+  - [Servers and ports](#servers-and-ports)
+  - [Settings (userConfig)](#settings-userconfig)
+  - [Config overlay](#config-overlay)
+- [Study folders and hooks](#study-folders-and-hooks)
+- [Guided folder setup](#guided-folder-setup)
+- [The ingest queue](#the-ingest-queue)
+- [UX research studies](#ux-research-studies)
+- [Hook state files](#hook-state-files)
+- [ZCode notes](#zcode-notes)
+- [Development](#development)
+
 ## Requirements
 
 - Claude Code or ZCode.

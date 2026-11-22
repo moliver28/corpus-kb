@@ -242,7 +242,7 @@ above.
 
 ## Method register and selector
 
-The analysis method register lists 30 NLP analysis methods. Each row
+The analysis method register lists 33 NLP analysis methods. Each row
 carries the selection axes from the research source. These are the
 output family, the required inputs, the calibration effort, the
 autonomy, the complexity tier, and the priority. Each row also carries

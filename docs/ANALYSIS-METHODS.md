@@ -1,10 +1,22 @@
 # Analysis methods (the register)
 
-Corpus-KB ships a register of 30 NLP analysis methods. The register
+Corpus-KB ships a register of 33 NLP analysis methods. The register
 (`config/analysis_methods.yaml`) is the single source. It drives the
 selector (`analysis_select_method`), the generated table below, and the
 harness method cards. The block between the markers is GENERATED. Run
 `poe gen` after any register edit. Never hand-edit the block.
+
+## Contents
+
+- [How to pick a method](#how-to-pick-a-method)
+- [Adding a method](#adding-a-method)
+- [The register table](#the-register-table)
+- [Method guidance](#method-guidance)
+- [Backend proof](#backend-proof)
+- [Difficulty seed](#difficulty-seed)
+
+The register table and the per-method guidance bullets are GENERATED
+from `config/analysis_methods.yaml` (`poe gen`).
 
 ## How to pick a method
 
@@ -43,7 +55,7 @@ footnotes. They have no register rows and no ops.
 
 1. Add one row to `config/analysis_methods.yaml` (and its packaged
    mirror, byte-identical). The loader validates every axis, the id
-   ledger 01-30, and the status/op consistency.
+   ledger 01-33, and the status/op consistency.
 2. Give it an `op` name only when it is implemented. `human_led` and
    `not_planned` rows carry `op: null`.
 3. To implement an op, add the handler under `src/corpus_kb/tools/`.

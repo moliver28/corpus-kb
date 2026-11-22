@@ -61,7 +61,7 @@ Because every change is an event, you can list versions, tag important points, a
 
 ## What languages does tree-sitter support?
 
-Python, JavaScript, TypeScript, JSX, TSX, Rust, Go, Java, and C are supported. So are C++, Ruby, PHP, Swift, Kotlin, Scala, Lua, Haskell, Elixir, Clojure, and more. Unsupported languages fall back to line-based chunking.
+Seven grammars ship: Python, JavaScript, TypeScript, TSX, Rust, Go, and Java. The watched suffixes are `.py`, `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`, `.tsx`, `.rs`, `.go`, and `.java`. No C or C++ grammar ships, so `.c`, `.h`, `.cpp`, and `.hpp` files chunk with the default strategy. Every other language falls back the same way.
 
 ## Can I use a different embedding model?
 

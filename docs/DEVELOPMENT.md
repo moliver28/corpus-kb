@@ -59,7 +59,7 @@ Single source tree; all new code goes in `src/corpus_kb/`.
     ├── research/ coding/ labeling/ classification/ analysis/
     ├── topics/ beliefs/ conflicts/ statements/   # Analysis + research subsystems
     ├── profiles/                  # One authored YAML per corpus
-    ├── migrations/                # Idempotent SQL migrations 001-038 + rollback scripts
+    ├── migrations/                # Numbered idempotent SQL migrations + rollback mirrors
     ├── migrations_duckdb/         # DuckDB mirror migration set
     ├── ui/ + ui_dist/             # UI wiring + built SPA assets served at /app/
     ├── eval/ notebooks/ ask/      # Evaluation, marimo console, cited answers

@@ -162,11 +162,18 @@ CLI exit code. The map lives in `src/corpus_kb/errors.py` (`ERROR_MAP`).
 |------------|-------------|-------------|----------|
 | `config_error` | 400 | -32602 | 3 |
 | `validation_error` | 400 | -32602 | 1 |
+| `question_too_short` | 400 | -32602 | 1 |
+| `no_method_matches` | 400 | -32602 | 1 |
+| `write_refused` | 400 | -32602 | 1 |
+| `payload_too_large` | 413 | -32602 | 1 |
+| `unsupported_media_type` | 415 | -32602 | 1 |
 | `not_found` | 404 | -32001 | 1 |
 | `conflict` | 409 | -32002 | 3 |
 | `database_unavailable` | 503 | -32003 | 3 |
 | `migration_missing` | 503 | -32004 | 3 |
 | `dependency_missing` | 503 | -32005 | 3 |
+| `store_newer` | 409 | -32002 | 3 |
+| `package_not_published` | 503 | -32005 | 3 |
 | `internal_error` | 500 | -32603 | 1 |
 
 Legacy exception class names (`ValueError`, `OSError`, `ConnectionError`,
@@ -181,12 +188,17 @@ A table generated from `ERROR_MAP` cannot drift from `ERROR_MAP`.
 
 ### The doctor contract
 
-`corpus-kb doctor` is read-only. It always exits 0 (`src/corpus_kb/_setup/install.py`,
-`doctor_cmd`). The exit code says nothing about your system's health. Read the
-report itself. `FAIL` lines need action; `OK` lines do not.
+`corpus-kb doctor` is read-only (`src/corpus_kb/_setup/install.py`,
+`doctor_cmd`). Read the report itself. `FAIL` lines need action; `OK`
+lines do not.
 
-Honest status: `doctor` has no `--json` flag today. It has no fail-on-`FAIL`
-flag today. Both are open work; do not script against them yet.
+| Exit | Meaning |
+|------|---------|
+| 0 | Checks ran. Warnings keep exit 0. |
+| 3 | The configured database is unreachable (issue #348). |
+
+`--json` prints one machine-readable report: checks plus resolved config
+values. A fail-on-`FAIL` flag is still open work; do not script against it.
 
 ---
 
@@ -245,8 +257,10 @@ doctor diagnoses that deployment, not the config file's.
 - File and directory ingest walk `WATCH_SUFFIXES`
   (`src/corpus_kb/ingest_watch.py`): `.py`, `.js`, `.ts`, `.tsx`, `.jsx`,
   `.rs`, `.go`, `.java`, `.cpp`, `.c`, `.h`, `.hpp`, `.rb`, `.php`, `.swift`,
-  `.kt`, `.scala`, `.lua`, `.md`, `.markdown`, `.rst`, `.pptx`, `.txt`.
-  Other suffixes are skipped.
+  `.kt`, `.scala`, `.lua`, `.md`, `.markdown`, `.rst`, `.pptx`, `.txt`,
+  `.csv`, `.pdf`, `.docx`, `.vtt`, `.srt`. Other suffixes are skipped.
+  `.pdf` routes through the textbook page gate or the queue. `.docx`,
+  `.vtt`, and `.srt` ride transcript strategy detection.
 - Text ingest accepts only the four document types above. Anything else is
   an error, not a fallback.
 - `ingest-url` pins `source_type` to `web`. The `web_structure` strategy
