@@ -44,7 +44,7 @@ LONG_ROOTS = ("src", "scripts")
 # Ceiling-only roots (issue #543): a max_file_lines entry under these
 # trees is enforced like any other, but no ceiling is demanded. The
 # over-250 count stays scoped to LONG_ROOTS.
-CEILING_ONLY_ROOTS = ("plugins", "tests")
+CEILING_ONLY_ROOTS = ("plugins/", "tests/")
 
 
 def _load_baselines() -> dict[str, int | float]:
