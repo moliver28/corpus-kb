@@ -94,19 +94,46 @@ def test_read_ceilings_rejects_a_non_integer_ceiling(tmp_path: Path) -> None:
 def test_baseline_ceilings_match_the_live_tree() -> None:
     """Honesty lock: each ceiling equals the file's size in this tree.
 
-    The map names exactly the files over the soft limit, and every
-    ceiling equals the measured size, so the gate blocks growth from
-    the committed baseline on.
+    Under ``src/`` and ``scripts/`` the map names exactly the files over
+    the soft limit. Under the ceiling-only roots (``plugins/``,
+    ``tests/``, issue #543) a ceiling is enforced when recorded but never
+    demanded; every recorded ceiling must still equal the measured size,
+    so the gate blocks growth from the committed baseline on.
     """
     file_lines = measure_file_lines()
     over = {rel: n for rel, n in file_lines.items() if n > LINE_LIMIT}
     ceilings = read_ceilings(BASELINES_PATH)
-    assert set(ceilings) == set(over), (
-        "max_file_lines must name exactly the files over "
-        f"{LINE_LIMIT} lines (missing: {sorted(set(over) - set(ceilings))}, "
-        f"stale: {sorted(set(ceilings) - set(over))})"
+    required = {rel: n for rel, n in over.items() if not rel.startswith(("plugins/", "tests/"))}
+    assert set(ceilings) >= set(required), (
+        "max_file_lines must name every file over "
+        f"{LINE_LIMIT} lines under src/ and scripts/ "
+        f"(missing: {sorted(set(required) - set(ceilings))})"
     )
     drifted = {
-        rel: (ceiling, over[rel]) for rel, ceiling in ceilings.items() if ceiling != over[rel]
+        rel: (ceiling, n)
+        for rel, ceiling in ceilings.items()
+        for n in [file_lines.get(rel)]
+        if n is not None and ceiling != n
     }
     assert not drifted, f"ceilings drifted from the live sizes: {drifted}"
+
+
+def test_ceiling_only_root_grows_break_the_gate() -> None:
+    """A recorded plugins/tests ceiling blocks growth like any other."""
+    failures = check_file_ceilings({"tests/test_wave.py": 3200}, {"tests/test_wave.py": 3130})
+    assert len(failures) == 1
+    assert "tests/test_wave.py" in failures[0]
+
+
+def test_ceiling_only_root_without_a_ceiling_is_not_demanded() -> None:
+    """An uncapped over-limit tests file passes; src/ keeps the demand."""
+    assert check_file_ceilings({"tests/test_wide.py": 900}, {}) == []
+    assert len(check_file_ceilings({"src/wide.py": 900}, {})) == 1
+
+
+def test_ceiling_only_root_shrunk_under_the_limit_releases_the_entry() -> None:
+    failures = check_file_ceilings(
+        {"plugins/corpus-rag/cli_spec.py": 200}, {"plugins/corpus-rag/cli_spec.py": 344}
+    )
+    assert len(failures) == 1
+    assert "Remove" in failures[0]

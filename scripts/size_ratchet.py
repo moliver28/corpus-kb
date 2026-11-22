@@ -8,7 +8,12 @@ The gate compares three things with the checked-in baselines in
 2. Files over the 250-line soft limit under ``src/`` and ``scripts/``.
 3. Per-file line ceilings (``max_file_lines``): every file already over
    the soft limit is capped at its recorded size (momus F11), so an
-   over-limit file cannot grow without failing this gate.
+   over-limit file cannot grow without failing this gate. ``plugins/``
+   and the named ``tests/`` files (issue #543) carry the same ceilings:
+   growth breaks, removal or shrink to the limit releases the entry.
+   Those roots are ceiling-only — a ceiling there is enforced but never
+   demanded, so the wide over-limit ``tests/`` cluster is not forced to
+   file 160 ceilings in one PR.
 
 A count above its baseline fails the build. A count at or below the
 baseline passes, so the in-flight dedup PRs land without touching this
@@ -36,6 +41,10 @@ LINE_LIMIT = 250
 # tests (scripts/ joined the scan when its worst blocks were decomposed).
 SCAN_ROOTS = ("src", "scripts", "tests")
 LONG_ROOTS = ("src", "scripts")
+# Ceiling-only roots (issue #543): a max_file_lines entry under these
+# trees is enforced like any other, but no ceiling is demanded. The
+# over-250 count stays scoped to LONG_ROOTS.
+CEILING_ONLY_ROOTS = ("plugins/", "tests/")
 
 
 def _load_baselines() -> dict[str, int | float]:
@@ -100,31 +109,49 @@ def _count_plr0915() -> int:
 
 
 def measure_file_lines() -> dict[str, int]:
-    """Map each scanned Python file to its line count (repo-relative)."""
+    """Map each scanned Python file to its line count (repo-relative).
+
+    LONG_ROOTS feed both the over-250 count and the ceiling check;
+    CEILING_ONLY_ROOTS (``plugins/``, ``tests/``) feed the ceiling check
+    only — a file there needs no ceiling unless one is recorded.
+    """
     counts: dict[str, int] = {}
-    for root in LONG_ROOTS:
+
+    def scan(root: str) -> None:
         for path in sorted((ROOT / root).rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
             with path.open("r", encoding="utf-8", errors="replace") as handle:
                 counts[path.relative_to(ROOT).as_posix()] = sum(1 for _ in handle)
+
+    for root in LONG_ROOTS:
+        scan(root)
+    for root in CEILING_ONLY_ROOTS:
+        scan(root)
     return counts
 
 
-def check_file_ceilings(file_lines: dict[str, int], ceilings: dict[str, int]) -> list[str]:
+def check_file_ceilings(
+    file_lines: dict[str, int],
+    ceilings: dict[str, int],
+    ceiling_only_roots: tuple[str, ...] = CEILING_ONLY_ROOTS,
+) -> list[str]:
     """Return one failure message per broken ceiling, sorted by path.
 
     A ceiling breaks when the file grew, when the file is gone, or when
     the file dropped to or under the line limit (the entry must go in
-    that PR). An over-limit file with no ceiling also fails: its
-    current size must be recorded in the baseline.
+    that PR). Under the scanned long roots an over-limit file with no
+    ceiling also fails: its current size must be recorded in the
+    baseline. Under the ceiling-only roots a missing ceiling is fine —
+    the entry is enforced when present, never demanded.
     """
     failures: list[str] = []
     for rel in sorted(set(file_lines) | set(ceilings)):
         ceiling = ceilings.get(rel)
         lines = file_lines.get(rel)
+        ceiling_required = not rel.startswith(ceiling_only_roots)
         if ceiling is None:
-            if lines is not None and lines > LINE_LIMIT:
+            if ceiling_required and lines is not None and lines > LINE_LIMIT:
                 failures.append(
                     f"FAIL: {rel} is over {LINE_LIMIT} lines with no ceiling. "
                     f"Record its current size ({lines}) in max_file_lines."
@@ -158,7 +185,11 @@ def main() -> int:
     plr_count = _count_plr0915()
     print(f"PLR0915 findings: {plr_count} (baseline {plr_baseline})")
     file_lines = measure_file_lines()
-    over = {rel: n for rel, n in file_lines.items() if n > LINE_LIMIT}
+    over = {
+        rel: n
+        for rel, n in file_lines.items()
+        if n > LINE_LIMIT and not rel.startswith(CEILING_ONLY_ROOTS)
+    }
     long_count = len(over)
     print(f"Files over {LINE_LIMIT} lines: {long_count} (baseline {long_baseline})")
     for rel in sorted(over):
