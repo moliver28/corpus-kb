@@ -27,10 +27,11 @@ from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
 from .embedder_cache import EmbeddingCache
+from .embedder_cache import sha256_key as _sha256_key
 from .embedder_math import _slice_normalize as _slice_normalize
 from .embedder_math import assert_unit_or_zero as assert_unit_or_zero
 from .embedder_math import l2_normalize as l2_normalize
-from .embedder_usage import EmbedUsage
+from .embedder_usage import EmbedUsage, summarize_usage
 from .model_profiles import native_dimensions
 
 logger = logging.getLogger(__name__)
@@ -169,23 +170,23 @@ class OllamaEmbedder:
 
     def _fill_from_persist_cache(
         self, missing: list[tuple[int, str]], results: list[list[float]]
-    ) -> set[str]:
-        """Serve what the SQL tier holds (issue #539); return the hit keys.
+    ) -> list[tuple[int, str]]:
+        """Serve SQL-tier hits (issue #539); return still-missing texts.
 
-        Hits fill ``results`` in place. Degraded or skipped lookups return
-        no hits, so the batch flows to the model unchanged.
+        Degraded or skipped lookups change nothing, so the batch flows
+        to the model unchanged.
         """
         if self._persist_cache is None or not missing:
-            return set()
+            return missing
         stored = self._persist_cache.lookup_sync([_sha256_key(text) for _, text in missing])
-        hits: set[str] = set()
+        still_missing: list[tuple[int, str]] = []
         for idx, text in missing:
-            key = _sha256_key(text)
-            vector = stored.get(key)
-            if vector is not None:
+            vector = stored.get(_sha256_key(text))
+            if vector is None:
+                still_missing.append((idx, text))
+            else:
                 results[idx] = vector
-                hits.add(key)
-        return hits
+        return still_missing
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, using the cache and batching."""
@@ -195,9 +196,29 @@ class OllamaEmbedder:
 
         keys = [_sha256_key(text) for text in texts]
         results: list[list[float]] = [[] for _ in texts]
-        missing: list[tuple[int, str]] = []
         self.last_note = None
 
+        missing = self._fill_from_ram_cache(keys, texts, results)
+        if self._persist_cache is not None:
+            missing = self._persist_cache.serve_missing_sync(missing, results)
+        if not missing:
+            return self._all_cached_usage(len(texts), results)
+
+        missing_texts = [text for _, text in missing]
+        batched_results, reported = self._embed_missing_in_batches(missing_texts)
+        self.last_usage = summarize_usage(len(texts), len(missing), reported)
+        self._admit_to_ram_cache(missing, batched_results, results)
+        if self._persist_cache is not None:
+            self._persist_cache.store_fresh_sync(
+                missing, results, degraded=self.last_note is not None
+            )
+        return results
+
+    def _fill_from_ram_cache(
+        self, keys: list[str], texts: list[str], results: list[list[float]]
+    ) -> list[tuple[int, str]]:
+        """Serve RAM hits into ``results``; return the (idx, text) misses."""
+        missing: list[tuple[int, str]] = []
         for idx, key in enumerate(keys):
             cached = self._cache.get(key)
             if cached is not None:
@@ -205,24 +226,35 @@ class OllamaEmbedder:
                 results[idx] = cached
             else:
                 missing.append((idx, texts[idx]))
+        return missing
 
-        if not missing:
-            return self._all_cached_usage(len(texts), results)
+    def _admit_to_ram_cache(
+        self,
+        missing: list[tuple[int, str]],
+        batched_results: list[list[float]],
+        results: list[list[float]],
+    ) -> None:
+        """Store the fresh vectors in the RAM LRU and fill ``results``."""
+        for (idx, text), vector in zip(missing, batched_results, strict=True):
+            key = _sha256_key(text)
+            self._cache[key] = vector
+            self._cache.move_to_end(key)
+            if len(self._cache) > MAX_CACHE_SIZE:
+                self._cache.popitem(last=False)
+            results[idx] = vector
 
-        # Issue #539: second tier — the persistent SQL cache. A hit here is
-        # a miss for the model but a cache hit for the usage snapshot.
-        db_hit_keys = self._fill_from_persist_cache(missing, results)
-        missing = [(idx, text) for idx, text in missing if _sha256_key(text) not in db_hit_keys]
-        if not missing:
-            return self._all_cached_usage(len(texts), results)
+    def _embed_missing_in_batches(
+        self, missing_texts: list[str]
+    ) -> tuple[list[list[float]], list[int | None]]:
+        """Embed the misses in sub-batches; return vectors and token counts.
 
-        missing_texts = [text for _, text in missing]
+        Wall-clock deadline (issue #468): the deadline stops new sub-
+        batches once the budget is spent; the tail returns zero vectors
+        and sets the honesty note.
+        """
         batch_size = max(1, min(self.batch_size, self.max_batch_texts))
         batched_results: list[list[float]] = []
         reported: list[int | None] = []
-        # Wall-clock deadline (issue #468): the httpx read bound is per
-        # received chunk, so a server that drips bytes can starve it. The
-        # deadline stops new sub-batches once the budget is spent.
         deadline = time.monotonic() + EMBED_TIMEOUT_SECONDS
 
         for start in range(0, len(missing_texts), batch_size):
@@ -233,35 +265,7 @@ class OllamaEmbedder:
             batch = missing_texts[start : start + batch_size]
             batched_results.extend(self._embed_batch(batch))
             reported.append(self._api_prompt_tokens)
-
-        # All-or-nothing honesty: one unreported API call hides the total —
-        # a partial sum would fake precision (issue #198).
-        tokens: int | None = None
-        if all(count is not None for count in reported):
-            tokens = sum(count for count in reported if count is not None)
-        self.last_usage = EmbedUsage(
-            prompt_tokens=tokens,
-            embedded_texts=len(missing),
-            cached_texts=len(texts) - len(missing),
-        )
-
-        for (idx, text), vector in zip(missing, batched_results, strict=True):
-            key = _sha256_key(text)
-            self._cache[key] = vector
-            self._cache.move_to_end(key)
-            if len(self._cache) > MAX_CACHE_SIZE:
-                self._cache.popitem(last=False)
-            results[idx] = vector
-
-        # Issue #539: persist what the model really returned. A degraded
-        # call (zero vectors from the fallback) stores nothing — the table
-        # must never serve a fabricated vector later.
-        if self._persist_cache is not None and self.last_note is None:
-            fresh_keys = [_sha256_key(text) for _, text in missing]
-            fresh_keys = [key for key in fresh_keys if key not in db_hit_keys]
-            self._persist_cache.store_sync(fresh_keys, [results[i] for i, _ in missing])
-
-        return results
+        return batched_results, reported
 
     def pop_usage(self) -> EmbedUsage | None:
         """Take and clear the per-call snapshot in one step (momus F9).
@@ -368,10 +372,6 @@ class OllamaEmbedder:
         if not self.query_instruction:
             return text
         return instruct(text)
-
-
-def _sha256_key(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _str_or_default(config: dict[str, Any], key: str, default: str) -> str:

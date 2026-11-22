@@ -19,6 +19,7 @@ the embedder keeps working without the table present.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
@@ -35,6 +36,12 @@ SCHEMA_EMBEDDING_WIDTH = EMBEDDING_DIMENSIONS
 #: Keys per lookup round: batched reads keep the DuckDB single-writer gate
 #: cheap (the gateway serves reads outside the gate only while no tx is open).
 LOOKUP_CHUNK = 512
+
+
+def sha256_key(text: str) -> str:
+    """The cache key: SHA256 of the exact text (instruction prefix included)."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
 
 _LOOKUP_SQL_PG = (
     "SELECT sha256, vector FROM embedding_cache_2560"
@@ -79,7 +86,7 @@ class EmbeddingCache:
         When a loop IS running the lookup is skipped (the RAM tier still
         applies) rather than blocking the caller.
         """
-        result = self._run_guarded((keys,), self.lookup, "lookup")
+        result = self._run_guarded(lambda: self.lookup(keys), "lookup")
         return result if result is not None else {}
 
     def store_sync(self, keys: list[str], vectors: list[list[float]]) -> None:
@@ -91,13 +98,47 @@ class EmbeddingCache:
         ]
         if not rows:
             return
-        args = ([key for key, _ in rows], [vector for _, vector in rows])
-        self._run_guarded(args, self.store, "store")
+        store_keys = [key for key, _ in rows]
+        store_vectors = [vector for _, vector in rows]
+        self._run_guarded(lambda: self.store(store_keys, store_vectors), "store")
+
+    def serve_missing_sync(
+        self, missing: list[tuple[int, str]], results: list[list[float]]
+    ) -> list[tuple[int, str]]:
+        """Serve SQL-tier hits into ``results``; return still-missing texts.
+
+        A hit here is a miss for the model but a cache hit for the usage
+        snapshot. Degraded or skipped lookups change nothing, so the
+        batch flows to the model unchanged.
+        """
+        if not missing:
+            return missing
+        stored = self.lookup_sync([sha256_key(text) for _, text in missing])
+        still_missing: list[tuple[int, str]] = []
+        for idx, text in missing:
+            vector = stored.get(sha256_key(text))
+            if vector is None:
+                still_missing.append((idx, text))
+            else:
+                results[idx] = vector
+        return still_missing
+
+    def store_fresh_sync(
+        self, missing: list[tuple[int, str]], results: list[list[float]], *, degraded: bool
+    ) -> None:
+        """Persist what the model really returned (issue #539).
+
+        A degraded call stores nothing: the table must never serve a
+        fabricated vector later.
+        """
+        if degraded or not missing:
+            return
+        keys = [sha256_key(text) for _, text in missing]
+        self.store_sync(keys, [results[i] for i, _ in missing])
 
     def _run_guarded(
         self,
-        args: tuple[Any, ...],
-        factory: Callable[..., Coroutine[Any, Any, dict[str, list[float]] | None]],
+        make_coro: Callable[[], Coroutine[Any, Any, dict[str, list[float]] | None]],
         action: str,
     ) -> dict[str, list[float]] | None:
         """Run one cache coroutine off-loop; any failure counts as a miss.
@@ -117,7 +158,7 @@ class EmbeddingCache:
             )
             return None
         try:
-            return asyncio.run(factory(*args))
+            return asyncio.run(make_coro())
         except Exception as exc:  # the cache must never break ingest
             logger.warning("embedding_cache_2560 %s failed; treating as miss: %s", action, exc)
             return None
