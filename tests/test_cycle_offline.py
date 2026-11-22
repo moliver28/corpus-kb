@@ -333,7 +333,7 @@ def test_cycle_constants_reference_real_docs() -> None:
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    docs = {p.name for p in (root / "docs").glob("*.md")}
+    docs = {p.name for p in (root / "docs").rglob("*.md")}
     for name in (
         guide_copy.CYCLE_DOC,
         guide_copy.CYCLE_STAGE_INGEST_DOC,
@@ -345,9 +345,9 @@ def test_cycle_constants_reference_real_docs() -> None:
     ):
         rel = Path(name.split("#")[0]).name
         assert rel in docs, name
-    assert guide_copy.CYCLE_DOC.startswith("docs/research.md#")
-    research_md = (root / "docs" / "research.md").read_text(encoding="utf-8").lower()
-    assert "research cycle" in research_md
+    assert guide_copy.CYCLE_DOC.startswith("docs/research/README.md#")
+    research_doc = (root / "docs" / "research" / "README.md").read_text(encoding="utf-8").lower()
+    assert "research cycle" in research_doc
 
 
 def test_cycle_surface_registered_and_tool_name_valid() -> None:

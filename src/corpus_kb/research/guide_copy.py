@@ -197,46 +197,46 @@ DEMO_INTRO = (
     "report, and a cited notebook answer. Re-runs are safe: file and text "
     "hashes make already-ingested files no-ops."
 )
-DEMO_DOC = "docs/getting-started.md"
+DEMO_DOC = "docs/GETTING-STARTED.md"
 
 DEMO_STAGE_INGEST = (
     "INGEST: each transcript is parsed into speaker turns, roles are mapped "
     "(the question-asker becomes the moderator), and turns are linked into "
     "question-answer exchanges with stance labels."
 )
-DEMO_STAGE_INGEST_DOC = "docs/getting-started.md#ingest-your-first-transcript"
+DEMO_STAGE_INGEST_DOC = "docs/GETTING-STARTED.md#ingest-your-first-transcript"
 DEMO_STAGE_CODEBOOK = (
     "CODEBOOK: the demo seeds a deductive codebook whose gold exemplars are "
     "quoted verbatim from the bundled transcripts. In a real project you "
     "build this from gold data and promote proposed codes yourself "
     "(corpus-kb codebook promote)."
 )
-DEMO_STAGE_CODEBOOK_DOC = "docs/getting-started.md#build-a-codebook"
+DEMO_STAGE_CODEBOOK_DOC = "docs/GETTING-STARTED.md#build-a-codebook"
 DEMO_STAGE_CODING = (
     "CODING RUN: every codable unit is scored against the codebook in three "
     "views (answer, question+answer, question). With fewer than 20 gold "
     "exemplars per code the thresholds are flagged unreliable, so assignments "
     "route to the review queue - that is the methodology working, not a bug."
 )
-DEMO_STAGE_CODING_DOC = "docs/getting-started.md#run-coding"
+DEMO_STAGE_CODING_DOC = "docs/GETTING-STARTED.md#run-coding"
 DEMO_STAGE_REVIEW = (
     "REVIEW: one assignment is confirmed through the human gate "
     "(corpus-kb review accept). Overrides feed threshold refits and the G3 audit."
 )
-DEMO_STAGE_REVIEW_DOC = "docs/getting-started.md#review-assignments"
+DEMO_STAGE_REVIEW_DOC = "docs/GETTING-STARTED.md#review-assignments"
 DEMO_STAGE_REPORT = (
     "REPORT: the governance report condenses saturation, exhaustiveness, "
     "overlap, and reliability into ONE artifact; the novice level prints "
     "traffic lights with links into the report guide."
 )
-DEMO_STAGE_REPORT_DOC = "docs/understanding-your-report.md"
+DEMO_STAGE_REPORT_DOC = "docs/UNDERSTANDING-YOUR-REPORT.md"
 DEMO_STAGE_ASK = (
     "NOTEBOOK: one question is answered against the coded corpus; every "
     "answer sentence carries an exchange-level citation you can open."
 )
-DEMO_STAGE_ASK_DOC = "docs/getting-started.md#ask-the-notebook"
+DEMO_STAGE_ASK_DOC = "docs/GETTING-STARTED.md#ask-the-notebook"
 DEMO_OUTRO = (
-    "Demo complete. Read docs/getting-started.md to run the same pipeline on "
+    "Demo complete. Read docs/GETTING-STARTED.md to run the same pipeline on "
     "your first real transcript."
 )
 DEMO_NO_EMBEDDINGS = (
@@ -248,7 +248,7 @@ DEMO_NO_EMBEDDINGS = (
 
 # Report doc anchors (todo-19 (g)): one per novice-view plain_language
 # section, rendered as <REPORT_DOC_PATH>#<anchor>.
-REPORT_DOC_PATH = "docs/understanding-your-report.md"
+REPORT_DOC_PATH = "docs/UNDERSTANDING-YOUR-REPORT.md"
 REPORT_DOC_ANCHORS = {
     "isr": "isr-incremental-sampling-rate",
     "coverage": "deductive-coverage",
@@ -281,7 +281,7 @@ CYCLE_INTRO = (
     "human-critical gates. Promotion is never automated; the cycle halts "
     "and waits."
 )
-CYCLE_DOC = "docs/research.md#research-cycle"
+CYCLE_DOC = "docs/research/README.md#research-cycle"
 
 CYCLE_STAGE_INGEST = (
     "INGEST: transcripts in the drop directory are parsed into speaker "
@@ -289,7 +289,7 @@ CYCLE_STAGE_INGEST = (
     "make repeats no-ops, so only NEW material is processed."
 )
 CYCLE_LOOK_INGEST = "Look at: the ingest receipt - how many files were new vs skipped."
-CYCLE_STAGE_INGEST_DOC = "docs/getting-started.md#ingest-your-first-transcript"
+CYCLE_STAGE_INGEST_DOC = "docs/GETTING-STARTED.md#ingest-your-first-transcript"
 
 CYCLE_STAGE_INDUCTIVE = (
     "INDUCTIVE PASS: every answer unit is summarized to an atomic "
@@ -300,7 +300,7 @@ CYCLE_LOOK_INDUCTIVE = (
     "Look at: the proposed labels and their member counts; cluster "
     "stability tells you whether each group would survive a re-cluster."
 )
-CYCLE_STAGE_INDUCTIVE_DOC = "docs/getting-started.md#build-a-codebook"
+CYCLE_STAGE_INDUCTIVE_DOC = "docs/GETTING-STARTED.md#build-a-codebook"
 
 CYCLE_STAGE_DEDUCTIVE = (
     "DEDUCTIVE RUN: every codable unit is scored against the codebook in "
@@ -311,7 +311,7 @@ CYCLE_LOOK_DEDUCTIVE = (
     "Look at: the explicit vs question-dependent split and how much went "
     "to review - a large review share usually means thin gold, not a bad model."
 )
-CYCLE_STAGE_DEDUCTIVE_DOC = "docs/getting-started.md#run-coding"
+CYCLE_STAGE_DEDUCTIVE_DOC = "docs/GETTING-STARTED.md#run-coding"
 
 CYCLE_STAGE_KEYWORDS = (
     "KEYWORDS: each code gets the terms its own captured units actually "
@@ -322,7 +322,7 @@ CYCLE_LOOK_KEYWORDS = (
     "Look at: conflicts (two codes claiming one term) and provisional "
     "lists with fewer than 15 supporting units."
 )
-CYCLE_STAGE_KEYWORDS_DOC = "docs/understanding-your-report.md#keyword-lists"
+CYCLE_STAGE_KEYWORDS_DOC = "docs/UNDERSTANDING-YOUR-REPORT.md#keyword-lists"
 
 CYCLE_STAGE_REPORT = (
     "REPORT: saturation, exhaustiveness, overlap, reliability, and the "
@@ -333,7 +333,7 @@ CYCLE_LOOK_REPORT = (
     "Look at: the traffic lights first, then every RED or YELLOW section "
     "before deciding what the next cycle should change."
 )
-CYCLE_STAGE_REPORT_DOC = "docs/understanding-your-report.md"
+CYCLE_STAGE_REPORT_DOC = "docs/UNDERSTANDING-YOUR-REPORT.md"
 
 CYCLE_STAGE_NOTEBOOK = (
     "NOTEBOOK: one question is answered against the coded corpus; every "
@@ -343,7 +343,7 @@ CYCLE_LOOK_NOTEBOOK = (
     "Look at: whether the citations actually support the answer - if "
     "they do not, the codebook, not the model, needs work."
 )
-CYCLE_STAGE_NOTEBOOK_DOC = "docs/getting-started.md#ask-the-notebook"
+CYCLE_STAGE_NOTEBOOK_DOC = "docs/GETTING-STARTED.md#ask-the-notebook"
 
 CYCLE_HALT_HEADER = "AWAITING HUMAN: {gate}"
 

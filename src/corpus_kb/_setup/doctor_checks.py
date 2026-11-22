@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-DOC_GETTING_STARTED = "docs/getting-started.md"
-DOC_RESEARCH = "docs/research.md"
+DOC_GETTING_STARTED = "docs/GETTING-STARTED.md"
+DOC_RESEARCH = "docs/research/README.md"
 
 SETUP_FIX = "corpus-kb setup"
 

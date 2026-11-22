@@ -146,7 +146,7 @@ def test_novice_view_links_every_section() -> None:
     links = view["doc_links"]
     assert set(links) == set(view["plain_language"])
     for section, link in links.items():
-        assert link.startswith("docs/understanding-your-report.md#"), section
+        assert link.startswith("docs/UNDERSTANDING-YOUR-REPORT.md#"), section
 
     import io
     from contextlib import redirect_stdout
@@ -250,7 +250,7 @@ def test_demo_fail_fast_gate_blocks_abstaining_embedders() -> None:
 
 
 def test_config_reference_table_covers_every_research_key() -> None:
-    """r13: docs/research.md's pinned 3-column table must cover EVERY
+    """r13: docs/research/README.md's pinned 3-column table must cover EVERY
     ``research.*`` key in get_default_config (column-1 parse) -- and nothing
     stale -- so new keys cannot land undocumented or drift away."""
     from typing import cast
@@ -274,11 +274,11 @@ def test_config_reference_table_covers_every_research_key() -> None:
     assert expected, "get_default_config lost the research block"
 
     documented: set[str] = set()
-    for line in (ROOT / "docs" / "research.md").read_text(encoding="utf-8").splitlines():
+    for line in (ROOT / "docs" / "research" / "README.md").read_text(encoding="utf-8").splitlines():
         match = re.match(r"^\|\s*`([^`]+)`", line)
         if match:
             documented.add(match.group(1))
     missing = expected - documented
     stale = documented - expected
-    assert not missing, f"research keys undocumented in docs/research.md: {sorted(missing)}"
+    assert not missing, f"research keys undocumented in docs/research/README.md: {sorted(missing)}"
     assert not stale, f"table rows absent from get_default_config: {sorted(stale)}"
