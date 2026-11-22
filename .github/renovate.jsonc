@@ -3,6 +3,8 @@
   // Options reference: https://docs.renovatebot.com/configuration-options/
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  // Renovate targets the integration branch only; release branches stay frozen.
+  "baseBranches": ["develop"],
   // One weekly batch window: the 3-OS test matrix is too heavy for daily runs.
   "schedule": ["before 5am on Monday"],
   "prConcurrentLimit": 5,
