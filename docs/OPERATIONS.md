@@ -381,6 +381,6 @@ if the config default and the catalogue default drift apart.
 - [INSTALL.md](INSTALL.md) — full setup, both Postgres paths
 - [ADMIN.md](ADMIN.md) — config keys, env vars, schema, backups
 - [API.md](API.md) — HTTP routes and examples
-- [research.md](research.md) — cycle postures, gates, and resume rules
+- [research/README.md](research/README.md) — cycle postures, gates, and resume rules
 - [ROLLBACK_DRILL.md](ROLLBACK_DRILL.md) — the practiced backup drill
-- [deployment.md](deployment.md) — the daemon runbook and updater
+- [DEPLOYMENT.md](DEPLOYMENT.md) — the daemon runbook and updater
