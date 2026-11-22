@@ -95,3 +95,18 @@ def embed_usage_section(usage: EmbedUsage, provider: str) -> dict[str, Any]:
     if usage.prompt_tokens is not None:
         section["prompt_tokens"] = usage.prompt_tokens
     return section
+
+
+def summarize_usage(text_count: int, embedded: int, reported: list[int | None]) -> EmbedUsage:
+    """Honest per-call snapshot (issue #198, all-or-nothing).
+
+    One unreported API call hides the total — a partial sum would fake
+    precision — so the prompt token count is None unless every sub-batch
+    reported one.
+    """
+    tokens: int | None = None
+    if all(count is not None for count in reported):
+        tokens = sum(count for count in reported if count is not None)
+    return EmbedUsage(
+        prompt_tokens=tokens, embedded_texts=embedded, cached_texts=text_count - embedded
+    )

@@ -130,7 +130,7 @@ async def _embedding_scores(
     phrases: list[str],
 ) -> dict[str, object]:
     """Candidate -> cosine to the centroid; an honest unavailable on failure."""
-    from ..rag import embedder as embedder_mod
+    from ..rag import embedder_factory as embedder_mod
 
     texts = [chunk.text for chunk in chunks]
     stored = await classification_engine.read_stored_vectors(pg_pool, tenant_id)

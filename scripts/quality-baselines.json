@@ -63,7 +63,7 @@
     "src/corpus_kb/ingestion/strategies/textbook_paddle.py": 257,
     "src/corpus_kb/mcp_tools.py": 286,
     "src/corpus_kb/queue/worker.py": 273,
-    "src/corpus_kb/rag/embedder.py": 501,
+    "src/corpus_kb/rag/embedder.py": 480,
     "src/corpus_kb/rag/embedders/late_chunk_core.py": 266,
     "src/corpus_kb/rag/reranker.py": 384,
     "src/corpus_kb/research/calibration.py": 351,

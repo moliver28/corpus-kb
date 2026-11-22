@@ -538,7 +538,7 @@ async def _bootstrap_pre_043(db_name: str) -> str:
 
 @pytest.mark.requires_postgres
 async def test_pre043_scratch_applies_037_to_044_once() -> None:
-    """The issue Check: 037..045 apply, a second run applies nothing."""
+    """The issue Check: 037..046 apply, a second run applies nothing."""
     from tests.research_db import DB_NAME, drop_research_db
 
     app_dsn = await _bootstrap_pre_043(DB_NAME)
@@ -553,6 +553,7 @@ async def test_pre043_scratch_applies_037_to_044_once() -> None:
             "043_project_tables_registry.sql",
             "044_ingest_ledger_doc_repair.sql",
             "045_entity_id_aliases.sql",
+            "046_embedding_cache.sql",
         ]
         assert first.applied_now == first.pending
         second = await run_migrations(app_dsn)

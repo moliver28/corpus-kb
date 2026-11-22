@@ -128,7 +128,7 @@ class _ZeroEmbedder:
 
 def _patch_embedder(monkeypatch: pytest.MonkeyPatch, embedder: object) -> None:
     monkeypatch.setattr(
-        "corpus_kb.rag.embedder.create_embedder", lambda config=None, pool=None: embedder
+        "corpus_kb.rag.embedder_factory.create_embedder", lambda config=None, pool=None: embedder
     )
 
 

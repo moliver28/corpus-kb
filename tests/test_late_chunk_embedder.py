@@ -12,11 +12,8 @@ import math
 
 import pytest
 
-from corpus_kb.rag.embedder import (
-    aembed_batch,
-    assert_unit_or_zero,
-    l2_normalize,
-)
+from corpus_kb.rag.embedder import assert_unit_or_zero, l2_normalize
+from corpus_kb.rag.embedder_factory import aembed_batch
 from corpus_kb.rag.embedders import (
     LateChunkDependencyError,
     LateChunkEmbedder,

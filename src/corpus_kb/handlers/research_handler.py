@@ -106,7 +106,7 @@ class ResearchHandler:
         if self._embed_fn is not None:
             return self._embed_fn
         if self._default_embed_fn is None:
-            from corpus_kb.rag.embedder import OllamaEmbedder, create_embedder
+            from corpus_kb.rag import OllamaEmbedder, create_embedder
 
             embedder = create_embedder()
             if isinstance(embedder, OllamaEmbedder):

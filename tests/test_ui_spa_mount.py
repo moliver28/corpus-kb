@@ -329,7 +329,7 @@ async def test_duckdb_startup_mounts_the_spa_through_the_same_seam(
     from types import SimpleNamespace
 
     import corpus_kb.domain.application as domain_app
-    import corpus_kb.rag.embedder as embedder_module
+    import corpus_kb.rag.embedder_factory as embedder_module
     import corpus_kb.storage.gateway as gateway_module
     import corpus_kb.ui.spa as spa_module
     from corpus_kb.server_wiring_duckdb import startup_duckdb

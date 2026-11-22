@@ -529,7 +529,7 @@ async def test_05_keyphrases_tfidf_contract(both_pool: Any) -> None:
 @pytest.mark.requires_ollama
 async def test_06_keyphrases_embedding_contract(both_pool: Any) -> None:
     """Live embedder ranks phrases by cosine to the corpus centroid."""
-    from corpus_kb.rag import embedder as embedder_mod
+    from corpus_kb.rag import embedder_factory as embedder_mod
     from corpus_kb.tools import keyphrase_tools
 
     probe = await embedder_mod.aembed_batch(

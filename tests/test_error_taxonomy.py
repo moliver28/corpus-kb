@@ -911,7 +911,7 @@ async def test_llamaindex_backend_requires_initialize() -> None:
 
 
 def test_create_embedder_rejects_an_unknown_provider() -> None:
-    from corpus_kb.rag.embedder import create_embedder
+    from corpus_kb.rag.embedder_factory import create_embedder
 
     with pytest.raises(ConfigError, match="Unknown embedding provider") as excinfo:
         create_embedder({"embedding": {"provider": "bogus"}}, pool=None)

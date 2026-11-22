@@ -10,7 +10,6 @@ so callers can continue operating in degraded mode.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import time
@@ -23,15 +22,16 @@ from ollama import Client
 from ollama._types import EmbedResponse
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
-from corpus_kb.storage.gateway import SqlGateway
 
 from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
+from .embedder_cache import EmbeddingCache
+from .embedder_cache import sha256_key as _sha256_key
 from .embedder_math import _slice_normalize as _slice_normalize
 from .embedder_math import assert_unit_or_zero as assert_unit_or_zero
 from .embedder_math import l2_normalize as l2_normalize
-from .embedder_usage import EmbedUsage
+from .embedder_usage import EmbedUsage, summarize_usage
 from .model_profiles import native_dimensions
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,11 @@ class OllamaEmbedder:
     so callers can continue operating in degraded mode.
     """
 
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        cache: EmbeddingCache | None = None,
+    ) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, Any], self._config.get("embedding", {}))
 
@@ -150,10 +154,19 @@ class OllamaEmbedder:
         self._api_prompt_tokens: int | None = None
         # Issue #468 honesty note: set on degrade; None after a clean call.
         self.last_note: str | None = None
+        # Issue #539: the SQL-backed second tier (optional; built by
+        # create_embedder when a pool is available). The RAM LRU above
+        # still sits in front of it.
+        self._persist_cache = cache
 
     def embed(self, text: str) -> list[float]:
         """Return a single embedding vector for ``text``."""
         return self.embed_batch([text])[0]
+
+    def _all_cached_usage(self, text_count: int, results: list[list[float]]) -> list[list[float]]:
+        """Record an all-hit call: no backend call, no token count (issue #198)."""
+        self.last_usage = EmbedUsage(prompt_tokens=None, embedded_texts=0, cached_texts=text_count)
+        return results
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, using the cache and batching."""
@@ -163,9 +176,29 @@ class OllamaEmbedder:
 
         keys = [_sha256_key(text) for text in texts]
         results: list[list[float]] = [[] for _ in texts]
-        missing: list[tuple[int, str]] = []
         self.last_note = None
 
+        missing = self._fill_from_ram_cache(keys, texts, results)
+        if self._persist_cache is not None:
+            missing = self._persist_cache.serve_missing_sync(missing, results)
+        if not missing:
+            return self._all_cached_usage(len(texts), results)
+
+        missing_texts = [text for _, text in missing]
+        batched_results, reported = self._embed_missing_in_batches(missing_texts)
+        self.last_usage = summarize_usage(len(texts), len(missing), reported)
+        self._admit_to_ram_cache(missing, batched_results, results)
+        if self._persist_cache is not None:
+            self._persist_cache.store_fresh_sync(
+                missing, results, degraded=self.last_note is not None
+            )
+        return results
+
+    def _fill_from_ram_cache(
+        self, keys: list[str], texts: list[str], results: list[list[float]]
+    ) -> list[tuple[int, str]]:
+        """Serve RAM hits into ``results``; return the (idx, text) misses."""
+        missing: list[tuple[int, str]] = []
         for idx, key in enumerate(keys):
             cached = self._cache.get(key)
             if cached is not None:
@@ -173,22 +206,35 @@ class OllamaEmbedder:
                 results[idx] = cached
             else:
                 missing.append((idx, texts[idx]))
+        return missing
 
-        if not missing:
-            # Every text was a cache hit: the backend was not called, so it
-            # reported no token count (issue #198).
-            self.last_usage = EmbedUsage(
-                prompt_tokens=None, embedded_texts=0, cached_texts=len(texts)
-            )
-            return results
+    def _admit_to_ram_cache(
+        self,
+        missing: list[tuple[int, str]],
+        batched_results: list[list[float]],
+        results: list[list[float]],
+    ) -> None:
+        """Store the fresh vectors in the RAM LRU and fill ``results``."""
+        for (idx, text), vector in zip(missing, batched_results, strict=True):
+            key = _sha256_key(text)
+            self._cache[key] = vector
+            self._cache.move_to_end(key)
+            if len(self._cache) > MAX_CACHE_SIZE:
+                self._cache.popitem(last=False)
+            results[idx] = vector
 
-        missing_texts = [text for _, text in missing]
+    def _embed_missing_in_batches(
+        self, missing_texts: list[str]
+    ) -> tuple[list[list[float]], list[int | None]]:
+        """Embed the misses in sub-batches; return vectors and token counts.
+
+        Wall-clock deadline (issue #468): the deadline stops new sub-
+        batches once the budget is spent; the tail returns zero vectors
+        and sets the honesty note.
+        """
         batch_size = max(1, min(self.batch_size, self.max_batch_texts))
         batched_results: list[list[float]] = []
         reported: list[int | None] = []
-        # Wall-clock deadline (issue #468): the httpx read bound is per
-        # received chunk, so a server that drips bytes can starve it. The
-        # deadline stops new sub-batches once the budget is spent.
         deadline = time.monotonic() + EMBED_TIMEOUT_SECONDS
 
         for start in range(0, len(missing_texts), batch_size):
@@ -199,27 +245,7 @@ class OllamaEmbedder:
             batch = missing_texts[start : start + batch_size]
             batched_results.extend(self._embed_batch(batch))
             reported.append(self._api_prompt_tokens)
-
-        # All-or-nothing honesty: one unreported API call hides the total —
-        # a partial sum would fake precision (issue #198).
-        tokens: int | None = None
-        if all(count is not None for count in reported):
-            tokens = sum(count for count in reported if count is not None)
-        self.last_usage = EmbedUsage(
-            prompt_tokens=tokens,
-            embedded_texts=len(missing),
-            cached_texts=len(texts) - len(missing),
-        )
-
-        for (idx, text), vector in zip(missing, batched_results, strict=True):
-            key = _sha256_key(text)
-            self._cache[key] = vector
-            self._cache.move_to_end(key)
-            if len(self._cache) > MAX_CACHE_SIZE:
-                self._cache.popitem(last=False)
-            results[idx] = vector
-
-        return results
+        return batched_results, reported
 
     def pop_usage(self) -> EmbedUsage | None:
         """Take and clear the per-call snapshot in one step (momus F9).
@@ -326,10 +352,6 @@ class OllamaEmbedder:
         if not self.query_instruction:
             return text
         return instruct(text)
-
-
-def _sha256_key(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _str_or_default(config: dict[str, Any], key: str, default: str) -> str:
@@ -456,46 +478,3 @@ class FakeEmbedder:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
         rng = HashRandom(seed)
         return [rng.uniform(-1.0, 1.0) for _ in range(self.dimensions)]
-
-
-DEFAULT_EMBEDDING_PROVIDER = "ollama"
-
-
-def create_embedder(
-    config: dict[str, Any] | None = None,
-    pool: asyncpg.Pool | SqlGateway | None = None,
-) -> OllamaEmbedder | PgmlEmbedder:
-    """Return the embedder selected by ``embedding.provider`` in config.
-
-    - ``"ollama"`` (default): OllamaEmbedder, embedding via a local Ollama
-      instance.
-    - ``"pgml"``: PgmlEmbedder, embedding in-database via the pool. Without
-      a pool it still constructs, but returns zero-vectors.
-
-    Raises ``ValueError`` for any other provider.
-    """
-    from corpus_kb.storage.connect import pg_pool_of
-
-    pool = pg_pool_of(pool)
-    cfg = config or load_config()
-    embedding = cast(dict[str, Any], cfg.get("embedding", {}))
-    provider = _str_or_default(embedding, "provider", DEFAULT_EMBEDDING_PROVIDER)
-    if provider == "pgml":
-        return PgmlEmbedder(cfg, pool)
-    if provider == "ollama":
-        return OllamaEmbedder(cfg)
-    raise ConfigError(f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'")
-
-
-async def aembed_batch(
-    embedder: OllamaEmbedder | PgmlEmbedder | Embedder, texts: list[str]
-) -> list[list[float]]:
-    """Embed ``texts`` with any embedder, awaiting the async pgml path.
-
-    The ``Embedder`` protocol arm (todo 13) lets structural backends such as
-    the late-chunking embedder flow through the same research boundary.
-    Sync embedders run in a worker thread so the event loop stays live.
-    """
-    if isinstance(embedder, PgmlEmbedder):
-        return await embedder.embed_batch(texts)
-    return await asyncio.to_thread(embedder.embed_batch, texts)

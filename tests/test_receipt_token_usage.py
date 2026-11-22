@@ -17,7 +17,7 @@ import pytest
 from ollama._types import EmbedResponse
 
 import corpus_kb.handlers.research_handler as research_handler_module
-import corpus_kb.rag.embedder as embedder_module
+import corpus_kb.rag as rag_module
 import corpus_kb.rag.embedder_selection as embedder_selection_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 from corpus_kb.rag.embedder import FakeEmbedder, OllamaEmbedder
@@ -241,7 +241,7 @@ async def test_research_receipt_reports_link_embed_usage(
         }
     }
     embedder = _reporting_embedder(config, 11)
-    monkeypatch.setattr(embedder_module, "create_embedder", lambda cfg=None: embedder)
+    monkeypatch.setattr(rag_module, "create_embedder", lambda cfg=None, pool=None: embedder)
 
     path = tmp_path / "session.txt"
     path.write_text(TRANSCRIPT, encoding="utf-8")

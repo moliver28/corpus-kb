@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from .embedder import (
-    FakeEmbedder,
-    OllamaEmbedder,
-    PgmlEmbedder,
-    aembed_batch,
-    create_embedder,
-)
+from .embedder import FakeEmbedder, OllamaEmbedder, PgmlEmbedder
+from .embedder_factory import aembed_batch, create_embedder
 from .reranker import IdentityReranker, PgmlReranker, create_reranker
 
 __all__ = [
