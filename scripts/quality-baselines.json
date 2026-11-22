@@ -105,7 +105,7 @@
     "tests/test_error_taxonomy.py": 1052,
     "tests/test_method_register.py": 1132,
     "tests/test_search_honesty.py": 1065,
-    "tests/test_surface_parity_deep.py": 3130
+    "tests/test_surface_parity_deep.py": 3136
   },
   "persona_meter": {
     "report_path": "tests/fixtures/persona_meter/report.v1.json",
