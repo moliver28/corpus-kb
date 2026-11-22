@@ -123,7 +123,7 @@ Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and imp
 ## Branch & Commit Conventions
 
 - Branches (gitflow, enforced on PRs by `.github/workflows/branch-validate.yml`): `(feature|bugfix|hotfix|docs|chore|release)/<slug>`. Slug = alphanumeric characters + hyphens (`[-a-zA-Z0-9]+`; no dots, no underscores). `renovate/*` (dependency bot, `.github/renovate.jsonc`) allowed with any slug. Protected: `main`, `master`, `develop`.
-- Commits: conventional prefixes, enforced by `.github/workflows/commit-validate.yml`: `(feat|fix|docs|chore|test|refactor|perf)(scope)?: <text>` — at least one character after the colon. The workflow checks every line of every commit, so use single-line messages, or prefix every body line (blank lines and `Co-authored-by:`-style footers are skipped). Convention, not CI: capitalize the subject and keep it between 10 and 500 characters.
+- Commits: conventional prefixes, enforced by `.github/workflows/commit-validate.yml`. The enforced rule: `(feat|fix|docs|chore|test|refactor|perf)(scope)?: <text>` — at least one character after the colon. The workflow checks every line of every commit. Use single-line messages, or prefix every body line. Blank lines and `Co-authored-by:`-style footers are skipped. Convention, not CI: capitalize the subject. Keep it between 10 and 500 characters.
 - Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, `style:`.
 
 ## Zero-Drift Program Standards (BINDING for all future work)
