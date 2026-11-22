@@ -165,12 +165,18 @@ async def usability_severity(
 
 
 async def _score_emotion(chunk_id: str, text: str, model: str) -> dict[str, object]:
-    """Judge one chunk against the eight statements; best score wins."""
-    scored: list[tuple[float, str]] = []
-    for label in EMOTION_LABELS:
-        prompt = contract.build_classification_prompt(text, EMOTION_STATEMENTS[label])
-        verdict = await contract.judge_verdict(prompt, model, contract.NLI_BASE_URL)
-        scored.append((contract.VERDICT_SCORES[verdict], label))
+    """Judge one chunk against the eight statements in ONE call.
+
+    One batched judgment replaces eight sequential calls (issue #538).
+    A reply without a verdict for every label degrades to the honest
+    ``unusable`` error, so the run answers ``unavailable`` — no guessed
+    labels.
+    """
+    prompt = contract.build_batch_classification_prompt(text, EMOTION_STATEMENTS)
+    verdicts = await contract.judge_batch_verdicts(
+        prompt, EMOTION_STATEMENTS, model, contract.NLI_BASE_URL
+    )
+    scored = [(contract.VERDICT_SCORES[verdicts[label]], label) for label in EMOTION_LABELS]
     ranked = sorted(scored, key=lambda entry: (-entry[0], entry[1]))
     return {
         "chunk_id": chunk_id,

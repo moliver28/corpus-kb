@@ -196,20 +196,46 @@ async def test_severity_rejects_bad_limit(bad_limit: object) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _emotion_world(monkeypatch: pytest.MonkeyPatch, verdict: str = "ENTAIL") -> None:
+def _emotion_world(
+    monkeypatch: pytest.MonkeyPatch,
+    stub_judge: bool = True,
+) -> list[list[str]]:
+    """Stub the load seams; stub the batched judge unless asked not to.
+
+    Returns the statements captured per judge call (empty when the real
+    contract judge stays in place).
+    """
     matrix = np.array([[1.0, 0.0], [0.0, 1.0]])
     space = _space(["c1", "c2"], matrix)
+    calls: list[list[str]] = []
 
     async def fake_space(
         pool: Any, tenant_id: str, config: Any
     ) -> tuple[VectorSpace, dict[str, str]]:
         return space, {"c1": "parity one", "c2": "parity two"}
 
-    async def fake_verdict(prompt: str, model: str, base_url: str) -> str:
-        return verdict
+    async def fake_verdicts(
+        prompt: str, statements: dict[str, str], model: str, base_url: str
+    ) -> dict[str, str]:
+        calls.append(list(statements))
+        return dict.fromkeys(statements, "ENTAIL")
 
     monkeypatch.setattr(uxr_method_tools, "_load_space", fake_space)
-    monkeypatch.setattr(uxr_method_tools.contract, "judge_verdict", fake_verdict)
+    if stub_judge:
+        monkeypatch.setattr(uxr_method_tools.contract, "judge_batch_verdicts", fake_verdicts)
+    return calls
+
+
+async def test_emotion_one_batched_call_per_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Eight statements ride in ONE judge call per chunk (issue #538)."""
+    calls = _emotion_world(monkeypatch)
+    result = await uxr_method_tools.emotion_tag(None, config={}, tenant_id=TENANT)
+    assert result["status"] == "success"
+    assert len(calls) == 2  # one call per chunk, not one per label
+    for captured in calls:
+        assert len(captured) == 8
 
 
 async def test_emotion_fixed_taxonomy_tie_goes_alphabetical(
@@ -236,13 +262,32 @@ async def test_emotion_unreachable_model_answers_unavailable(
 ) -> None:
     _emotion_world(monkeypatch)
 
-    async def broken_verdict(prompt: str, model: str, base_url: str) -> str:
+    async def broken_verdict(
+        prompt: str, statements: dict[str, str], model: str, base_url: str
+    ) -> dict[str, str]:
         raise NliError("unreachable", "down")
 
-    monkeypatch.setattr(uxr_method_tools.contract, "judge_verdict", broken_verdict)
+    monkeypatch.setattr(uxr_method_tools.contract, "judge_batch_verdicts", broken_verdict)
     result = await uxr_method_tools.emotion_tag(None, config={}, tenant_id=TENANT)
     assert result["status"] == "unavailable"
     assert result["predictions"] == [] and result["screened_count"] == 0
+
+
+async def test_emotion_partial_batch_reply_degrades_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reply missing one label degrades to unusable, no guessed labels."""
+    import json as _json
+
+    _emotion_world(monkeypatch, stub_judge=False)
+
+    async def partial_raw(prompt: str, model: str, base_url: str) -> str:
+        return _json.dumps([{"n": 1, "verdict": "ENTAIL"}])
+
+    monkeypatch.setattr(uxr_method_tools.contract, "judge_raw", partial_raw)
+    result = await uxr_method_tools.emotion_tag(None, config={}, tenant_id=TENANT)
+    assert result["status"] == "unavailable"
+    assert result["predictions"] == []
 
 
 async def test_emotion_rejects_bad_limit(monkeypatch: pytest.MonkeyPatch) -> None:

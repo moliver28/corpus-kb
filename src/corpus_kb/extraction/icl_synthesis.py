@@ -32,6 +32,10 @@ from .icl_validate import exemplar_defects
 logger = logging.getLogger(__name__)
 
 _CACHE_MAX = 8
+
+#: The live prompt carries at most this many exemplars (issue #542).
+#: The cap is deterministic: the first N in ontology order.
+FEW_SHOT_MAX = 3
 # Ontology fingerprint -> validated exemplar batch. Treat batches as
 # read-only; callers never mutate them.
 _CACHE: dict[str, tuple[dict[str, object], ...]] = {}
@@ -196,17 +200,27 @@ def few_shot_examples(
 
     Cached by ontology fingerprint: unchanged ontology reuses the batch
     (receipt says "reused"); a changed ontology regenerates it ("built");
-    a degenerate synthesis falls back to the static set ("static").
+    a degenerate synthesis falls back to the static set ("static"). A
+    batch longer than ``FEW_SHOT_MAX`` is trimmed to its first examples
+    in ontology order, and the receipt names the cap.
     """
     fingerprint = ontology_fingerprint(ontology)
     cached = _CACHE.get(fingerprint)
     if cached is not None:
         return cached, (
-            f"Few-shot examples: reused {len(cached)} cached examples "
-            f"for ontology {fingerprint[:8]}."
+            f"Few-shot examples: reused {len(cached)} cached examples"
+            f" (capped from {len(ontology.relation_types)}) for"
+            f" ontology {fingerprint[:8]}."
         )
-    batch, note = _adopt_batch(synthesize_exemplars(ontology), ontology, fingerprint)
-    if exemplar_defects(batch, ontology) == []:
+    full, note = _adopt_batch(synthesize_exemplars(ontology), ontology, fingerprint)
+    batch = full[:FEW_SHOT_MAX]
+    if len(full) > FEW_SHOT_MAX:
+        note = (
+            f"Few-shot examples: built {len(full)} examples (capped to"
+            f" {FEW_SHOT_MAX}) from ontology {fingerprint[:8]}."
+        )
+    # Coverage is judged on the full batch; the cap trims the prompt.
+    if exemplar_defects(full, ontology) == []:
         # Cache only batches that pass validation. The static fallback
         # stays uncached, so its receipt stays accurate on every run.
         _CACHE[fingerprint] = batch
