@@ -289,11 +289,6 @@ class TestExtractorFactory:
         extractor = create_extractor({"graph": {"extractor": "langextract"}})
         assert isinstance(extractor, LangExtractExtractor)
 
-    def test_factory_llamaindex_raises_not_implemented(self) -> None:
-        """Given config graph.extractor=llamaindex, factory raises NotImplementedError."""
-        with pytest.raises(NotImplementedError):
-            create_extractor({"graph": {"extractor": "llamaindex"}})
-
     def test_factory_returns_pgml_extractor_with_pool(self) -> None:
         """Given config graph.extractor=pgml, factory returns PgmlExtractor holding pool."""
         sentinel = object()

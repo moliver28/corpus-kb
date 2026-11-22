@@ -16,7 +16,7 @@ from .regex_backend import RegexExtractor
 
 # The extractor names create_extractor (and the ingest fallback chain in
 # tools/ingest_extract.py) resolve. "ml" is the composite GLiNER2 +
-# GLiNER-Relex + LangExtract engine. "llamaindex" is named but deferred.
+# GLiNER-Relex + LangExtract engine.
 EXTRACTION_BACKENDS: frozenset[str] = frozenset({"regex", "langextract", "pgml", "gliner", "ml"})
 
 
@@ -65,7 +65,6 @@ def create_extractor(
         Configured extractor instance.
 
     Raises:
-        NotImplementedError: For the deferred ``"llamaindex"`` backend.
         ValueError: For an unknown extractor name, or ``"gliner"`` while
             ``extraction.gliner.enabled`` is false.
     """
@@ -93,8 +92,6 @@ def create_extractor(
             extractor = _create_gliner(config)
         case "ml":
             extractor = _create_ml(config, extra_examples)
-        case "llamaindex":
-            raise NotImplementedError("llamaindex extractor is deferred to a later phase")
         case _ as unreachable:
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
     return extractor
