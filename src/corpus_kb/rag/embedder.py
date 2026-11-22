@@ -10,7 +10,6 @@ so callers can continue operating in degraded mode.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import time
@@ -23,11 +22,11 @@ from ollama import Client
 from ollama._types import EmbedResponse
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
-from corpus_kb.storage.gateway import SqlGateway
 
 from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
+from .embedder_cache import EmbeddingCache
 from .embedder_math import _slice_normalize as _slice_normalize
 from .embedder_math import assert_unit_or_zero as assert_unit_or_zero
 from .embedder_math import l2_normalize as l2_normalize
@@ -110,7 +109,11 @@ class OllamaEmbedder:
     so callers can continue operating in degraded mode.
     """
 
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        cache: EmbeddingCache | None = None,
+    ) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, Any], self._config.get("embedding", {}))
 
@@ -150,10 +153,39 @@ class OllamaEmbedder:
         self._api_prompt_tokens: int | None = None
         # Issue #468 honesty note: set on degrade; None after a clean call.
         self.last_note: str | None = None
+        # Issue #539: the SQL-backed second tier (optional; built by
+        # create_embedder when a pool is available). The RAM LRU above
+        # still sits in front of it.
+        self._persist_cache = cache
 
     def embed(self, text: str) -> list[float]:
         """Return a single embedding vector for ``text``."""
         return self.embed_batch([text])[0]
+
+    def _all_cached_usage(self, text_count: int, results: list[list[float]]) -> list[list[float]]:
+        """Record an all-hit call: no backend call, no token count (issue #198)."""
+        self.last_usage = EmbedUsage(prompt_tokens=None, embedded_texts=0, cached_texts=text_count)
+        return results
+
+    def _fill_from_persist_cache(
+        self, missing: list[tuple[int, str]], results: list[list[float]]
+    ) -> set[str]:
+        """Serve what the SQL tier holds (issue #539); return the hit keys.
+
+        Hits fill ``results`` in place. Degraded or skipped lookups return
+        no hits, so the batch flows to the model unchanged.
+        """
+        if self._persist_cache is None or not missing:
+            return set()
+        stored = self._persist_cache.lookup_sync([_sha256_key(text) for _, text in missing])
+        hits: set[str] = set()
+        for idx, text in missing:
+            key = _sha256_key(text)
+            vector = stored.get(key)
+            if vector is not None:
+                results[idx] = vector
+                hits.add(key)
+        return hits
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, using the cache and batching."""
@@ -175,12 +207,14 @@ class OllamaEmbedder:
                 missing.append((idx, texts[idx]))
 
         if not missing:
-            # Every text was a cache hit: the backend was not called, so it
-            # reported no token count (issue #198).
-            self.last_usage = EmbedUsage(
-                prompt_tokens=None, embedded_texts=0, cached_texts=len(texts)
-            )
-            return results
+            return self._all_cached_usage(len(texts), results)
+
+        # Issue #539: second tier — the persistent SQL cache. A hit here is
+        # a miss for the model but a cache hit for the usage snapshot.
+        db_hit_keys = self._fill_from_persist_cache(missing, results)
+        missing = [(idx, text) for idx, text in missing if _sha256_key(text) not in db_hit_keys]
+        if not missing:
+            return self._all_cached_usage(len(texts), results)
 
         missing_texts = [text for _, text in missing]
         batch_size = max(1, min(self.batch_size, self.max_batch_texts))
@@ -218,6 +252,14 @@ class OllamaEmbedder:
             if len(self._cache) > MAX_CACHE_SIZE:
                 self._cache.popitem(last=False)
             results[idx] = vector
+
+        # Issue #539: persist what the model really returned. A degraded
+        # call (zero vectors from the fallback) stores nothing — the table
+        # must never serve a fabricated vector later.
+        if self._persist_cache is not None and self.last_note is None:
+            fresh_keys = [_sha256_key(text) for _, text in missing]
+            fresh_keys = [key for key in fresh_keys if key not in db_hit_keys]
+            self._persist_cache.store_sync(fresh_keys, [results[i] for i, _ in missing])
 
         return results
 
@@ -456,46 +498,3 @@ class FakeEmbedder:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
         rng = HashRandom(seed)
         return [rng.uniform(-1.0, 1.0) for _ in range(self.dimensions)]
-
-
-DEFAULT_EMBEDDING_PROVIDER = "ollama"
-
-
-def create_embedder(
-    config: dict[str, Any] | None = None,
-    pool: asyncpg.Pool | SqlGateway | None = None,
-) -> OllamaEmbedder | PgmlEmbedder:
-    """Return the embedder selected by ``embedding.provider`` in config.
-
-    - ``"ollama"`` (default): OllamaEmbedder, embedding via a local Ollama
-      instance.
-    - ``"pgml"``: PgmlEmbedder, embedding in-database via the pool. Without
-      a pool it still constructs, but returns zero-vectors.
-
-    Raises ``ValueError`` for any other provider.
-    """
-    from corpus_kb.storage.connect import pg_pool_of
-
-    pool = pg_pool_of(pool)
-    cfg = config or load_config()
-    embedding = cast(dict[str, Any], cfg.get("embedding", {}))
-    provider = _str_or_default(embedding, "provider", DEFAULT_EMBEDDING_PROVIDER)
-    if provider == "pgml":
-        return PgmlEmbedder(cfg, pool)
-    if provider == "ollama":
-        return OllamaEmbedder(cfg)
-    raise ConfigError(f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'")
-
-
-async def aembed_batch(
-    embedder: OllamaEmbedder | PgmlEmbedder | Embedder, texts: list[str]
-) -> list[list[float]]:
-    """Embed ``texts`` with any embedder, awaiting the async pgml path.
-
-    The ``Embedder`` protocol arm (todo 13) lets structural backends such as
-    the late-chunking embedder flow through the same research boundary.
-    Sync embedders run in a worker thread so the event loop stays live.
-    """
-    if isinstance(embedder, PgmlEmbedder):
-        return await embedder.embed_batch(texts)
-    return await asyncio.to_thread(embedder.embed_batch, texts)

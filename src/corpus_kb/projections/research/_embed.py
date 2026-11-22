@@ -21,7 +21,8 @@ import math
 from typing import Any
 
 from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
-from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch, assert_unit_or_zero
+from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, assert_unit_or_zero
+from corpus_kb.rag.embedder_factory import aembed_batch
 from corpus_kb.research.conn import Store, dialect_of, resolve_store, tenant_scope
 
 logger = logging.getLogger(__name__)

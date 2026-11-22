@@ -28,12 +28,8 @@ from typing import Any, cast
 import asyncpg
 
 from corpus_kb.install_layout import extra_install_command
-from corpus_kb.rag.embedder import (
-    DEFAULT_EMBEDDING_DIMENSIONS,
-    DEFAULT_EMBEDDING_MODEL,
-    Embedder,
-    create_embedder,
-)
+from corpus_kb.rag.embedder import DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL, Embedder
+from corpus_kb.rag.embedder_factory import create_embedder
 from corpus_kb.rag.embedders import is_latechunk_installed
 from corpus_kb.rag.embedders.late_chunk import LateChunkEmbedder, LateChunkSpan
 

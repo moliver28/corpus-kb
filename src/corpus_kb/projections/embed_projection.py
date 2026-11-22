@@ -41,7 +41,8 @@ from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.ids import deterministic_chunk_id
-from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
+from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
+from corpus_kb.rag.embedder_factory import aembed_batch
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.gateway import SqlGateway

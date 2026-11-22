@@ -82,7 +82,7 @@ class ScratchTenantEngine:
 
     async def open(self) -> None:
         from corpus_kb.rag import create_embedder
-        from corpus_kb.rag.embedder import aembed_batch
+        from corpus_kb.rag.embedder_factory import aembed_batch
         from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
 
         self._pool = await open_pool_typed_store(config_conn_str(self._cfg))
