@@ -25,7 +25,7 @@ from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, vector_
 from corpus_kb.storage.gateway import DuckDbGateway
 from corpus_kb.tools import ingest_reingest, ingest_reingest_run
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.ollama]
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 PROJECT = "44444444-4444-4444-4444-444444444444"

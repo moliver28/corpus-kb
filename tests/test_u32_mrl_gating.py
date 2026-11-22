@@ -21,6 +21,8 @@ from corpus_kb._setup import validate_configs
 from corpus_kb.config import get_default_config, load_config
 from corpus_kb.config_gates import matryoshka_mrl_error
 
+pytestmark = [pytest.mark.ollama]
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

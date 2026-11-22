@@ -26,6 +26,8 @@ from corpus_kb.tools.ingest_common import (
 )
 from corpus_kb.utils.models import Chunk, Document, Entity, Relation
 
+pytestmark = [pytest.mark.ollama]
+
 _ONTOLOGY_PATH = (
     Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
 )

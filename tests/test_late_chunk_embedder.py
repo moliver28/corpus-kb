@@ -26,6 +26,8 @@ from corpus_kb.research.promotion import (
     assert_promotable,
 )
 
+pytestmark = [pytest.mark.ollama]
+
 
 class _FakeTensor1D:
     def __init__(self, values: list[float]) -> None:

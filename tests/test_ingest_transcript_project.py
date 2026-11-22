@@ -18,6 +18,8 @@ import pytest
 from corpus_kb.research.dynamic_ingest import IngestDecision
 from corpus_kb.research.transcript_parser import parse_transcript_text
 
+pytestmark = [pytest.mark.ollama]
+
 
 class _SpyProjectStore:
     """PostgresIngestStore stand-in: records set_run_project calls."""

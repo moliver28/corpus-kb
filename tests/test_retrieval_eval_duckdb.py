@@ -32,6 +32,8 @@ from tests._research_duckdb_seeds import (
     seed_radar_fixture,
 )
 
+pytestmark = [pytest.mark.ollama]
+
 
 class _ProbeEmbedder:
     """The eval embedder seam over the seed fixture's FakeEmbedder probe."""

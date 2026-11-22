@@ -28,6 +28,7 @@ pytestmark = [
     pytest.mark.skipif(
         not is_latechunk_installed(), reason="latechunk extra not installed (CI never installs it)"
     ),
+    pytest.mark.ollama,
 ]
 
 TENANT_UUID = UUID(TEST_TENANT)

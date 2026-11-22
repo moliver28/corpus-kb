@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from uuid import UUID, uuid5
 
+import pytest
+
 from corpus_kb.handlers.query_fusion import rrf_fuse, rrf_fuse_legs
+
+pytestmark = [pytest.mark.ollama]
 
 # Fixed namespace so tiebreaker keys are stable across runs (same trick as
 # tests/test_query_determinism.py).

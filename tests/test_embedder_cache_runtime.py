@@ -19,6 +19,8 @@ from corpus_kb.rag import embedder_cache_runtime as runtime_module
 from corpus_kb.rag.embedder_cache_runtime import CACHE_CALL_TIMEOUT_SECONDS, CacheRuntime
 from corpus_kb.storage.gateway import PostgresGateway
 
+pytestmark = [pytest.mark.ollama]
+
 
 def test_calls_pin_to_one_loop() -> None:
     """Every run() lands on the same loop, never on the caller's."""

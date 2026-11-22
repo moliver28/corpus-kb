@@ -595,6 +595,11 @@ markers = [
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
     "requires_postgres: mark test as needing a running Postgres instance",
     "requires_krippendorff: mark test as needing the krippendorff package",
+    # The CI path gate (ci.yml changes job) consumes this one: gate-closed
+    # legs run pytest with -m "not ollama", so the modules below never run
+    # without models pulled. The gated scope is exactly the tests/ files the
+    # ollama_code filter globs name.
+    "ollama: needs live Ollama models; deselected when the CI path gate is closed",
     "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
     "slow: long-running perf fixture (100k synthetic chunks); skipped unless CORPUS_KB_PERF_RUN=1",
 ]

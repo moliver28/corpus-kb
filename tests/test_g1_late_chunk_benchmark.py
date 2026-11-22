@@ -55,6 +55,7 @@ pytestmark = [
     pytest.mark.skipif(
         not is_latechunk_installed(), reason="latechunk extra not installed (CI never installs it)"
     ),
+    pytest.mark.ollama,
 ]
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "research"

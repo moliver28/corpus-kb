@@ -14,20 +14,24 @@
 # Postgres service container (Linux-only), windows/macos run without it.
 #
 # Ollama install/pull steps are path-gated: the `changes` job detects
-# embedding-surface changes and the test legs + ui-e2e skip the install,
-# pull, and verify steps when nothing changed (the suite's documented
-# degraded zero-vector mode). Operators can arm the steps by hand too:
-# dispatch this workflow and set the live_ollama input to true. The
-# default stays false, so push and PR runs arm the steps by the path
-# gate only. The warning-ratchet leg keeps pulls
-# UNCONDITIONAL: its pytest_warnings ceiling was measured with models
-# pulled, so an unpulled env is not a proven-identical measurement.
+# embedding-surface changes. When the gate is closed, the test legs + ui-e2e
+# skip the install, pull, and verify steps, the test legs deselect the
+# ollama-marked modules with -m "not ollama", and the coverage gates on the
+# ubuntu leg short-circuit green (a reduced suite cannot be compared with
+# the floor). The warning-ratchet job runs on every PR: gate closed, it
+# short-circuits green before any Ollama install behind a visible notice
+# step; gate open, it runs the full models-up suite against the ceiling.
+# Warning enforcement on non-rag PRs is relaxed by owner decision
+# 2026-11-22. Operators can arm the steps by hand too: dispatch this
+# workflow and set the live_ollama input to true. The default stays false,
+# so push and PR runs arm the steps by the path gate only.
 #
 # Wave-4 quality gates (PR-F) add audit-deps (dependency CVEs over the
 # committed uv.lock), dup-check (jscpd duplication over src/), and
 # gen-drift (generated artifacts must be current). The lint job also runs
 # the size ratchet, and the ubuntu test leg enforces the coverage diff
-# gate plus the overall coverage floor from one suite run.
+# gate plus the overall coverage floor from one suite run (gate-open runs
+# only; see above).
 
 name: CI
 
@@ -35,7 +39,9 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+    # master is the release-ready branch, develop the integration branch;
+    # integration PRs must run the same full CI gate set.
+    branches: [master, develop]
   # Manual escape hatch: dispatch with live_ollama set to true to run
   # the live-Ollama legs even when no embedding-surface path matches.
   workflow_dispatch:
@@ -1057,17 +1063,37 @@ jobs:
         # (run 43530817482: the step timed out — install plus the
         # 3-model pull plus the covered suite no longer fit 30).
         timeout-minutes: 40
+        env:
+          # Gate closed: deselect the ollama-marked modules — they need a
+          # pulled model, and their zero-vector fallback runs are not the
+          # live proof the gated scope exists to give. Gate open: no
+          # addopts, full suite with models. pytest reads PYTEST_ADDOPTS
+          # itself and splits it with shlex, so the quoted marker
+          # expression reaches pytest whole, on every runner shell.
+          PYTEST_ADDOPTS: ${{ needs.changes.outputs.ollama_live != 'true' && '-m "not ollama"' || '' }}
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=xml --cov-report=term-missing
 
       # Coverage gates (PR-F, zero-drift rule 10). ONE suite run feeds
       # both checks: the diff gate keeps changed lines at 90 percent
       # coverage, the floor keeps overall coverage from sliding
       # (scripts/quality-baselines.json). poe comes from the dev extra.
+      # Gate-open runs only: a gate-closed run deselects the ollama-marked
+      # modules, so its rates are not comparable with the baselines — the
+      # gates short-circuit green instead of re-baselining (owner decision
+      # 2026-11-22).
       - name: Diff coverage gate (changed lines >= 90 percent)
+        if: needs.changes.outputs.ollama_live == 'true'
         run: poe cover-diff
 
       - name: Coverage floor
+        if: needs.changes.outputs.ollama_live == 'true'
         run: poe cover-floor
+
+      - name: Coverage gates short-circuit (path gate closed)
+        if: needs.changes.outputs.ollama_live != 'true'
+        run: |
+          echo "Embedding-surface path gate closed: this suite run deselects the ollama-marked modules."
+          echo "Coverage floor and diff gates are skipped green; they enforce on gate-open runs."
 
   test-cross:
     name: "test (${{ matrix.os }})"
@@ -1278,6 +1304,12 @@ jobs:
         timeout-minutes: 40
         env:
           PYTHONUNBUFFERED: "1"
+          # Gate closed: deselect the ollama-marked modules (same contract
+          # as the ubuntu leg). pytest reads PYTEST_ADDOPTS itself and
+          # splits it with shlex, so the value needs no shell cooperation
+          # — this matters on the Windows leg, where run defaults to
+          # PowerShell.
+          PYTEST_ADDOPTS: ${{ needs.changes.outputs.ollama_live != 'true' && '-m "not ollama"' || '' }}
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
 
   # ─────────────────────────────────────────────────────────────────────
@@ -1285,21 +1317,28 @@ jobs:
   # stay at or below the pytest_warnings ceiling in
   # scripts/quality-baselines.json.
   #
-  # Pinned measurement environment: dev+duckdb+inductive extras, the same
-  # Postgres service the ubuntu test leg uses, and Ollama served
-  # best-effort (the install mirrors the test leg; model pulls are
-  # continue-on-error and the verify loop cannot fail the job, so the
-  # guarantee is "Ollama best effort", not "Ollama UP"). The extras pin
-  # keeps the population comparable: without the inductive extra the
-  # umap/hdbscan tests skip and the count is not the one the ceiling was
-  # measured against. Pytest 9 dropped the junit warnings attribute, so
-  # scripts/warning_ratchet.py runs the suite in-process and counts
-  # through pytest's own pytest_warning_recorded hook.
+  # The job runs on every PR so its required context stays valid. The
+  # embedding-surface path gate decides how: gate open → the full
+  # models-up measurement below; gate closed → the job short-circuits
+  # green before any Ollama install behind a visible notice step.
+  # Warning enforcement on non-rag PRs is relaxed by owner decision
+  # 2026-11-22.
+  #
+  # Pinned measurement environment (gate-open runs): dev+duckdb+inductive
+  # extras, the same Postgres service the ubuntu test leg uses, and
+  # Ollama served best-effort (the install mirrors the test leg; model
+  # pulls are continue-on-error and the verify loop cannot fail the job,
+  # so the guarantee is "Ollama best effort", not "Ollama UP"). The
+  # extras pin keeps the population comparable: without the inductive
+  # extra the umap/hdbscan tests skip and the count is not the one the
+  # ceiling was measured against. Pytest 9 dropped the junit warnings
+  # attribute, so scripts/warning_ratchet.py runs the suite in-process
+  # and counts through pytest's own pytest_warning_recorded hook.
   # ─────────────────────────────────────────────────────────────────────
   warning-ratchet:
     name: "warning-ratchet (pytest warnings ceiling)"
     runs-on: ubuntu-latest
-    needs: [validate-configs]
+    needs: [changes, validate-configs]
 
     services:
       postgres:
@@ -1329,9 +1368,26 @@ jobs:
       POSTGRES_SUPERUSER_PASSWORD: corpus_pass
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Path gate notice
+        # Always runs (the required context stays green on both branches).
+        # Gate closed: this line IS the short-circuit — every step below
+        # is gated off, so no Ollama install ever happens.
+        env:
+          OLLAMA_LIVE: ${{ needs.changes.outputs.ollama_live }}
+        run: |
+          if [ "$OLLAMA_LIVE" = "true" ]; then
+            echo "Embedding-surface path gate OPEN: full models-up warning measurement proceeds."
+          else
+            echo "Embedding-surface path gate CLOSED: this job short-circuits green before any Ollama install."
+            echo "Warning enforcement on non-rag PRs is relaxed by owner decision 2026-11-22."
+          fi
+
+      - name: Checkout
+        if: needs.changes.outputs.ollama_live == 'true'
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -1339,11 +1395,13 @@ jobs:
       - name: Install uv
         # Locked installs (zero-drift F4, owner ruling 2026-11-13): the
         # same pattern as the ubuntu test leg.
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install system dependencies (Ubuntu)
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential
@@ -1353,6 +1411,7 @@ jobs:
         # the warning ceiling (scripts/warning_ratchet.py docstring).
         # uv sync --locked pins that population to the lock, so the
         # measured environment is reproducible instead of floating.
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           uv sync --locked --extra dev --extra duckdb --extra inductive
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
@@ -1362,6 +1421,7 @@ jobs:
         # The gateway loads DuckDB extensions with autoinstall off, so the
         # per-platform cache must be warm before any test LOADs fts or vss
         # (same step as the test legs).
+        if: needs.changes.outputs.ollama_live == 'true'
         run: python -c "import duckdb; con = duckdb.connect(); [con.execute('INSTALL ' + name) for name in ('fts', 'vss', 'postgres')]; con.close()"
 
       - name: Bootstrap service database (extensions + schema)
@@ -1370,9 +1430,11 @@ jobs:
         # container starts empty, so the schema must exist before
         # database-backed tests run. The action needs checkout and the
         # locked environment, which the steps above provide.
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: ./.github/actions/bootstrap-postgres
 
       - name: Cache Ollama models
+        if: needs.changes.outputs.ollama_live == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -1380,12 +1442,14 @@ jobs:
           key: ollama-nomic-embed-text-qwen3-4b-qwen3-8b-${{ runner.os }}
 
       - name: Install Ollama (Ubuntu)
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
       - name: Pull embedding models
+        if: needs.changes.outputs.ollama_live == 'true'
         continue-on-error: true
         run: |
           # Three attempts per model with a pause: the Ollama registry
@@ -1408,6 +1472,7 @@ jobs:
           done
 
       - name: Verify Ollama
+        if: needs.changes.outputs.ollama_live == 'true'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -1423,6 +1488,7 @@ jobs:
         # re-runs the whole suite; the measured run finished at 39:54, so a
         # 40 min cap failed on runner variance after the gate itself passed
         # (PR #431 close-out). Same raise-with-rationale move as PR #189.
+        if: needs.changes.outputs.ollama_live == 'true'
         timeout-minutes: 50
         env:
           PYTHONUNBUFFERED: "1"

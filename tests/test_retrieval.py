@@ -11,6 +11,8 @@ from corpus_kb.domain.models import SearchQuery, SearchResult
 from corpus_kb.handlers.query_handler import QueryHandler
 from tests.mock_pg import transaction_cm
 
+pytestmark = [pytest.mark.ollama]
+
 
 @pytest.mark.asyncio
 async def test_retrieval_basic() -> None:
