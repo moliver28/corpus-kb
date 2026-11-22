@@ -25,6 +25,7 @@ from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
+from corpus_kb.rag.embedder_cache_runtime import CacheRuntime
 from corpus_kb.storage.gateway import SqlGateway, gateway_backend
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class EmbeddingCache:
         self._is_duckdb = gateway_backend(gateway) == "duckdb"
         self._enabled = dimensions == SCHEMA_EMBEDDING_WIDTH
         self._width_warned = False
+        # One loop thread owns every cache call: asyncpg connections bind
+        # to their creating loop, so a per-call asyncio.run would touch
+        # the caller's shared pool from a foreign loop and corrupt it.
+        self._runtime = CacheRuntime(gateway)
 
     @property
     def enabled(self) -> bool:
@@ -81,12 +86,13 @@ class EmbeddingCache:
     def lookup_sync(self, keys: list[str]) -> dict[str, list[float]]:
         """Read cached vectors for ``keys``; best effort, miss on any error.
 
-        Runs its own event loop, so call it only from a thread that has no
-        running loop (``embed_batch`` runs through ``asyncio.to_thread``).
-        When a loop IS running the lookup is skipped (the RAM tier still
-        applies) rather than blocking the caller.
+        Runs on the cache loop thread, so call it only from a thread that
+        has no running loop (``embed_batch`` runs through
+        ``asyncio.to_thread``). When a loop IS running the lookup is
+        skipped (the RAM tier still applies) rather than blocking the
+        caller.
         """
-        result = self._run_guarded(lambda: self.lookup(keys), "lookup")
+        result = self._run_guarded(lambda gateway: self.lookup(keys, gateway=gateway), "lookup")
         return result if result is not None else {}
 
     def store_sync(self, keys: list[str], vectors: list[list[float]]) -> None:
@@ -100,7 +106,9 @@ class EmbeddingCache:
             return
         store_keys = [key for key, _ in rows]
         store_vectors = [vector for _, vector in rows]
-        self._run_guarded(lambda: self.store(store_keys, store_vectors), "store")
+        self._run_guarded(
+            lambda gateway: self.store(store_keys, store_vectors, gateway=gateway), "store"
+        )
 
     def serve_missing_sync(
         self, missing: list[tuple[int, str]], results: list[list[float]]
@@ -138,7 +146,7 @@ class EmbeddingCache:
 
     def _run_guarded(
         self,
-        make_coro: Callable[[], Coroutine[Any, Any, dict[str, list[float]] | None]],
+        make_coro: Callable[[SqlGateway], Coroutine[Any, Any, dict[str, list[float]] | None]],
         action: str,
     ) -> dict[str, list[float]] | None:
         """Run one cache coroutine off-loop; any failure counts as a miss.
@@ -158,22 +166,26 @@ class EmbeddingCache:
             )
             return None
         try:
-            return asyncio.run(make_coro())
+            return self._runtime.run(lambda gateway: make_coro(gateway))
         except Exception as exc:  # the cache must never break ingest
             logger.warning("embedding_cache_2560 %s failed; treating as miss: %s", action, exc)
             return None
 
-    async def lookup(self, keys: list[str]) -> dict[str, list[float]]:
+    async def lookup(
+        self, keys: list[str], *, gateway: SqlGateway | None = None
+    ) -> dict[str, list[float]]:
         """Read cached vectors for ``keys``, batched to keep reads cheap.
 
         Rows whose width differs from the schema width count as misses,
-        and a width mismatch also disables further lookups.
+        and a width mismatch also disables further lookups. The runtime
+        passes its own gateway; direct callers use the configured one.
         """
+        seam = gateway or self._gateway
         sql = _LOOKUP_SQL_DUCK if self._is_duckdb else _LOOKUP_SQL_PG
         found: dict[str, list[float]] = {}
         for start in range(0, len(keys), LOOKUP_CHUNK):
             chunk = keys[start : start + LOOKUP_CHUNK]
-            rows = await self._gateway.fetch(sql, chunk, self._model)
+            rows = await seam.fetch(sql, chunk, self._model)
             for row in rows:
                 vector = _vector_of(row)
                 if len(vector) == SCHEMA_EMBEDDING_WIDTH:
@@ -182,8 +194,11 @@ class EmbeddingCache:
                     self._disable_after_width_mismatch()
         return found
 
-    async def store(self, keys: list[str], vectors: list[list[float]]) -> None:
+    async def store(
+        self, keys: list[str], vectors: list[list[float]], *, gateway: SqlGateway | None = None
+    ) -> None:
         """Insert (sha256, model, vector) rows; existing keys stay as-is."""
+        seam = gateway or self._gateway
         widths_ok = [len(vector) == SCHEMA_EMBEDDING_WIDTH for vector in vectors]
         if not all(widths_ok):
             self._disable_after_width_mismatch()
@@ -195,7 +210,7 @@ class EmbeddingCache:
         if not args:
             return
         sql = _STORE_SQL_DUCK if self._is_duckdb else _STORE_SQL_PG
-        await self._gateway.executemany(sql, args)
+        await seam.executemany(sql, args)
 
     def _disable_after_width_mismatch(self) -> None:
         if not self._width_warned:
