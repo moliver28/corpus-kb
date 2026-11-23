@@ -21,7 +21,7 @@ Editor agents connect over MCP stdio:
 corpus-kb --transport stdio
 ```
 
-The default embedding model is `qwen3-embedding:4b` (2560d). The full novice and expert paths are in the [README](../README.md) and [docs/getting-started.md](../docs/getting-started.md).
+The default embedding model is `qwen3-embedding:4b` (2560d). The full novice and expert paths are in the [README](../README.md) and [docs/GETTING-STARTED.md](../docs/GETTING-STARTED.md).
 
 The entry point is `src/corpus_kb/server_wiring.py`, module `server_wiring:main`. Config discovery: `CORPUS_KB_CONFIG` (absolute path), then `config.yaml` in `$CWD`, then the packaged default inside the package. There is no `--config` flag. Overlays: `CORPUS_KB_CONFIG_OVERLAY` holds `os.pathsep`-split YAML paths, deep-merged in order after the main file and before env overrides (issue #348).
 
@@ -68,7 +68,7 @@ The packaged default config is [`src/corpus_kb/config.yaml`](../src/corpus_kb/co
 
 ## Deployment
 
-Long-running or multi-consumer setups run ONE server as a daemon. Every consumer connects over HTTP. Runbook and launchd installer: [docs/deployment.md](../docs/deployment.md).
+Long-running or multi-consumer setups run ONE server as a daemon. Every consumer connects over HTTP. Runbook and launchd installer: [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
 <!-- corpus-harness:research-commands:start -->
 ## Research command pack (generated — do not edit)
 

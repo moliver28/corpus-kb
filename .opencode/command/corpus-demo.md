@@ -15,7 +15,7 @@ corpus-kb research demo
   research-grade embedder: pull `qwen3-embedding:8b-q8_0` and set
   `embedding.model`/`dimensions` accordingly (>=1024 dims - the default
   nomic-embed-text makes the demo abstain by design; see
-  docs/getting-started.md "Before you start").
+  docs/GETTING-STARTED.md "Before you start").
 - Every stage narrates what it is doing and links the relevant docs.
 - Re-runs are safe: file and text hashes make ingested files no-ops.
 - Long-running and synchronous on every surface: http/mcp/socket POSTs

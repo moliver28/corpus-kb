@@ -258,7 +258,7 @@ Corpus-KB runs qualitative coding studies end to end. The subsystem covers trans
 - **The cycle**: `research cycle` chains the pipeline with halt gates at every human-critical step. `research demo` narrates the same pipeline on a bundled demo corpus.
 - **Releases**: `release assess/request/review/release/status/compare` walk a codebook version from draft to a released codebook with gate evidence and named approvers.
 
-Start with the [getting-started walkthrough](getting-started.md); the full command reference is [research.md](research.md).
+Start with the [getting-started walkthrough](GETTING-STARTED.md); the full command reference is [research/README.md](research/README.md).
 
 ---
 

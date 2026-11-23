@@ -174,7 +174,7 @@ already-ingested files no-ops.
 
 Real transcripts go in as files. The sections below walk one full pass:
 ingest, codebook, coding, review, and a cited answer. The full command
-reference is [research.md](research.md).
+reference is [research/README.md](research/README.md).
 
 ### Ingest your first transcript
 
@@ -255,4 +255,4 @@ timestamp/turn range). Add `--retrieval-only` for evidence without generation.
 - [EVALUATION.md](EVALUATION.md) — score retrieval and answers on your own golden set.
 - [NOTEBOOKS.md](NOTEBOOKS.md) — marimo notebooks served at `/notebooks`.
 - [OPERATIONS.md](OPERATIONS.md) — ports, exit codes, and the operator's contract.
-- [understanding-your-report.md](understanding-your-report.md) — every report field in plain language.
+- [UNDERSTANDING-YOUR-REPORT.md](UNDERSTANDING-YOUR-REPORT.md) — every report field in plain language.
