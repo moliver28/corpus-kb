@@ -146,6 +146,20 @@ def _operation_object(op: Operation, method: str, route: str) -> dict[str, Any]:
     return obj
 
 
+def _distribution_version() -> str:
+    """Return the installed package version for the OpenAPI document.
+
+    ``pyproject.toml`` is the one place a release version is written. A
+    source checkout with no installed metadata gets ``0.0.0.dev0``.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("corpus-kb")
+    except PackageNotFoundError:
+        return "0.0.0.dev0"
+
+
 def build_openapi(operations: tuple[Operation, ...]) -> dict[str, Any]:
     """Build the OpenAPI 3.1 document for the catalogue's HTTP surface."""
     paths: dict[str, Any] = {}
@@ -159,7 +173,7 @@ def build_openapi(operations: tuple[Operation, ...]) -> dict[str, Any]:
         "openapi": _OPENAPI_VERSION,
         "info": {
             "title": "Corpus-KB HTTP API",
-            "version": "0.1.0",
+            "version": _distribution_version(),
             "description": (
                 "Generated from the operation catalogue "
                 "(corpus_kb.contracts). One operation, one handler, one "
