@@ -12,6 +12,7 @@ This page is for operators: configuration, schema, maintenance, and troubleshoot
 - [Backup and restore](#backup-and-restore)
 - [Monitoring](#monitoring)
 - [CI/CD pipeline](#cicd-pipeline)
+- [Release path](#release-path)
 - [Troubleshooting](#troubleshooting)
 - [Next steps](#next-steps)
 
@@ -571,6 +572,29 @@ The CI workflow runs on every pull request and push to `master`:
 A docs-quality workflow runs Vale on README and the top-level docs when they change. Other workflows check branch naming, commit messages, and the validation gate.
 
 See `.github/workflows/` for the exact definitions.
+
+---
+
+## Release path
+
+A release moves through five steps:
+
+```
+tag push (vX.Y.Z on master)
+  -> tag-release.yml: checks the guards, creates the GitHub Release
+  -> release.yml: prerelease to TestPyPI, final release to PyPI
+  -> changelog.yml: pull request that appends CHANGELOG.md on master
+  -> production-sync.yml: pull request that syncs master into production
+```
+
+`tag-release.yml` also runs by hand. A manual run prints the release command. It creates nothing unless you set `dry_run` to false. The tag version must equal the `version` line in `pyproject.toml`, and the tag must sit on master.
+
+Two one-time owner setups:
+
+1. Store a personal access token as the `RELEASE_PAT` secret. Give it `Contents: Read and write` for this repo only. Releases made with the workflow token do not start the downstream workflows. Run `gh secret set RELEASE_PAT --repo moliver28/corpus-kb` and paste the token value.
+2. The manual dry-run publish path (`publish.yml`) needs its own pending publisher on TestPyPI. The setup steps sit in the `publish.yml` header. Skip this if you never publish by hand.
+
+A tag whose version part ends in `rc`, `a`, `b`, or `dev` goes to TestPyPI first. TestPyPI is the staging index. A final version publishes to PyPI.
 
 ---
 

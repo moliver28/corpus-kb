@@ -1,0 +1,272 @@
+# Create the GitHub release for a package version tag.
+#
+# This workflow closes the last manual step of the release chain. Until
+# now a person had to open the GitHub UI and publish the release by
+# hand. Now a pushed tag does it, and a dispatch can rehearse it first.
+#
+# The full chain, in order:
+#   1. A tag v0.1.2 is pushed (it must sit on master), or a dispatch
+#      names the tag here.
+#   2. THIS workflow checks the guards below and creates the GitHub
+#      Release for the tag.
+#   3. The published-release event then starts the three downstream
+#      workflows:
+#      - release.yml         prerelease -> TestPyPI, final -> PyPI (OIDC)
+#      - changelog.yml       bot pull request that appends CHANGELOG.md
+#                            on master
+#      - production-sync.yml bot pull request master -> production
+#
+# Why a personal access token: GitHub does not start workflow runs for
+# events made with the workflow's own GITHUB_TOKEN (the same trap that
+# changelog.yml and production-sync.yml document). A release created
+# with that token would sit silent: no publish, no changelog, no sync.
+# The release is therefore created with the RELEASE_PAT secret, and an
+# event made with that token does start the downstream workflows.
+#
+# ONE-TIME setup, before the first run:
+#   1. Create a fine-grained personal access token:
+#      - Repository access: moliver28/corpus-kb only
+#      - Permissions: Contents -> Read and write
+#   2. Store it as a repository secret:
+#          gh secret set RELEASE_PAT --repo moliver28/corpus-kb
+#      Paste the token value when the command asks for it.
+#
+# Guards, in order; each breach fails the run and names its reason:
+#   - Version lockstep: the tag without its leading v must equal the
+#     `version =` line in pyproject.toml.
+#   - Master ancestry: the tagged commit must sit on master. Release
+#     tags are cut there; production syncs from master afterwards.
+#   - Rerun safety: when a release with the tag's name already exists,
+#     the run exits clean and creates nothing.
+# A guard breach on a real tag push also opens an issue that names the
+# two clashing values. A failed release creation on a tag push opens
+# one issue with the run-log pointer.
+#
+# Manual dispatch runs dry by default: the run prints the exact release
+# command and creates nothing. Set dry_run to false to create the
+# release for real.
+
+name: Tag release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v0.1.2"
+        required: true
+        type: string
+      dry_run:
+        description: "Print the release command and create nothing"
+        required: false
+        default: true
+        type: boolean
+
+# contents: read covers checkout and release lookups. issues: write
+# covers the guard-breach and failure reports on tag pushes. The
+# release itself is created with the RELEASE_PAT secret; a secret sits
+# outside this block, and its own scopes decide what it may do. No
+# broader GITHUB_TOKEN power is granted here.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    name: Guard the tag and create the release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Resolve the tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${INPUT_TAG}"
+            if [[ -z "${TAG}" ]]; then
+              echo "::error::The tag input is empty. Enter a package tag such as v0.1.2."
+              exit 1
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          if ! git rev-parse -q --verify "refs/tags/${TAG}^{commit}" > /dev/null; then
+            echo "::error::Tag ${TAG} does not exist in this repository. Push the tag first, or fix the spelling."
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Decide prerelease from the version part
+        id: prerelease
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if grep -qE '(a|b|rc|dev)[0-9]*$' <<< "${VERSION}"; then
+            echo "Version ${VERSION} is a prerelease."
+            echo "prerelease=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Version ${VERSION} is a final release."
+            echo "prerelease=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Guard the version lockstep with pyproject.toml
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          PYPROJECT_VERSION="$(awk -F'"' '/^version = /{print $2; exit}' pyproject.toml)"
+          if [[ "${VERSION}" == "${PYPROJECT_VERSION}" ]]; then
+            echo "Tag ${TAG} matches pyproject.toml version ${PYPROJECT_VERSION}."
+            exit 0
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            {
+              echo "## Tag release blocked: version mismatch"
+              echo
+              echo "The \`tag-release.yml\` workflow refused the tag \`${TAG}\`."
+              echo
+              echo "- Tag version part: \`${VERSION}\`"
+              echo "- \`pyproject.toml\` version: \`${PYPROJECT_VERSION}\`"
+              echo
+              echo "Bump the version or move the tag, then push it again."
+              echo
+              echo "Run log: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            } > body.md
+            gh issue create \
+              --title "Tag release blocked: ${TAG} does not match pyproject.toml" \
+              --body-file body.md
+          fi
+          echo "::error::Tag ${TAG} does not match pyproject.toml version ${PYPROJECT_VERSION}. Bump the version or move the tag."
+          exit 1
+
+      - name: Guard master ancestry
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          if git merge-base --is-ancestor "${TAG}^{commit}" refs/remotes/origin/master; then
+            echo "Tag ${TAG} sits on master."
+            exit 0
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            {
+              echo "## Tag release blocked: tag is not on master"
+              echo
+              echo "The \`tag-release.yml\` workflow refused the tag \`${TAG}\`."
+              echo
+              echo "The tagged commit is not an ancestor of \`origin/master\`. Release tags are cut on master."
+              echo
+              echo "Move the tag onto a master commit, then push it again."
+              echo
+              echo "Run log: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            } > body.md
+            gh issue create \
+              --title "Tag release blocked: ${TAG} is not on master" \
+              --body-file body.md
+          fi
+          echo "::error::Tag ${TAG} is not on master. Release tags are cut on master."
+          exit 1
+
+      - name: Exit clean when the release already exists
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            echo "Release ${TAG} already exists. Nothing to create. This run ends clean."
+            exit 0
+          fi
+          echo "No release exists for ${TAG} yet."
+
+      - name: Print the release command (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          PRERELEASE: ${{ steps.prerelease.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          CMD="gh release create ${TAG} --title ${TAG} --generate-notes"
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            CMD="${CMD} --prerelease"
+          fi
+          echo "All guards passed. Dry run only. Nothing was created."
+          echo "Would run: ${CMD}"
+
+      - name: Create the GitHub release
+        id: release
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          PRERELEASE: ${{ steps.prerelease.outputs.prerelease }}
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_PAT}" ]]; then
+            echo "::error::Secret RELEASE_PAT is not set. A release made with the workflow token would not start release.yml, changelog.yml, or production-sync.yml."
+            cat <<'SETUP'
+          One-time setup:
+            1. Create a fine-grained personal access token with
+               repository access moliver28/corpus-kb and the permission
+               "Contents: Read and write".
+            2. Store it as a repository secret:
+                 gh secret set RELEASE_PAT --repo moliver28/corpus-kb
+               Paste the token value when the command asks for it.
+            3. Re-run this workflow.
+          SETUP
+            exit 1
+          fi
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            gh release create "${TAG}" --title "${TAG}" --generate-notes --prerelease
+          else
+            gh release create "${TAG}" --title "${TAG}" --generate-notes
+          fi
+          echo "Release ${TAG} created. release.yml, changelog.yml, and production-sync.yml now take over."
+
+      - name: Report a failed release creation on a tag push
+        if: failure() && github.event_name == 'push' && steps.release.conclusion == 'failure'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          {
+            echo "## Tag release failed: ${TAG}"
+            echo
+            echo "The \`tag-release.yml\` workflow passed all guards but could not create the release \`${TAG}\`."
+            echo
+            echo "Open the run and read the failed step log:"
+            echo "${RUN_URL}"
+            echo
+            echo "Fix the cause, then push the tag again or re-run the workflow."
+          } > body.md
+          gh issue create \
+            --title "Tag release failed: ${TAG}" \
+            --body-file body.md
