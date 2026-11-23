@@ -40,8 +40,11 @@ on:
     branches: [master]
   pull_request:
     # master is the release-ready branch, develop the integration branch;
-    # integration PRs must run the same full CI gate set.
-    branches: [master, develop]
+    # integration PRs must run the same full CI gate set. production is
+    # the deploy branch: a master-to-production sync PR must get its CI
+    # contexts from its own pull_request run, not from the push run at
+    # the same head SHA.
+    branches: [master, develop, production]
   # Manual escape hatch: dispatch with live_ollama set to true to run
   # the live-Ollama legs even when no embedding-surface path matches.
   workflow_dispatch:
