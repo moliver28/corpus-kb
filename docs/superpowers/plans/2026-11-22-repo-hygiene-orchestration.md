@@ -149,3 +149,7 @@
 - Marker name `ollama` consistent across T1.1–1.3; branch names consistent.
 - Review Focus 1–5 each pinned to an owning task (T1.2, T2.2, T0.3<T0.4, T3.1, T2.2).
 - Plan length proportionate to spec (no code transcripts — infra plan, steps carry exact values/commands).
+
+## Amendment 2026-11-22 (post-T0.4 discovery)
+
+branch-validate.yml (branch-validate.yml:14-20) matches ONLY GitFlow-prefixed head refs. GitFlow integration PRs — develop→master (release) and master→production (sync) — have head refs `develop`/`master`, which FAIL. Required context "Validate Branch Naming" would go red and block every release and production sync. Amendment: T3.1 also amends branch-validate.yml to accept bare `develop`, `master`, `production` head refs (integration branches; protected-branch PRs still need green checks). This is a validator-rule change, not a poe-gate rule change, so no program-doc row; AGENTS.md Branch section gets one sentence.
