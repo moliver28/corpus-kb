@@ -86,8 +86,7 @@ async def test_backfill_scans_without_dateable_documents_on_duckdb(
 
     await _seed_dated_document(migrated_gateway)
     await migrated_gateway.execute(
-        "UPDATE chunks SET metadata = JSON '{}'"
-        " WHERE chunk_id = $1::uuid",
+        "UPDATE chunks SET metadata = JSON '{}' WHERE chunk_id = $1::uuid",
         "22222222-2222-2222-2222-222222222222",
     )
     result = await analysis_backfill_dates(migrated_gateway, config=OVER_TIME_ON, tenant_id=TENANT)

@@ -227,9 +227,7 @@ async def _duckdb_scanned(pool: SqlGateway, tenant_id: str) -> int:
     return int(counted or 0)
 
 
-async def backfill_envelope(
-    pool: asyncpg.Pool | SqlGateway, tenant_id: str
-) -> dict[str, object]:
+async def backfill_envelope(pool: asyncpg.Pool | SqlGateway, tenant_id: str) -> dict[str, object]:
     """The backfill envelope after the flag gate (the tool's thin tail).
 
     Postgres runs the migration-027 UPDATE; DuckDB answers the honest
