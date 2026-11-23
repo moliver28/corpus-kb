@@ -2,9 +2,9 @@ name: Agent config consistency
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [master, develop]
   pull_request:
-    branches: [main, master, develop]
+    branches: [master, develop]
 
 jobs:
   check-agent-configs:
