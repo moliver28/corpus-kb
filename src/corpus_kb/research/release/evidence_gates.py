@@ -2,8 +2,9 @@
 
 Split from ``gates.py`` to honor the 250-line soft limit. These three gates
 evaluate evidence P1 itself produces (the U43 canary report, the U44
-determinism proof, the U48 consensus report); everything else in the
-registry is a Wave-2 stub. Same contract: pure functions over
+determinism proof, the U48 consensus report); the wave-2 U7-U19 gates are
+equally real evaluations and live in the ``gate_*.py`` modules that
+``gates.py`` imports. Same contract: pure functions over
 ``(GateInputs, ResolvedProfile)``, no queries, honest statuses.
 """
 
