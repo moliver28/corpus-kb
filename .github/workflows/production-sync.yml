@@ -16,8 +16,10 @@ on:
   release:
     types: [published]
 
+# contents: read is all the checkout needs. The gh calls below touch PRs
+# and issues only; no step pushes commits, branches, or tags.
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
 
@@ -68,6 +70,9 @@ jobs:
           opened it after a release was published.
 
           Merge it with the Squash method. Production requires linear history.
+          After a squash merge here, the next sync opens a divergence issue,
+          not a PR. That issue carries the recipe that resets production to
+          master.
 
           ## Checks did not run yet
 
@@ -127,14 +132,35 @@ jobs:
 
           5. When production holds nothing worth keeping, reset it to
              `master`. Force pushes are disabled, so flip the setting,
-             push, and flip it back:
+             push, and flip it back. The GET response carries keys the PUT
+             must not receive, such as `url` and `contexts_url`, and wraps
+             flags as `{enabled}` objects. Project the PUT body with jq so
+             only PUT-schema fields are sent:
 
              ```
-             gh api repos/moliver28/corpus-kb/branches/production/protection > prod-protection.json
-             # edit prod-protection.json: set allow_force_pushes.enabled to true
-             gh api -X PUT repos/moliver28/corpus-kb/branches/production/protection --input prod-protection.json
+             gh api repos/moliver28/corpus-kb/branches/production/protection \
+               | jq '{
+                   required_status_checks: {
+                     strict: .required_status_checks.strict,
+                     contexts: .required_status_checks.contexts
+                   },
+                   enforce_admins: .enforce_admins.enabled,
+                   required_pull_request_reviews: {
+                     dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews,
+                     require_code_owner_reviews: .required_pull_request_reviews.require_code_owner_reviews,
+                     required_approving_review_count: .required_pull_request_reviews.required_approving_review_count
+                   },
+                   restrictions: (.restrictions // null),
+                   required_linear_history: .required_linear_history.enabled,
+                   allow_force_pushes: .allow_force_pushes.enabled,
+                   allow_deletions: .allow_deletions.enabled,
+                   required_conversation_resolution: .required_conversation_resolution.enabled
+                 }' \
+               > prod-protection.json
+             jq '.allow_force_pushes = true' prod-protection.json > prod-protection.open.json
+             gh api -X PUT repos/moliver28/corpus-kb/branches/production/protection --input prod-protection.open.json
              git push --force-with-lease origin origin/master:production
-             # restore allow_force_pushes.enabled to false, PUT again
+             gh api -X PUT repos/moliver28/corpus-kb/branches/production/protection --input prod-protection.json
              ```
 
           6. The next release then produces a clean sync pull request again.
