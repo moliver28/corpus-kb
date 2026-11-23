@@ -39,7 +39,7 @@ from corpus_kb.tools.ingest_common import advisory_lock_ctx
 from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.utils.models import Chunk, Document, Entity, Relation
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.ollama]
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 STUB_DIMS = 2560

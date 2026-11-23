@@ -36,6 +36,8 @@ from corpus_kb.rag.rerank_settings import (
 )
 from corpus_kb.rag.reranker import OllamaReranker, build_reranker
 
+pytestmark = [pytest.mark.ollama]
+
 Responder = Callable[[dict[str, object]], tuple[int, object]]
 
 

@@ -1,0 +1,170 @@
+# Sync the production branch with master after a release is published.
+#
+# GitHub fires this workflow when someone publishes a release. The job
+# compares master with production:
+#   * same content, or master already inside production - nothing to do
+#   * production is an ancestor of master - open a sync pull request
+#   * otherwise (diverged) - open an issue with a reconciliation recipe
+#
+# The pull request is created with the repository GITHUB_TOKEN. GitHub does
+# not start workflow runs for events made with that token, so the PR's
+# checks stay missing until a person re-arms them. The PR body carries the
+# exact command.
+name: Production sync
+
+on:
+  release:
+    types: [published]
+
+# contents: read is all the checkout needs. The gh calls below touch PRs
+# and issues only; no step pushes commits, branches, or tags.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: production-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Compare and sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide the sync state
+        id: state
+        run: |
+          git fetch origin master production
+          if git diff --quiet origin/production origin/master; then
+            echo "state=nothing" >> "$GITHUB_OUTPUT"
+            echo "Production already matches master. Nothing to sync."
+          elif git merge-base --is-ancestor origin/master origin/production; then
+            echo "state=nothing" >> "$GITHUB_OUTPUT"
+            echo "Production already contains every master commit. Nothing to sync."
+            echo "Check whether production-only commits still need a master backport."
+          elif git merge-base --is-ancestor origin/production origin/master; then
+            echo "state=pr" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=issue" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the sync pull request
+        if: steps.state.outputs.state == 'pr'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          OPEN=$(gh pr list --base production --head master --state open --json number --jq 'length')
+          if [ "$OPEN" -gt 0 ]; then
+            echo "A master-to-production PR is already open. Nothing to do."
+            exit 0
+          fi
+          cat > pr-body.md <<'BODY'
+          This PR syncs `master` into `production`. The Production sync workflow
+          opened it after a release was published.
+
+          Merge it with the Squash method. Production requires linear history.
+          After a squash merge here, the next sync opens a divergence issue,
+          not a PR. That issue carries the recipe that resets production to
+          master.
+
+          ## Checks did not run yet
+
+          GitHub does not start workflow runs for events made with the
+          `GITHUB_TOKEN`. This PR was made with that token, so its checks are
+          missing. Re-arm them by running this as yourself:
+
+          ```
+          gh pr close <NUMBER> --repo moliver28/corpus-kb && gh pr reopen <NUMBER> --repo moliver28/corpus-kb
+          ```
+
+          The reopen event starts the checks. After they finish, the PR is mergeable.
+          BODY
+          URL=$(gh pr create --base production --head master \
+            --title "Sync master into production" \
+            --body-file pr-body.md)
+          PR_NUM="${URL##*/}"
+          sed -i "s/<NUMBER>/${PR_NUM}/g" pr-body.md
+          gh pr edit "$PR_NUM" --body-file pr-body.md
+          echo "Opened $URL"
+
+      - name: Open a divergence issue
+        if: steps.state.outputs.state == 'issue'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          cat > issue-body.md <<'BODY'
+          The Production sync workflow ran for a release. `master` and
+          `production` have diverged: each has commits the other lacks.
+          Production requires linear history, so a merge-commit PR cannot
+          work. The workflow opened this issue instead of an unmergeable PR.
+
+          ## Reconciliation recipe
+
+          1. Fetch both branches:
+
+             ```
+             git fetch origin
+             ```
+
+          2. List what production is missing:
+
+             ```
+             git log --oneline origin/production..origin/master
+             ```
+
+          3. List what production holds that master does not:
+
+             ```
+             git log --oneline origin/master..origin/production
+             ```
+
+          4. Decide for each production-only commit: port it to `master`
+             through a normal PR, or drop it. Old sync squashes are sync
+             artifacts; they can be dropped.
+
+          5. When production holds nothing worth keeping, reset it to
+             `master`. Force pushes are disabled, so flip the setting,
+             push, and flip it back. The GET response carries keys the PUT
+             must not receive, such as `url` and `contexts_url`, and wraps
+             flags as `{enabled}` objects. Project the PUT body with jq so
+             only PUT-schema fields are sent:
+
+             ```
+             gh api repos/moliver28/corpus-kb/branches/production/protection \
+               | jq '{
+                   required_status_checks: {
+                     strict: .required_status_checks.strict,
+                     contexts: .required_status_checks.contexts
+                   },
+                   enforce_admins: .enforce_admins.enabled,
+                   required_pull_request_reviews: {
+                     dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews,
+                     require_code_owner_reviews: .required_pull_request_reviews.require_code_owner_reviews,
+                     required_approving_review_count: .required_pull_request_reviews.required_approving_review_count
+                   },
+                   restrictions: (.restrictions // null),
+                   required_linear_history: .required_linear_history.enabled,
+                   allow_force_pushes: .allow_force_pushes.enabled,
+                   allow_deletions: .allow_deletions.enabled,
+                   required_conversation_resolution: .required_conversation_resolution.enabled
+                 }' \
+               > prod-protection.json
+             jq '.allow_force_pushes = true' prod-protection.json > prod-protection.open.json
+             gh api -X PUT repos/moliver28/corpus-kb/branches/production/protection --input prod-protection.open.json
+             git push --force-with-lease origin origin/master:production
+             gh api -X PUT repos/moliver28/corpus-kb/branches/production/protection --input prod-protection.json
+             ```
+
+          6. The next release then produces a clean sync pull request again.
+          BODY
+          gh issue create \
+            --title "Production sync blocked: master and production diverged" \
+            --body-file issue-body.md

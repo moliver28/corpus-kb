@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from corpus_kb.rag.embedder import (
     QUERY_INSTRUCTION_PREFIX,
     Embedder,
@@ -9,6 +11,8 @@ from corpus_kb.rag.embedder import (
     OllamaEmbedder,
     instruct,
 )
+
+pytestmark = [pytest.mark.ollama]
 
 _FAKE_CONFIG: dict[str, object] = {
     "embedding": {

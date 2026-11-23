@@ -1,11 +1,22 @@
-"""Test coder dispatch: output validation and routing."""
+"""Test coder dispatch: output validation, routing, and the window contract."""
 
 from __future__ import annotations
 
+import pytest
+
+from corpus_kb.chunking.hierarchy import estimate_tokens
 from corpus_kb.coding.coder_dispatch import (
     CoderWindowOutput,
     validate_coder_output,
 )
+from corpus_kb.coding.coder_window import build_window
+
+_CODE_ROW = {
+    "code_id": "CTRL-001",
+    "brief_definition": "Control activity the participant reports.",
+    "inclusion_criteria": "Participant mentions a control and its use.",
+    "exclusion_criteria": "Hypothetical or planned controls only.",
+}
 
 
 def test_coder_window_output_dataclass() -> None:
@@ -150,3 +161,45 @@ def test_validate_coder_output_reject_ignores_quote() -> None:
     )
     is_valid, _msg = validate_coder_output(output_no_quote)
     assert is_valid is True
+
+
+def test_build_window_truncates_oversized_chunk() -> None:
+    """Contract item 5: a chunk over the ceiling is cut, window fits the ceiling."""
+    window = build_window("word " * 20_000, [_CODE_ROW], max_tokens=2_000)
+
+    assert estimate_tokens(window) <= 2_000
+    assert "[truncated]" in window
+    assert "CTRL-001" in window  # the candidate code block survives the cut
+
+
+def test_build_window_keeps_anchor_when_truncating() -> None:
+    """Contract item 5: the anchor (output contract + worked example) survives."""
+    window = build_window("word " * 20_000, [_CODE_ROW], max_tokens=2_000)
+
+    assert '{"decisions":' in window  # output contract shape still rendered
+    assert "Worked example" in window  # the anchor example is never cut
+
+
+def test_build_window_context_yields_to_chunk() -> None:
+    """Chained context is cut before the target chunk: evidence needs the chunk."""
+    chunk = "participant turn " * 50
+    context = "moderator question " * 5_000
+    window = build_window(chunk, [_CODE_ROW], qa_context=context, max_tokens=2_000)
+
+    assert "participant turn" in window  # target chunk text intact
+    assert estimate_tokens(window) <= 2_000
+    assert "[truncated]" in window  # the context was the part that gave way
+
+
+def test_build_window_under_ceiling_is_untouched() -> None:
+    """A window that fits carries no truncation marker and keeps the full chunk."""
+    window = build_window("a short turn", [_CODE_ROW])
+
+    assert "[truncated]" not in window
+    assert "a short turn" in window
+
+
+def test_build_window_rejects_impossible_ceiling() -> None:
+    """A ceiling below the fixed scaffolding raises instead of emitting junk."""
+    with pytest.raises(ValueError, match="ceiling"):
+        build_window("any turn", [_CODE_ROW], max_tokens=10)

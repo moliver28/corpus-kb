@@ -67,8 +67,7 @@ function StageShell() {
             <Route path="/codebook" element={<Codebook />} />
             <Route path="/scale" element={<Scale />} />
             <Route path="/release" element={<Release />} />
-            {/* Stages without screens yet (Tasks 6-7) land above this
-                catch-all; until then each shows the same placeholder. */}
+            {/* Catch-all for unknown paths only: every stage above has a screen. */}
             <Route path="*" element={<StagePlaceholder />} />
           </Routes>
         </Suspense>

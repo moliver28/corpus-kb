@@ -472,9 +472,8 @@ def load_config() -> dict[str, Any]:
     must read and write the docker-compose stack targets recorded in
     config.yaml even when the shell exports another CORPUS_KB_DATABASE_URL,
     while doctor's CONNECTION PROBE separately honors the env var (see
-    doctor_cmd). TODO(follow-up): add a precedence test pinning BOTH
-    orderings (installer config-first, runtime env-first) so a future
-    unification cannot drift silently.
+    doctor_cmd). Both orderings are pinned in tests/test_installer.py, so a
+    future unification cannot drift silently.
     """
     from pathlib import Path
 

@@ -71,7 +71,7 @@ async def test_demo_runs_end_to_end_with_narration(research_dsn: str) -> None:
     assert guide_copy.DEMO_OUTRO in output
     # Report: traffic lights + per-section guide links (r12/r13 anchors).
     for section in ("isr", "residual", "irr"):
-        assert "docs/understanding-your-report.md#" in output
+        assert "docs/UNDERSTANDING-YOUR-REPORT.md#" in output
         assert f"guide[{section}]" in output
     # Notebook: EVIDENCE header + exchange-level citations.
     assert guide_copy.NOTEBOOK_EVIDENCE_HEADER in output

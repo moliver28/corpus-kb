@@ -1,13 +1,17 @@
 # Build and publish the pinned PostgreSQL image for Corpus-KB.
 #
-# Publishes ghcr.io/moliver28/corpus-kb-postgres with:
-#   * pg17          - rolling tag for the latest PG17-based build
-#   * 0.1.0-pg17    - immutable tag for this image revision
+# Publishes ghcr.io/moliver28/corpus-kb-postgres with one tag per run:
+#   * edge-pg17     - rolling tag, moved by master pushes and dispatches
+#   * X.Y.Z-pg17    - immutable tag, derived from the pushed v* tag
+#
+# A master push never writes a version-shaped tag. A version push never
+# moves a rolling tag. Consumers pin immutable tags; CI pulls 0.1.0-pg17,
+# so that tag must never be rewritten.
 #
 # Triggers:
-#   * workflow_dispatch  - on-demand rebuilds
-#   * push to master     - keeps the rolling pg17 tag fresh after merges
-#   * version tags (v*)  - immutable revision tags
+#   * workflow_dispatch  - on-demand rebuilds (rolling edge-pg17)
+#   * push to master     - keeps the rolling edge-pg17 tag fresh after merges
+#   * version tags (v*)  - immutable revision tags (X.Y.Z-pg17)
 # There is NO pull_request trigger: image builds never run on PR CI.
 #
 # Multi-platform strategy: each architecture builds NATIVELY on its own
@@ -34,7 +38,6 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: moliver28/corpus-kb-postgres
-  IMAGE_VERSION: 0.1.0
 
 jobs:
   build:
@@ -123,16 +126,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Pick the publish tag
+        run: |
+          # A version push makes one immutable tag from the pushed tag.
+          # Everything else (master push, dispatch) moves the rolling tag.
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [[ -z "$VERSION" ]]; then
+              echo "FAIL: Version tag '$GITHUB_REF_NAME' has no version after the v prefix."
+              exit 1
+            fi
+            echo "PUBLISH_TAG=${VERSION}-pg17" >> "$GITHUB_ENV"
+          else
+            echo "PUBLISH_TAG=edge-pg17" >> "$GITHUB_ENV"
+          fi
+
       - name: Extract image metadata and tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=pg17
-            type=raw,value=${{ env.IMAGE_VERSION }}-pg17
-            type=semver,pattern={{version}},prefix=${{ env.IMAGE_VERSION }}-
-            type=semver,pattern={{major}}.{{minor}},prefix=${{ env.IMAGE_VERSION }}-
+            type=raw,value=${{ env.PUBLISH_TAG }}
 
       - name: Create and push multi-arch manifest list
         working-directory: /tmp/digests

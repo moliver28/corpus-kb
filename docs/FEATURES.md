@@ -36,7 +36,7 @@ Detection and chunking run through a pluggable **ingestion strategy**. The built
 
 ### Code chunking
 
-Code files are split using tree-sitter. Chunks respect AST boundaries: functions, classes, and methods stay intact. Supported languages include Python, JavaScript, TypeScript, Rust, Go, Java, C, C++, and many more.
+Code files are split using tree-sitter. Chunks respect AST boundaries: functions, classes, and methods stay intact. The grammars cover Python, JavaScript (with JSX), TypeScript (with TSX), Rust, Go, and Java. Other languages fall back to the default strategy. The full suffix table lives in the [FAQ](FAQ.md#what-languages-does-tree-sitter-support).
 
 ### Markdown chunking
 
@@ -44,7 +44,7 @@ Markdown is split at headings. Each section becomes a chunk with its heading pat
 
 ### Text chunking
 
-Plain text is split by semantic gaps. The chunker looks for topic shifts rather than cutting at fixed sizes, though `max_size` and `overlap` still apply.
+Plain text is split by semantic gaps. The chunker looks for topic shifts rather than cutting at fixed sizes, though the `ingest.chunking.*` caps (`chunk_tokens`, `overlap_tokens`) still apply.
 
 ### Pipeline stages
 
@@ -111,10 +111,11 @@ Entities and relations are first-class citizens. The extractor recognizes things
 
 Entity and relation types are defined in `config/ontology.yaml`. The extractor validates every extracted entity and relation against this vocabulary, rejecting types that don't match. This prevents noise from inconsistent typing.
 
-Three extraction backends ship by default, plus an opt-in fourth:
+Five extraction backends ship. The default is `ml`, the composite engine:
 
 | Backend | Config value | Description |
 |---------|-------------|-------------|
+| ML composite | `ml` (default) | Mode-gated composite. `zero_shot` mode (default) runs GLiNER2 entities plus GLiNER-Relex relations, both ontology-conditioned. `few_shot` and `customized` modes run LangExtract. |
 | Regex | `regex` | Zero-dependency fallback. Fast, deterministic, no LLM calls. |
 | LangExtract | `langextract` | LLM-based extraction with recorded fixtures for deterministic CI. |
 | PostgresML | `pgml` | In-database ONNX NER with regex fallback. Requires `pgml` extension. |
@@ -257,7 +258,7 @@ Corpus-KB runs qualitative coding studies end to end. The subsystem covers trans
 - **The cycle**: `research cycle` chains the pipeline with halt gates at every human-critical step. `research demo` narrates the same pipeline on a bundled demo corpus.
 - **Releases**: `release assess/request/review/release/status/compare` walk a codebook version from draft to a released codebook with gate evidence and named approvers.
 
-Start with the [getting-started walkthrough](getting-started.md); the full command reference is [research.md](research.md).
+Start with the [getting-started walkthrough](GETTING-STARTED.md); the full command reference is [research/README.md](research/README.md).
 
 ---
 
@@ -274,9 +275,10 @@ envelope.
 
 Honest caveats:
 
-- The `autoApprove` lists in `mcp-configs/*.json` keep legacy names from
-  the original design (for example `search_context`, `sql_query`) that
-  have no MCP tool today. Unknown names are harmless: they never match.
+- The `autoApprove` lists in `mcp-configs/*.json` and `opencode.json`
+  name live tools only. A lockstep gate (`poe toolname-lockstep`) pins
+  the lists to the tool catalogue in both directions. Unknown names in
+  a client's own config are harmless: they never match.
 - The table below lists the core tools. `corpus-kb operations --indent 0`
   prints the full live inventory with parameters and envelope keys.
 

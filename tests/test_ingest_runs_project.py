@@ -26,6 +26,8 @@ from corpus_kb.tools.ingest_sql import ingest_sql_for
 from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.tools.ingest_surface_tools import DEFAULT_TENANT_ID, _status_sql, ingest_status
 
+pytestmark = [pytest.mark.ollama]
+
 TENANT = "00000000-0000-0000-0000-000000000003"
 REPO = Path(__file__).resolve().parent.parent
 MIGRATION_PG = REPO / "src" / "corpus_kb" / "migrations" / "036_ingest_runs_project.sql"

@@ -35,6 +35,8 @@ from corpus_kb.research.retrieval_settings import (
 )
 from tests.mock_pg import transaction_cm
 
+pytestmark = [pytest.mark.ollama]
+
 # ============================================================================
 # mode enum
 # ============================================================================

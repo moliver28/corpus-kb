@@ -50,6 +50,8 @@ from corpus_kb.tools import ingest_embed
 from corpus_kb.tools.ingest_common import embed_chunks
 from corpus_kb.utils.models import Chunk
 
+pytestmark = [pytest.mark.ollama]
+
 ROOT = Path(__file__).resolve().parent.parent
 
 CHUNK = "the answer is forty-two. "

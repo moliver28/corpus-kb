@@ -22,6 +22,7 @@ if str(_REPO_SRC) not in sys.path:
 from corpus_kb._setup import install as install_module  # noqa: E402
 from corpus_kb._setup import setup_assets as setup_assets_module  # noqa: E402
 from corpus_kb._setup import setup_stack as setup_stack_module  # noqa: E402
+from corpus_kb.config import load_config as runtime_load_config  # noqa: E402
 
 
 def _minimal_config(data_dir: Path | None = None) -> dict:
@@ -931,3 +932,36 @@ def test_stage_router_routes_write_and_flush_for_workers() -> None:
     router.flush()
     assert sink.getvalue() == "worker line\n"
     assert passthrough.getvalue() == ""
+
+
+def test_install_load_config_is_config_first(monkeypatch: Any, tmp_path: Path) -> None:
+    """The installer reads config.yaml as-is: env vars must not override it.
+
+    Pins one half of the deliberate loader divergence (review F-1): setup
+    reads and writes the docker-compose targets recorded in the YAML even
+    when the shell exports another CORPUS_KB_DATABASE_URL.
+    """
+    (tmp_path / "config.yaml").write_text(
+        "database:\n  connection_string: postgresql://from-yaml\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", "postgresql://from-env")
+    config = install_module.load_config()
+    assert config["database"]["connection_string"] == "postgresql://from-yaml"
+
+
+def test_runtime_load_config_is_env_first(monkeypatch: Any, tmp_path: Path) -> None:
+    """The runtime loader merges CORPUS_KB_* env vars over the YAML values.
+
+    Pins the other half of the divergence: the same YAML and env var run
+    through corpus_kb.config.load_config resolve to the env value.
+    """
+    (tmp_path / "config.yaml").write_text(
+        "database:\n  connection_string: postgresql://from-yaml\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CORPUS_KB_CONFIG", raising=False)
+    monkeypatch.delenv("CORPUS_KB_CONFIG_OVERLAY", raising=False)
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", "postgresql://from-env")
+    config = runtime_load_config()
+    assert config["database"]["connection_string"] == "postgresql://from-env"

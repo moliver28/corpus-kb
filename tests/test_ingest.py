@@ -13,6 +13,8 @@ from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.tools.ingest_tools import delete_document, ingest_text
 from corpus_kb.utils.models import Document, Entity
 
+pytestmark = [pytest.mark.ollama]
+
 # Same database the pg_pool fixture binds; keeps get_app/ingest dedup and
 # the schema tables in ONE database (RLS + content-hash dedup see the same
 # rows). Env-derived like conftest's pg_pool, so the CI service database

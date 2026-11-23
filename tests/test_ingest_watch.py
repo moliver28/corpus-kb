@@ -31,6 +31,8 @@ from corpus_kb.ingest_watch import (
     watch_directory,
 )
 
+pytestmark = [pytest.mark.ollama]
+
 runner = CliRunner()
 
 

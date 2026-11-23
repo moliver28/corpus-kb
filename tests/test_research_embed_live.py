@@ -16,7 +16,7 @@ from research_db import TEST_TENANT
 from corpus_kb.projections.research._embed import RESEARCH_DIMENSIONS, ResearchEmbedder
 from corpus_kb.rag.embedder import OllamaEmbedder
 
-pytestmark = [pytest.mark.requires_postgres, pytest.mark.requires_ollama]
+pytestmark = [pytest.mark.requires_postgres, pytest.mark.requires_ollama, pytest.mark.ollama]
 
 OLLAMA_URL = "http://localhost:11434"
 

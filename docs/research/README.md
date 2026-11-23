@@ -1,11 +1,54 @@
-# Research subsystem
+# Research program notes (internal records)
 
-Corpus-KB's research subsystem turns interview and meeting transcripts into a
-coded, queryable, audited qualitative dataset. Start with
-[getting-started.md](getting-started.md); this page is the command and config
-reference.
+This directory holds the internal program records: plans, designs,
+as-built reports, and reference math. They are working documents, not
+user guides. The user-facing research reference follows the record
+index below.
 
-## Contents
+## Programs
+
+| Document | What it holds |
+|----------|---------------|
+| [harness-zero-drift-program.md](harness-zero-drift-program.md) | The binding zero-drift standards plus the CI enforcement map. |
+| [config-alignment-program.md](config-alignment-program.md) | The config key alignment program. Closed; all four waves shipped. |
+| [storage-portability-program.md](storage-portability-program.md) | The Postgres ⇄ DuckDB portability program. Executed; phases A-G merged. |
+| [analysis-method-register-program.md](analysis-method-register-program.md) | The analysis method register (AMR) program: waves, status, ids. |
+| [analysis-question-routing-program.md](analysis-question-routing-program.md) | The question-routing design. Draft for owner review. |
+| [ux-experience-program.md](ux-experience-program.md) | The ideal-state UX design. Researched, not started. |
+| [ui-spa-program-plan.md](ui-spa-program-plan.md) | The UI SPA build plan for agentic workers. |
+| [ui-spa-desk-research.md](ui-spa-desk-research.md) | The self-contained UI implementation plan (v1.2). |
+| [2026-10-31-textbook-extraction-upgrade-plan.md](2026-10-31-textbook-extraction-upgrade-plan.md) | The textbook extraction upgrade plan. Approved. |
+| [ingestion-validation-chunking-plan.md](ingestion-validation-chunking-plan.md) | The validated ingestion and pluggable chunking plan v2. |
+| [ingestion-recipes-as-built.md](ingestion-recipes-as-built.md) | The calibrate-then-lock sweep as built (PRs #211-#214). |
+
+## References
+
+| Document | What it holds |
+|----------|---------------|
+| [HARNESS-PLAYBOOKS.md](HARNESS-PLAYBOOKS.md) | The operating script for the AI harness: author, measure, apply. |
+| [harness-distribution.md](harness-distribution.md) | How the research/coding surfaces reach AI-agent harnesses. |
+| [research-math.md](research-math.md) | Every formula with its v5 source and calibration source. |
+| [retrieval-benchmarks.md](retrieval-benchmarks.md) | Retrieval benchmark results (P3 upgrades). |
+| [benchmarks/](benchmarks/README.md) | Benchmark runs: inductive baselines, storage backends. |
+| [upgrade-reconciliation.md](upgrade-reconciliation.md) | One row per upgrade, U1 through U48. |
+| [UI-DEMO.md](UI-DEMO.md) | The timed 10-minute investor walkthrough of `/app/`. |
+
+## Dated reports
+
+| Document | What it holds |
+|----------|---------------|
+| [textbook-baseline-2026-10-31.md](textbook-baseline-2026-10-31.md) | The pre-change baseline for the textbook program. |
+| [textbook-paddle-probe-2026-10-31.md](textbook-paddle-probe-2026-10-31.md) | The PaddleOCR-VL challenger probe results. |
+| [textbook-program-report-2026-10-31.md](textbook-program-report-2026-10-31.md) | The textbook program close-out report. |
+
+## Research subsystem
+
+Corpus-KB's research subsystem turns interview and meeting transcripts
+into a coded, queryable, audited qualitative dataset. Start with
+[GETTING-STARTED.md](../GETTING-STARTED.md); this section is the
+command and config reference.
+
+### Contents
 
 - [The pipeline at a glance](#the-pipeline-at-a-glance)
 - [Deployment note: embeddings](#deployment-note-embeddings)
@@ -14,7 +57,7 @@ reference.
 - [Research cycle](#research-cycle)
 - [Release lifecycle](#release-lifecycle)
 
-## The pipeline at a glance
+### The pipeline at a glance
 
 1. **Ingest** transcripts: `corpus-kb research ingest-transcript <file>` for
    one file, `corpus-kb research ingest <dir|glob> [--watch]` for dynamic
@@ -38,7 +81,7 @@ reference.
 `corpus-kb research demo` runs steps 1-6 end-to-end on a bundled mini corpus,
 with narration. It is the fastest way to see the shapes of every artifact.
 
-## Deployment note: embeddings
+### Deployment note: embeddings
 
 The research embedding boundary requires exactly 1024 dims (native or
 MRL-sliced from >=1024). The default `pgml` provider abstains when the pgml
@@ -48,7 +91,7 @@ deployments should set `embedding.provider: ollama` with a >=1024-dim model
 (for example the shipped default `qwen3-embedding:4b`). `corpus-kb doctor`
 warns about this shape and prints the exact pull.
 
-## Config reference
+### Config reference
 
 Every `research.*` key below ships in the default config
 (`get_default_config` / packaged `config.yaml`). This table is pinned by a
@@ -128,7 +171,7 @@ a deterministic prefix won. Every research embedding row records the
 revision tag `"1024"`. Changing embedding behavior is a committed code
 change, never a config edit.
 
-## Optional extras
+### Optional extras
 
 - `pip install -e ".[latechunk]"` — late chunking embedder (G1 A/B loser on
   the pinned fixture; kept as the causal reference arm).
@@ -138,13 +181,13 @@ change, never a config edit.
 Both are optional: `corpus-kb doctor` reports their status and the core
 pipeline never requires them.
 
-## Research cycle
+### Research cycle
 
 `corpus-kb research cycle` is pure orchestration over the step
 commands: ingest -> inductive -> deductive -> keywords -> report ->
 notebook. It contains no new analytics and never auto-promotes a codebook.
 
-### Postures
+#### Postures
 
 - `--mode in` executes exactly one next stage, then exits (fully in the
   loop).
@@ -159,7 +202,7 @@ notebook. It contains no new analytics and never auto-promotes a codebook.
   daemon, no busy-loop). A file is picked up exactly once via the
   file-hash ledger.
 
-### Gates and resuming
+#### Gates and resuming
 
 Each halt prints `AWAITING HUMAN: <gate>` plus the exact next command,
 with a distinct per-gate exit code (10-17). `codebook_promotion` is
@@ -170,7 +213,7 @@ closed stdin counts as a denial). An explicit re-run of the flow clears
 that denial: the denied stage runs again, and the approval prompt asks
 again. The `--watch` arms are automatic. They never clear a denial. A
 cycle that cannot proceed (for example, no codebook version yet) exits
-2. The full exit-code table lives in [OPERATIONS.md](OPERATIONS.md).
+2. The full exit-code table lives in [OPERATIONS.md](../OPERATIONS.md).
 
 Progress is event-sourced: the cycle is a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To
@@ -194,7 +237,7 @@ covers what is happening, what to look at, proposed codes with example
 units, and promote-vs-skip consequences. `--json` emits one
 machine-readable stage/gate event per line for agents.
 
-## Release lifecycle
+### Release lifecycle
 
 `corpus-kb release ...` walks one codebook version from draft to released
 codebook. One handler per operation (`handlers/release_handlers.py`)

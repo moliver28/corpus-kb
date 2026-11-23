@@ -12,12 +12,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from corpus_kb.chunking.hierarchy import estimate_tokens
+from corpus_kb.coding.window_ceiling import (
+    DEFAULT_MAX_WINDOW_TOKENS,
+    fit_to_tokens,
+    reserve_budget,
+)
+
 MAX_CANDIDATE_CODES = 5
 
 # Numbered coder-window contract (referenced in references/coding-rules.md).
-# Items 3, 4 and 5 are specified but NOT yet built: build_window renders only
-# items 1, 2, 6, 7 and 8. In particular there is no truncation today, so a long
-# chunk plus five code definitions can overflow the model's context silently.
+# build_window renders items 1, 2, 3, 5, 6, 7 and 8. Item 4 (keyword
+# annotations) stays specified-but-not-built until an upstream keyword
+# source exists; item 5's ceiling lives in coding/window_ceiling.py.
 CODER_WINDOW_CONTRACT = """
 Per-Agent Coder Window Contract (numbered):
 
@@ -30,13 +37,13 @@ Per-Agent Coder Window Contract (numbered):
 2. Target chunk: the text being coded
 
 3. Chained context: Task 10 moderator→answer chain for participant turns
-   (NOT YET IMPLEMENTED in Milestone 1)
+   (BUILT: render the qa_context argument in build_window)
 
 4. Keyword annotations: inclusion/exclusion keyword hits for candidate codes
-   (NOT YET IMPLEMENTED in Milestone 1)
+   (NOT YET IMPLEMENTED — no upstream keyword source exists)
 
 5. Hard token ceiling: window is truncated if it exceeds N tokens (anchor example first)
-   (NOT YET IMPLEMENTED in Milestone 1 — no truncation is applied today)
+   (BUILT: coding/window_ceiling.py; the anchor example is never cut)
 
 6. Output contract (JSON only): ONE decision per candidate code_id, never one
    blended verdict for the batch:
@@ -67,6 +74,29 @@ _WORKED_EXAMPLE = (
     '"evidence_quote": null, '
     '"rationale": "No documented procedure is described in this turn."}]}'
 )
+
+# Shared by the frame measurement and the assembly, so the computed token
+# ceiling covers exactly the rendered structure.
+_CONTEXT_LABEL = (
+    "Chained context (the preceding moderator question, for "
+    "understanding only -- never quote from this):"
+)
+_WINDOW_TAIL = [
+    "",
+    (
+        "Output contract: reply with JSON only. Judge EVERY candidate code above "
+        "independently and return exactly one entry per code_id, each with the "
+        "decision key FIRST:"
+    ),
+    _OUTPUT_SHAPE,
+    "",
+    (
+        "Each evidence_quote must be a verbatim substring of the target chunk, and "
+        "must quote only the participant's own words, never a moderator question."
+    ),
+    "",
+    _WORKED_EXAMPLE,
+]
 
 
 @dataclass
@@ -174,23 +204,25 @@ def build_window(
     chunk_text: str,
     code_rows: list[dict[str, Any]],
     qa_context: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
-    """Render the per-agent coder window (contract items 1, 2, 3, 6, 7, 8).
+    """Render the per-agent coder window (contract items 1, 2, 3, 5, 6, 7, 8).
 
     Carries ONLY brief_definition / inclusion_criteria / exclusion_criteria per
-    candidate code: never `theory`, never the full `examples` list.
+    candidate code: never `theory`, never the full `examples` list. `qa_context`
+    (contract item 3) is its own labeled section -- never spliced into
+    `chunk_text` -- so the verbatim-quote gate checks the real transcript.
 
-    `qa_context` is contract item 3 (chained context): the caller (dispatch)
-    passes the moderator-question-chained text from
-    `coding.qa_chaining.chain_context` when this chunk is a participant turn
-    immediately following a moderator turn (see coder_dispatch.dispatch_chunk).
-    It is rendered as its own labeled section -- `chunk_text` below it is left
-    untouched -- so the verbatim-quote gate keeps checking evidence against
-    the real transcript text, never the chained variant.
+    Contract item 5 (coding.window_ceiling): the window never exceeds
+    `max_tokens` (default DEFAULT_MAX_WINDOW_TOKENS), so a long chunk plus five
+    code definitions cannot overflow the model's context silently. The anchor
+    (output contract + worked example) is never cut; the context yields before
+    the chunk; cuts carry a "[truncated]" marker. ValueError when the ceiling
+    cannot hold the fixed sections or any of the target chunk.
     """
-    lines = ["You are coding one transcript turn against candidate codes.", "", "Candidate codes:"]
+    head = ["You are coding one transcript turn against candidate codes.", "", "Candidate codes:"]
     for row in code_rows:
-        lines.extend(
+        head.extend(
             [
                 f"- {row['code_id']}",
                 f"  definition: {row['brief_definition']}",
@@ -198,34 +230,20 @@ def build_window(
                 f"  exclude when: {row['exclusion_criteria']}",
             ]
         )
-    lines.extend(["", "Target chunk:", chunk_text])
-    if qa_context:
-        lines.extend(
-            [
-                "",
-                (
-                    "Chained context (the preceding moderator question, for "
-                    "understanding only -- never quote from this):"
-                ),
-                qa_context,
-            ]
+    context_slot = ["", _CONTEXT_LABEL, ""] if qa_context else []
+    frame = [*head, "", "Target chunk:", *context_slot, *_WINDOW_TAIL]
+    fixed = estimate_tokens("\n".join(frame))
+    ceiling = DEFAULT_MAX_WINDOW_TOKENS if max_tokens is None else max_tokens
+    budget = reserve_budget(ceiling, fixed)
+    chunk_fit = fit_to_tokens(chunk_text, budget)
+    if chunk_text and not chunk_fit:
+        raise ValueError(
+            f"Coder window ceiling {ceiling} leaves no room for the target chunk. Raise max_tokens."
         )
-    lines.extend(
-        [
-            "",
-            (
-                "Output contract: reply with JSON only. Judge EVERY candidate code above "
-                "independently and return exactly one entry per code_id, each with the "
-                "decision key FIRST:"
-            ),
-            _OUTPUT_SHAPE,
-            "",
-            (
-                "Each evidence_quote must be a verbatim substring of the target chunk, and "
-                "must quote only the participant's own words, never a moderator question."
-            ),
-            "",
-            _WORKED_EXAMPLE,
-        ]
-    )
+    lines = [*head, "", "Target chunk:", chunk_fit]
+    if qa_context:
+        context_fit = fit_to_tokens(qa_context, budget - estimate_tokens(chunk_fit))
+        if context_fit:
+            lines.extend(["", _CONTEXT_LABEL, context_fit])
+    lines.extend(_WINDOW_TAIL)
     return "\n".join(lines)

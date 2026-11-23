@@ -76,7 +76,7 @@ Every operation is reachable programmatically. One line per surface:
 - **HTTP API** with curl examples: [docs/API.md](docs/API.md)
 - **OpenAI-compatible adapter** at `/v1` (chat completions, embeddings): [docs/API.md](docs/API.md)
 - **JSON-RPC socket** for local automation: [docs/API.md](docs/API.md)
-- **CLI**: `corpus-kb ingest`, `corpus-kb search`, `corpus-kb ask` — [docs/getting-started.md](docs/getting-started.md)
+- **CLI**: `corpus-kb ingest`, `corpus-kb search`, `corpus-kb ask` — [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)
 - **Tracing** with OpenTelemetry spans: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
 - **Offline evaluation** of retrieval and answers: [docs/EVALUATION.md](docs/EVALUATION.md)
 - **marimo notebooks** served at `/notebooks`: [docs/NOTEBOOKS.md](docs/NOTEBOOKS.md)
@@ -84,7 +84,7 @@ Every operation is reachable programmatically. One line per surface:
 
 First time on a terminal? `corpus-kb quickstart` walks you from zero to
 a first search. The step-by-step quickstart is in
-[docs/getting-started.md](docs/getting-started.md).
+[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 
 Prefer Docker? A NAS or any Docker host can run the whole app with one
 compose command. See "Run the whole app in Docker" in
@@ -177,7 +177,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 
 | Page | What it covers |
 |------|----------------|
-| [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else. Then qualitative coding from zero: the demo, your first transcript, first codebook |
+| [Getting started](docs/GETTING-STARTED.md) | Both paths: the browser for novices, the terminal quickstart for everyone else. Then qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
 | [Browser UI](docs/UI.md) | The lifecycle app: stage-by-stage user guide, config, build, gates, troubleshooting |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
@@ -189,8 +189,8 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Evaluation](docs/EVALUATION.md) | Golden sets, recall/MRR/nDCG, answer metrics |
 | [Notebooks](docs/NOTEBOOKS.md) | The marimo console and the three example notebooks |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
-| [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
-| [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
+| [Research](docs/research/README.md) | Research command reference, config keys, embedding requirements |
+| [Understanding your report](docs/UNDERSTANDING-YOUR-REPORT.md) | Plain-language guide to every governance-report section |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline: partition, chunk, embed, extract, store, plus the strategy reference and extension ladders |
 | [Analysis](docs/ANALYSIS.md) | The analysis layer: analyze-run report, labeling, classification, topics, trends, method register |

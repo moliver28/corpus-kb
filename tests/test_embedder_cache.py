@@ -20,6 +20,8 @@ from corpus_kb.rag.embedder import OllamaEmbedder, _sha256_key
 from corpus_kb.rag.embedder_cache import SCHEMA_EMBEDDING_WIDTH, EmbeddingCache
 from corpus_kb.storage.gateway import DuckDbGateway
 
+pytestmark = [pytest.mark.ollama]
+
 _DIM = SCHEMA_EMBEDDING_WIDTH
 
 _CONFIG: dict[str, object] = {

@@ -1,5 +1,7 @@
 # Ingestion Pipeline
 
+This page explains how Corpus-KB turns one file into stored chunks. It also shows how to extend the pipeline with your own strategy.
+
 ## Contents
 
 - [Quick Start](#quick-start)
@@ -123,7 +125,9 @@ element model (for example, `transcript`) skip this stage entirely and
 build chunks directly.
 
 - **File**: `src/corpus_kb/partitioning.py`
-- **Config**: `chunking.code.parser: tree-sitter`
+- **Config**: the `code` strategy uses tree-sitter and needs the
+  `[code]` extra (`pip install -e ".[code]"`). Map source types to
+  strategies through `ingestion.strategies`.
 
 ### Stage 2: Chunk
 
@@ -132,7 +136,9 @@ Elements are grouped into chunks respecting AST boundaries for code
 its `source_start_char` and `source_end_char` offsets for provenance.
 
 - **File**: `src/corpus_kb/chunking/unstructured_chunker.py`
-- **Config**: `chunking.max_size`, `chunking.overlap`
+- **Config**: `ingest.chunking.*` (`enabled`, `chunk_tokens`,
+  `parent_tokens`, `child_tokens`, `overlap_tokens`,
+  `respect_boundaries`)
 
 ### Stage 3: Embed
 

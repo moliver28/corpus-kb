@@ -363,7 +363,10 @@ curl -X POST http://localhost:8010/api/graph/search \
 
 ### POST /api/graph/bfs
 
-BFS traversal from an entity.
+Deprecated. Use `POST /api/graph/traverse`, which walks from an entity up
+to the depth cap. The old route still answers; every response carries a
+`deprecated` key naming the replacement (`src/corpus_kb/api/routes_graph.py`).
+`corpus-kb operations --indent 0` prints the traverse route's parameters.
 
 ```bash
 curl -X POST http://localhost:8010/api/graph/bfs \

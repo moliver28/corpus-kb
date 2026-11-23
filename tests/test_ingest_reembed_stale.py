@@ -16,6 +16,8 @@ import pytest
 
 from corpus_kb.tools import ingest_common, ingest_reembed
 
+pytestmark = [pytest.mark.ollama]
+
 
 def _norm(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
