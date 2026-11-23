@@ -594,7 +594,7 @@ Two one-time owner setups:
 1. Store a personal access token as the `RELEASE_PAT` secret. Give it `Contents: Read and write` for this repo only. Releases made with the workflow token do not start the downstream workflows. Run `gh secret set RELEASE_PAT --repo moliver28/corpus-kb` and paste the token value.
 2. The manual dry-run publish path (`publish.yml`) needs its own pending publisher on TestPyPI. The setup steps sit in the `publish.yml` header. Skip this if you never publish by hand.
 
-A tag whose version part ends in `rc`, `a`, `b`, or `dev` becomes a prerelease. Prereleases publish to TestPyPI. Final releases publish to PyPI.
+A tag whose version part ends in `rc`, `a`, `b`, or `dev` goes to TestPyPI first. TestPyPI is the staging index. A final version publishes to PyPI.
 
 ---
 
