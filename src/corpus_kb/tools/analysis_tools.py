@@ -24,12 +24,8 @@ from __future__ import annotations
 
 import asyncpg
 
+from ..analysis import dates as dates_mod
 from ..analysis import report as report_mod
-from ..analysis.dates import (
-    BACKFILL_RULE_VERSION,
-    document_dates_present,
-    run_document_date_backfill,
-)
 from ..analysis.settings import AnalysisSettings, load_analysis_settings
 from ..classification import store as classification_store
 from . import classification_tools, labeling_tools, matrix_tools, topics_tools
@@ -45,10 +41,6 @@ _DISABLED_REASON = (
 _DISABLED_REMEDY = "Set the analysis.*.enabled flags you need to true, then retry."
 _BACKFILL_DISABLED_REASON = "the date backfill needs analysis.topics.over_time.enabled: true."
 _BACKFILL_DISABLED_REMEDY = "Set analysis.topics.over_time.enabled: true, then retry."
-_BACKFILL_UNAVAILABLE_REASON = (
-    "the documents.document_date column is missing (migration 027 has not run)."
-)
-_BACKFILL_UNAVAILABLE_REMEDY = "Run corpus-kb setup (or migration 027), then retry."
 
 # The flags-on/no-data corner: sections answered honestly, none succeeded.
 _RUN_NO_DATA_REASON = "the analysis flags are on but no section produced data."
@@ -91,22 +83,13 @@ async def analysis_backfill_dates(
     document the earliest of published_time, modified_time, then the
     chunk's source_timestamp). Returns ``{status, documents_scanned,
     documents_dated}`` plus the rule version in ``params``; a second run
-    dates nothing new.
+    dates nothing new. On DuckDB the write is engine-bound, so the
+    envelope answers ``unavailable`` there.
     """
     settings = load_analysis_settings(load_config_or_pass(config))
     if not settings.over_time.enabled:
         return _honest_backfill("disabled", _BACKFILL_DISABLED_REASON, _BACKFILL_DISABLED_REMEDY)
-    if not await document_dates_present(pg_pool):
-        return _honest_backfill(
-            "unavailable", _BACKFILL_UNAVAILABLE_REASON, _BACKFILL_UNAVAILABLE_REMEDY
-        )
-    outcome = await run_document_date_backfill(pg_pool, tenant_id)
-    return {
-        "status": "success",
-        "documents_scanned": outcome.documents_scanned,
-        "documents_dated": outcome.documents_dated,
-        "params": {"rule_version": BACKFILL_RULE_VERSION},
-    }
+    return await dates_mod.backfill_envelope(pg_pool, tenant_id)
 
 
 async def analyze_run(
