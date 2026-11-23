@@ -24,11 +24,30 @@ jobs:
           fi
           # --no-merges: mechanical master-sync merge commits carry a generated
           # subject, not an authored conventional message.
-          git log --no-merges --format=%B ${BASE}..${HEAD} | while read -r msg; do
+          #
+          # Prefix rule: validate each commit's SUBJECT (first line) only.
+          # Body lines are never prefix-checked: GitHub squash commits carry
+          # generated bodies that bullet-list the PR's original commit
+          # subjects (`* chore: ...`), and those bullets are not authored
+          # conventional messages.
+          BULLET_RE='^[-*] '
+          PREFIX_RE='^(feat|fix|docs|chore|test|refactor|perf)(\(.+\))?!?:\ .{1,}'
+          git log --no-merges --format=%s ${BASE}..${HEAD} | while read -r subject; do
+            # Skip generated squash bullet lines if one ever lands as a subject.
+            if [[ "$subject" =~ $BULLET_RE ]]; then continue; fi
+            if [[ ! $subject =~ $PREFIX_RE ]]; then
+              echo "FAIL: Commit subject '$subject' does not follow Conventional Commits"
+              echo "   Expected: feat(scope): message or fix: message"
+              exit 1
+            fi
+          done
+          # Length gate: every body line stays between 10 and 500 chars.
+          # Blank lines and Co-authored-by-style footers are skipped; read
+          # the last line even when it has no newline.
+          git log --no-merges --format=%B ${BASE}..${HEAD} | while read -r msg || [[ -n "$msg" ]]; do
             if [[ -z "$msg" ]]; then continue; fi
             # Skip Co-authored-by and other footers
             if [[ "$msg" =~ ^[A-Z][a-z]+-.*: ]]; then continue; fi
-            # Length gate: every checked line stays between 10 and 500 chars.
             MSG_LEN=${#msg}
             if [ "$MSG_LEN" -lt 10 ]; then
               echo "FAIL: Commit message line too short (min 10 chars): '$msg'"
@@ -36,11 +55,6 @@ jobs:
             fi
             if [ "$MSG_LEN" -gt 500 ]; then
               echo "FAIL: Commit message line too long (max 500 chars): '$msg'"
-              exit 1
-            fi
-            if [[ ! $msg =~ ^(feat|fix|docs|chore|test|refactor|perf)(\(.+\))?!?:\ .{1,} ]]; then
-              echo "FAIL: Commit message '$msg' does not follow Conventional Commits"
-              echo "   Expected: feat(scope): message or fix: message"
               exit 1
             fi
           done
