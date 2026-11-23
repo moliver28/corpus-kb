@@ -1,6 +1,6 @@
 [project]
 name = "corpus-kb"
-version = "0.1.0"
+version = "0.1.1rc0"
 description = "Local end-to-end RAG system with MCP interface for agentic code editors"
 readme = "README.md"
 requires-python = ">=3.11.5"
