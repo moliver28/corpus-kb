@@ -47,7 +47,6 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "embedding.mrl_trained": bool,
     "embedding.late_chunking": bool,
     "embedding.query_instruction": bool,
-    "storage.vector_type": str,
     "ingestion.default": str,
     "ingestion.strategies": dict,
     "ingestion.concurrency": int,
@@ -73,10 +72,6 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "ingest.contextualize.apply_to": list,
     # -- retrieval (renamed from search.*) ----------------------------------
     "retrieval.mode": str,
-    # Storage-portability keys (docs/research/storage-portability-program.md
-    # §3): the DuckDB-side search knobs. Postgres ignores both.
-    "retrieval.vector_index": str,
-    "retrieval.fts_rebuild_debounce_s": float,
     "retrieval.vector_candidates": int,
     "retrieval.lexical_candidates": int,
     "retrieval.rrf_k": int,
@@ -166,12 +161,8 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
-SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
 # database.backend values (storage-portability program §3).
 SUPPORTED_DATABASE_BACKENDS = frozenset({"postgres", "duckdb"})
-# retrieval.vector_index values: the DuckDB-side search mode. Postgres
-# keeps its pgvector HNSW and ignores the key.
-SUPPORTED_VECTOR_INDEX_MODES = frozenset({"exact_scan", "hnsw"})
 # graph.max_hops: traversal depth cap. The ceiling is today's AGE cap.
 MAX_HOPS_MIN = 1
 MAX_HOPS_CEILING = 25

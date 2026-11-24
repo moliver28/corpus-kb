@@ -354,8 +354,7 @@ __dir__
 
 # config-v2 typed-reader fields owned for contract completeness (the block
 # declares the whole canonical namespace even where W1 has no live consumer
-# yet; qa_context_in_fts gates migration-023 index maintenance):
-qa_context_in_fts
+# yet):
 used_legacy_keys
 mode_error
 profile_for_model

@@ -544,23 +544,10 @@ def get_default_config() -> dict[str, object]:
         "graph_policy": {
             "mode": "all",
         },
-        "storage": {
-            # chunks_vectors.embedding column type. halfvec is REQUIRED at
-            # 2560 dims: pgvector HNSW caps plain vector at 2000, halfvec
-            # at 4000 (migration 025).
-            "vector_type": "halfvec",
-        },
         "retrieval": {
             # Only hybrid_rrf exists today; other values are rejected at
             # load time (load_retrieval_settings).
             "mode": "hybrid_rrf",
-            # DuckDB vector-search mode: exact_scan (default, deterministic)
-            # or hnsw (the experimental vss extension; doctor warns).
-            # Postgres keeps its pgvector HNSW and ignores this key.
-            "vector_index": "exact_scan",
-            # DuckDB fts-index rebuild debounce (seconds, positive). DuckDB
-            # FTS has no auto-refresh; the gateway rebuilds on a debounce.
-            "fts_rebuild_debounce_s": 2.0,
             # Live per-arm candidate depths before fusion (effective limit
             # is max(candidates, k * 2), so small values never under-fetch
             # below k).
@@ -573,7 +560,6 @@ def get_default_config() -> dict[str, object]:
             # Stage 3 degraded policy: candidate CTEs drop rows flagged
             # degraded (migration 022).
             "exclude_degraded": True,
-            "qa_context_in_fts": False,
             # U21: below this estimated selectivity, filtered queries take
             # the exact scan instead of the HNSW probe.
             "exact_filter_selectivity_threshold": 0.05,

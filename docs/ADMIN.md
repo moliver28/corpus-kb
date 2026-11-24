@@ -52,12 +52,6 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `query_instruction` | `true` | Gates the query-side instruction prefix at `instruct()` |
 | `late_chunking` | `true` | Late chunking for document ingest when the model supports it |
 
-### `storage`
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `vector_type` | `halfvec` | `chunks_vectors.embedding` column type. halfvec is required at 2560 dims: HNSW caps `vector` at 2000 dims, `halfvec` at 4000 |
-
 ### `retrieval`
 
 | Key | Default | Description |

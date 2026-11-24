@@ -224,18 +224,6 @@ def _queue_block_errors(queue: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _fts_debounce_errors(debounce: object) -> list[str]:
-    """Positive-number rule for ``retrieval.fts_rebuild_debounce_s``."""
-    if isinstance(debounce, bool) or not isinstance(debounce, (int, float)):
-        return [
-            f"retrieval.fts_rebuild_debounce_s: must be a positive number, "
-            f"got {type(debounce).__name__}"
-        ]
-    if debounce <= 0:
-        return [f"retrieval.fts_rebuild_debounce_s: must be a positive number, got {debounce}"]
-    return []
-
-
 def _reranking_block_errors(reranking: dict[str, Any]) -> list[str]:
     """Enum rule for ``reranking.backend`` (shared rule in rerank_rules)."""
     error = backend_error(reranking.get("backend"))

@@ -691,7 +691,6 @@ class TestRuntimeCanonicalKeys:
     def test_canonical_keys_declared(self):
         expected = {
             "embedding.query_instruction": bool,
-            "storage.vector_type": str,
             "ingest.chunking.enabled": bool,
             "ingest.chunking.child_tokens": int,
             "ingest.chunking.chunk_tokens": int,
@@ -725,12 +724,6 @@ class TestRuntimeCanonicalKeys:
         config["retrieval"]["mode"] = "vector_only"
         errors = validate_runtime_config(config)
         assert any("retrieval.mode" in e and "hybrid_rrf" in e for e in errors)
-
-    def test_vector_type_enum_locked_to_halfvec(self):
-        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
-        config["storage"]["vector_type"] = "vector"
-        errors = validate_runtime_config(config)
-        assert any("storage.vector_type" in e and "halfvec" in e for e in errors)
 
     def test_contextualize_backend_must_be_ollama_when_present(self):
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")

@@ -18,7 +18,6 @@ Keys (under ``retrieval``):
 * ``expand_to_parent`` — post-fusion small-to-big parent expansion (moved
   from ``ingest.hierarchy``; fail-open).
 * ``exclude_degraded`` — candidate CTEs drop rows flagged degraded.
-* ``qa_context_in_fts`` — transcript Q/A text joins the shared FTS index.
 * ``exact_filter_selectivity_threshold`` — when a filtered vector query's
   estimated selectivity falls BELOW this fraction, the caller runs a
   filtered EXACT distance scan (no ANN) instead of the HNSW probe, because
@@ -70,7 +69,6 @@ RETRIEVAL_CONFIG_DEFAULTS: dict[str, Any] = {
     "rrf_k": DEFAULT_RRF_K,
     "expand_to_parent": DEFAULT_EXPAND_TO_PARENT,
     "exclude_degraded": DEFAULT_EXCLUDE_DEGRADED,
-    "qa_context_in_fts": DEFAULT_QA_CONTEXT_IN_FTS,
     "exact_filter_selectivity_threshold": DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
     "candidate_multiplier": DEFAULT_CANDIDATE_MULTIPLIER,
     "self_query": dict(DEFAULT_SELF_QUERY),
@@ -107,7 +105,6 @@ class RetrievalSettings:
     lexical_candidates: int = DEFAULT_LEXICAL_CANDIDATES
     expand_to_parent: bool = DEFAULT_EXPAND_TO_PARENT
     exclude_degraded: bool = DEFAULT_EXCLUDE_DEGRADED
-    qa_context_in_fts: bool = DEFAULT_QA_CONTEXT_IN_FTS
     exact_filter_selectivity_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD
     candidate_multiplier: int = DEFAULT_CANDIDATE_MULTIPLIER
     matryoshka_enabled: bool = DEFAULT_MATRYOSHKA_ENABLED
@@ -179,9 +176,6 @@ def load_retrieval_settings(config: dict[str, Any]) -> RetrievalSettings:
         ),
         exclude_degraded=_flag(
             block.get("exclude_degraded"), DEFAULT_EXCLUDE_DEGRADED, "exclude_degraded"
-        ),
-        qa_context_in_fts=_flag(
-            block.get("qa_context_in_fts"), DEFAULT_QA_CONTEXT_IN_FTS, "qa_context_in_fts"
         ),
         exact_filter_selectivity_threshold=_fraction(
             block.get("exact_filter_selectivity_threshold"),

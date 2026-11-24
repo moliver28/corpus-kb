@@ -1,7 +1,6 @@
 """Database-backend config truth (storage-portability program, phase A).
 
-Covers the four new keys — ``database.backend``, ``graph.max_hops``,
-``retrieval.vector_index``, ``retrieval.fts_rebuild_debounce_s`` — the
+Covers the surviving keys — ``database.backend``, ``graph.max_hops`` — the
 ``CORPUS_KB_DATABASE_BACKEND`` env override, the backend-mix refusal
 (pure function in ``config.py`` + ``load_config`` raise +
 ``validate_configs`` surfacing), and doctor env-var recognition.
@@ -69,14 +68,6 @@ class TestDefaults:
         graph = cast(dict[str, object], get_default_config()["graph"])
         assert graph["max_hops"] == 5
 
-    def test_default_vector_index_is_exact_scan(self):
-        retrieval = cast(dict[str, object], get_default_config()["retrieval"])
-        assert retrieval["vector_index"] == "exact_scan"
-
-    def test_default_fts_debounce_is_two_seconds(self):
-        retrieval = cast(dict[str, object], get_default_config()["retrieval"])
-        assert retrieval["fts_rebuild_debounce_s"] == 2.0
-
     def test_defaults_have_no_backend_mix(self):
         assert backend_mix_errors(get_default_config()) == []
 
@@ -85,11 +76,8 @@ class TestDefaults:
         cfg = cast(dict[str, object], yaml.safe_load((ROOT / name).read_text(encoding="utf-8")))
         database = cast(dict[str, object], cfg["database"])
         graph = cast(dict[str, object], cfg["graph"])
-        retrieval = cast(dict[str, object], cfg["retrieval"])
         assert database["backend"] == "postgres"
         assert graph["max_hops"] == 5
-        assert retrieval["vector_index"] == "exact_scan"
-        assert retrieval["fts_rebuild_debounce_s"] == 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +289,6 @@ class TestValidateConfigsKeys:
         keys = validate_configs.RUNTIME_CONFIG_KEYS
         assert keys["database.backend"] is str
         assert keys["graph.max_hops"] is int
-        assert keys["retrieval.vector_index"] is str
-        assert keys["retrieval.fts_rebuild_debounce_s"] is float
         # Wave 4 opt-in gates stay OPTIONAL: absent is the shipped
         # default, so they are checked when-present (validate_ingestion_block).
         assert "ingestion.tokenizer" not in keys
@@ -337,28 +323,6 @@ class TestValidateConfigsKeys:
         graph["max_hops"] = True
         errors = validate_configs.validate_runtime_config(config)
         assert any("key 'graph.max_hops' must be int" in e for e in errors)
-
-    def test_vector_index_enum_locked(self):
-        config = cast(dict[str, object], validate_configs.load_yaml(ROOT / "config.yaml"))
-        retrieval = cast(dict[str, object], config["retrieval"])
-        retrieval["vector_index"] = "ivfflat"
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.vector_index" in e and "hnsw" in e for e in errors)
-
-    def test_fts_debounce_positive_float(self):
-        config = cast(dict[str, object], validate_configs.load_yaml(ROOT / "config.yaml"))
-        retrieval = cast(dict[str, object], config["retrieval"])
-        retrieval["fts_rebuild_debounce_s"] = 0
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.fts_rebuild_debounce_s" in e for e in errors)
-        retrieval["fts_rebuild_debounce_s"] = -1.0
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.fts_rebuild_debounce_s" in e for e in errors)
-        retrieval["fts_rebuild_debounce_s"] = 2  # int accepted for float keys
-        assert validate_configs.validate_runtime_config(config) == []
-        retrieval["fts_rebuild_debounce_s"] = True
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("key 'retrieval.fts_rebuild_debounce_s' must be float" in e for e in errors)
 
 
 class TestValidateConfigsMix:
