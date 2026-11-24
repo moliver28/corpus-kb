@@ -300,14 +300,14 @@ async def latest_baseline_dbcv(
 ) -> float | None:
     """Most recent DBCV from earlier runs' checkpoints (drop tracking).
 
-    Postgres keeps its byte-identical ``?``-operator probe; DuckDB has no
-    JSON ``?``, so the rows scan newest-first in Python (single-writer
-    engine, same first-match semantics).
+    The pg probe null-masks with ``->> ... IS NOT NULL`` (issue #527 P3:
+    the bare ``?`` probe passed JSON nulls that stopped ``LIMIT 1``);
+    DuckDB scans newest-first in Python, same first-match semantics.
     """
     probe = (
         "AND checkpoint IS NOT NULL"
         if duck
-        else "AND checkpoint IS NOT NULL AND checkpoint ? 'dbcv_relative_validity'"
+        else "AND checkpoint IS NOT NULL AND checkpoint->>'dbcv_relative_validity' IS NOT NULL"
     )
     limit = "" if duck else "LIMIT 1"
     async with tenant_scope(store, tenant_id) as conn:

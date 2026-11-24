@@ -36,7 +36,7 @@
     "src/corpus_kb/api/http.py": 315,
     "src/corpus_kb/api/research_http.py": 414,
     "src/corpus_kb/api/routes_analysis_methods.py": 313,
-    "src/corpus_kb/cli/__init__.py": 411,
+    "src/corpus_kb/cli/__init__.py": 410,
     "src/corpus_kb/cli/cli_analysis_methods.py": 264,
     "src/corpus_kb/cli/cli_graph_hops.py": 261,
     "src/corpus_kb/cli/cli_ingest.py": 502,
