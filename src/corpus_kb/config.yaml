@@ -187,8 +187,10 @@ retrieval:
   exact_filter_selectivity_threshold: 0.05
   # Matryoshka two-tier retrieval: candidate fan-out is k * this multiplier.
   candidate_multiplier: 8
+  # Self-query parsing (one LLM call per search; opt-in — the flag gates
+  # parser construction at server start).
   self_query:
-    enabled: true
+    enabled: false
     model: qwen3:4b
     base_url: http://localhost:11434
     timeout_seconds: 8

@@ -49,14 +49,15 @@ DEFAULT_VECTOR_CANDIDATES = 150
 DEFAULT_LEXICAL_CANDIDATES = 150
 DEFAULT_EXPAND_TO_PARENT = True
 DEFAULT_EXCLUDE_DEGRADED = True
-DEFAULT_QA_CONTEXT_IN_FTS = False
 # U21: below 5% estimated selectivity, prefer the filtered exact scan.
 DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD = 0.05
 DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_MATRYOSHKA_ENABLED = False
 DEFAULT_MATRYOSHKA_DIM = RESEARCH_EMBEDDING_DIMENSIONS
 DEFAULT_SELF_QUERY: dict[str, Any] = {
-    "enabled": True,
+    # Opt-in (matches config.py + both config.yaml files): the flag gates
+    # parser construction, so off keeps search single-pass.
+    "enabled": False,
     "model": "qwen3:4b",
     "base_url": "http://localhost:11434",
     "timeout_seconds": 8,

@@ -121,7 +121,7 @@ async def _wire_handlers(cfg: dict[str, Any], gateway: Any) -> _Handlers:
     reranker = build_reranker(cfg)
     self_query_parser = (
         SelfQueryParser(cfg)
-        if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False)
+        if (cfg.get("retrieval", {}) or {}).get("self_query", {}).get("enabled", False)
         else None
     )
     judge = OllamaJudge(cfg) if (cfg.get("judge", {}) or {}).get("enabled", False) else None

@@ -581,17 +581,16 @@ def get_default_config() -> dict[str, object]:
             # k * this multiplier.
             "candidate_multiplier": 8,
             "self_query": {
-                "enabled": True,
+                # Gates SelfQueryParser construction (server_wiring twins);
+                # stays opt-in: on, one LLM call parses predicates per
+                # search before fusion.
+                "enabled": False,
                 "model": "qwen3:4b",
                 "base_url": "http://localhost:11434",
                 "timeout_seconds": 8,
             },
-            # Issue #136 multi-query rewriting: OFF by default (query
-            # expansion gives limited benefit for precise numerical
-            # queries — the corpus owner opts in). On, one LLM call
-            # rewrites the query into `variants` diverse rewrites; their
-            # legs fuse with the original's through the existing RRF
-            # fusion.
+            # Issue #136 multi-query rewriting (opt-in; full contract in
+            # the packaged config.yaml comments).
             "multi_query": {
                 "enabled": False,
                 "variants": 3,

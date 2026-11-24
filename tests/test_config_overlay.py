@@ -79,7 +79,7 @@ def test_overlay_deep_merges_nested_blocks(isolated: Path, monkeypatch: Any) -> 
     monkeypatch.setenv("CORPUS_KB_CONFIG_OVERLAY", str(overlay))
     self_query = load_config()["retrieval"]["self_query"]
     assert self_query["model"] == "qwen3:8b"
-    assert self_query["enabled"] is True  # sibling keys from the defaults survive
+    assert self_query["enabled"] is False  # sibling keys from the defaults survive
 
 
 def test_env_overrides_win_over_overlay(isolated: Path, monkeypatch: Any) -> None:
