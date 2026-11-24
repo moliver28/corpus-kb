@@ -36,9 +36,14 @@ async def add_entity(
     POST /api/entities and the socket ``add_entity`` method make — so
     every surface returns the same envelope:
     ``{"status", "entity_id", "name", "entity_type"}``.
+
+    The write lands the read models before the envelope returns: the
+    documents-projection catch-up folds the events, so the next graph
+    read answers with the new entity (issue #530).
     """
     from corpus_kb.domain.models import AddEntityCommand
     from corpus_kb.handlers.command_handler import CommandHandler
+    from corpus_kb.projections.catchup import advance_graph_projections
 
     cmd = AddEntityCommand(
         tenant_id=uuid_arg(tenant_id, "tenant_id"),
@@ -47,7 +52,9 @@ async def add_entity(
         metadata=metadata or {},
     )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_entity(cmd)
+    result = handler.handle_add_entity(cmd)
+    await advance_graph_projections(pg_pool, cmd.tenant_id)
+    return result
 
 
 async def add_relation(
@@ -66,9 +73,14 @@ async def add_relation(
     POST /api/relations and the socket ``add_relation`` method make — so
     every surface returns the same envelope:
     ``{"status", "relation_id", "relation_type"}``.
+
+    The write lands the read models before the envelope returns: the
+    documents-projection catch-up folds the events, so the next graph
+    read answers with the new relation (issue #530).
     """
     from corpus_kb.domain.models import AddRelationCommand
     from corpus_kb.handlers.command_handler import CommandHandler
+    from corpus_kb.projections.catchup import advance_graph_projections
 
     cmd = AddRelationCommand(
         tenant_id=uuid_arg(tenant_id, "tenant_id"),
@@ -79,4 +91,6 @@ async def add_relation(
         metadata=metadata or {},
     )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_relation(cmd)
+    result = handler.handle_add_relation(cmd)
+    await advance_graph_projections(pg_pool, cmd.tenant_id)
+    return result

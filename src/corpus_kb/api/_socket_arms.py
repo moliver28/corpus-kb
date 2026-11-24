@@ -187,16 +187,16 @@ async def _list_documents(params: dict[str, Any], tenant_id: str) -> dict[str, A
 
 
 async def _add_entity(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
-    from corpus_kb.domain.models import AddEntityCommand
-    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_tools import add_entity
 
-    cmd = AddEntityCommand(
-        tenant_id=UUID(tenant_id),
-        name=params["name"],
+    return await add_entity(
+        await research_pool(),
+        params["name"],
+        tenant_id=tenant_id,
         entity_type=params.get("entity_type", "concept"),
         metadata=params.get("metadata", {}),
     )
-    return get_command_handler().handle_add_entity(cmd)
 
 
 async def _verify_answer(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -216,15 +216,15 @@ async def _verify_answer(params: dict[str, Any], tenant_id: str) -> dict[str, An
 
 
 async def _add_relation(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
-    from corpus_kb.domain.models import AddRelationCommand
-    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_tools import add_relation
 
-    cmd = AddRelationCommand(
-        tenant_id=UUID(tenant_id),
-        source_entity_id=UUID(params["source_entity_id"]),
-        target_entity_id=UUID(params["target_entity_id"]),
+    return await add_relation(
+        await research_pool(),
+        params["source_entity_id"],
+        params["target_entity_id"],
+        tenant_id=tenant_id,
         relation_type=params.get("relation_type", "related_to"),
         weight=params.get("weight", 1.0),
         metadata=params.get("metadata", {}),
     )
-    return get_command_handler().handle_add_relation(cmd)

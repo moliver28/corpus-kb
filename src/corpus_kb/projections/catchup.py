@@ -18,6 +18,36 @@ import asyncpg
 from corpus_kb.storage.gateway import SqlGateway
 
 
+async def advance_graph_projections(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID) -> None:
+    """Advance the documents projection so graph reads see the last write.
+
+    ``add_entity``/``add_relation`` save events; the graph reads answer
+    from the store tables the documents projection folds. The full
+    catch-up also sweeps research state and builds embedders. An entity
+    write must not need Ollama, so this leg runs the documents fold alone.
+    The fold is idempotent catch-up: safe under the server's background
+    projection tasks.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.domain.application import events_table_name
+    from corpus_kb.handlers.research_handler import get_research_handler
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.documents_projection import DocumentsProjection
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.storage.connect import config_conn_str
+
+    cfg = load_config()
+    # Same event-store resolution as :func:`advance_all_projections`: the
+    # explicit config DSN pins the reader to the store the pool opened
+    # (issue #330), so a stale env var cannot starve it.
+    app = get_research_handler(pool, dsn=config_conn_str(cfg)).app
+    reader = EventReader(pool, app.mapper, events_table_name(app), recorder=app.recorder)
+    checkpoint = CheckpointManager(pool)
+    dlq = DLQHandler(pool)
+    await DocumentsProjection(pool, checkpoint, dlq).catch_up(reader, tenant_id)
+
+
 async def advance_all_projections(
     pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, gateway: SqlGateway | None = None
 ) -> None:

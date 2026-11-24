@@ -421,7 +421,13 @@ async def test_round_trip_add_entity(monkeypatch: pytest.MonkeyPatch) -> None:
         def save(self, aggregate: Any) -> None:
             return None
 
+    async def _no_advance(pool: Any, tenant_id: Any) -> None:
+        return None
+
     monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: _Saved())
+    # The tool folds the read models after the save (issue #530); this
+    # offline round-trip stubs the fold at its own seam.
+    monkeypatch.setattr("corpus_kb.projections.catchup.advance_graph_projections", _no_advance)
     payload = await _call(_make_server(), "add_entity", {"name": "probe", "entity_type": "concept"})
     assert payload["status"] == "success"
     assert payload["name"] == "probe"
