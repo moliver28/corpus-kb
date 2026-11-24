@@ -577,22 +577,25 @@ See `.github/workflows/` for the exact definitions.
 
 ## Release path
 
-A release moves through five steps:
+A release moves through six steps:
 
 ```
-tag push (vX.Y.Z on master)
-  -> tag-release.yml: checks the guards, creates the GitHub Release
-  -> release.yml: prerelease to TestPyPI, final release to PyPI
-  -> changelog.yml: pull request that appends CHANGELOG.md on master
-  -> production-sync.yml: pull request that syncs master into production
+1. merge develop into master
+2. tag push (vX.Y.Z on master)
+   -> tag-release.yml: checks the guards, creates the GitHub Release
+   -> release.yml: prerelease to TestPyPI, final release to PyPI
+   -> changelog.yml: pull request that appends CHANGELOG.md on master
+   -> production-sync.yml: pull request that syncs master into production
 ```
+
+Do the merge first. The tag push runs the workflow copy stored on the tagged commit. Until develop merges, master lacks `tag-release.yml`, and a tag push does nothing.
 
 `tag-release.yml` also runs by hand. A manual run prints the release command. It creates nothing unless you set `dry_run` to false. The tag version must equal the `version` line in `pyproject.toml`, and the tag must sit on master.
 
-Two one-time owner setups:
+One-time setups, both done on 2026-11-24:
 
-1. Store a personal access token as the `RELEASE_PAT` secret. Give it `Contents: Read and write` for this repo only. Releases made with the workflow token do not start the downstream workflows. Run `gh secret set RELEASE_PAT --repo moliver28/corpus-kb` and paste the token value.
-2. The manual dry-run publish path (`publish.yml`) needs its own pending publisher on TestPyPI. The setup steps sit in the `publish.yml` header. Skip this if you never publish by hand.
+1. The `RELEASE_PAT` secret exists. Releases made with the workflow token do not start the downstream workflows. If the token expires, a release fails loudly at the creation step. Store a new token with `gh secret set RELEASE_PAT --repo moliver28/corpus-kb`.
+2. The TestPyPI publisher for `publish.yml` is registered on the project. Issue #570 documents the proof.
 
 A tag whose version part ends in `rc`, `a`, `b`, or `dev` goes to TestPyPI first. TestPyPI is the staging index. A final version publishes to PyPI.
 
