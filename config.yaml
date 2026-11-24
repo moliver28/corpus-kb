@@ -2,7 +2,6 @@
 # Every key here has a live consumer; dead keys are removed on sight
 # (zero-drift audit row 11). Environment overrides: see docs/ADMIN.md.
 server:
-  transport: stdio
   host: localhost
   port: 8010
   # Gates the OpenAI-compatible /v1 adapter (POST /v1/chat/completions,

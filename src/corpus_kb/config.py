@@ -119,7 +119,6 @@ _ENV_OVERRIDES: dict[tuple[str, str], str] = {
     ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
     ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
     ("server", "host"): "CORPUS_KB_HOST",
-    ("server", "transport"): "CORPUS_KB_TRANSPORT",
     ("server", "port"): "CORPUS_KB_PORT",
     ("server", "socket_path"): "CORPUS_KB_SOCKET_PATH",
     ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
@@ -426,21 +425,14 @@ def get_default_config() -> dict[str, object]:
     """Return the default configuration dict (no file needed)."""
     config: dict[str, object] = {
         "server": {
-            "transport": "stdio",
             "host": "localhost",
             "port": 8010,
             # Gates the OpenAI-compatible /v1 adapter (api/routes_v1.py);
             # on by default so chat frontends work out of the box.
             "openai_compat": True,
-            # JSON-RPC socket file (POSIX). Empty = derive from the port:
-            # /tmp/corpus-kb.sock on the default port 8010, else
-            # /tmp/corpus-kb-<port>.sock (issue #348: one path per study
-            # server, so a second server never takes the first one over).
-            # Windows ignores the path and uses socket_port (below).
+            # JSON-RPC socket pair (issue #348: one path per study server).
+            # Full derive rules live in the packaged config.yaml comments.
             "socket_path": "",
-            # JSON-RPC TCP port (Windows only). 0 = derive: 8011 when the
-            # server port is 8010, else port + 1000. Study ports count up
-            # from 8010, so port + 1 would clash with the next study.
             "socket_port": 0,
         },
         "graph": {

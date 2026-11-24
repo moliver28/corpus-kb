@@ -26,7 +26,6 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `transport` | `stdio` | `stdio`, `http`, or `socket` |
 | `host` | `localhost` | HTTP server host |
 | `port` | `8010` | HTTP server port |
 
@@ -57,14 +56,11 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | Key | Default | Description |
 |-----|---------|-------------|
 | `mode` | `hybrid_rrf` | Only supported value today; other values are rejected at load time |
-| `vector_index` | `exact_scan` | DuckDB vector search mode: `exact_scan` or `hnsw`. Postgres keeps its pgvector HNSW and ignores this key |
-| `fts_rebuild_debounce_s` | `2.0` | Seconds between DuckDB full-text index rebuilds. Positive numbers only |
 | `vector_candidates` | `150` | Live vector-arm depth before fusion. Effective limit is `max(candidates, k * 2)` |
 | `lexical_candidates` | `150` | Live FTS-arm depth before fusion. Same floor rule |
 | `rrf_k` | `60` | Reciprocal Rank Fusion constant |
 | `expand_to_parent` | `true` | Post-fusion small-to-big parent expansion. Fail-open |
 | `exclude_degraded` | `true` | Vector search skips rows flagged degraded |
-| `qa_context_in_fts` | `false` | Opt-in FTS index for transcript Q/A text |
 | `exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for exact-filter plans |
 | `matryoshka_enabled` | `false` | Two-stage matryoshka retrieval (needs `embedding.mrl_trained`) |
 | `matryoshka_dim` | `1024` | Front-slice width for the matryoshka arm |
@@ -304,7 +300,6 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` (the Ollama endpoint, for example `http://ollama:11434` in a compose network) | `load_config` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
 | `CORPUS_KB_HOST` | `server.host` (HTTP bind address; the compose entrypoint passes it to `corpus-kb start`) | `load_config`, `docker/app/entrypoint.sh` |
-| `CORPUS_KB_TRANSPORT` | `server.transport` | `load_config` |
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
 | `CORPUS_KB_SOCKET_PATH` | `server.socket_path` (JSON-RPC socket file; POSIX) | `load_config` |
 | `CORPUS_KB_CONFIG_OVERLAY` | (no config key; `os.pathsep`-split overlay YAML paths, deep-merged in order after the main file, before env overrides) | `config.load_config` |
