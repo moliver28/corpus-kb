@@ -3,9 +3,9 @@
 When ``queue.autorun`` is true, the HTTP server starts ONE background
 drain task over the SAME ``QueueWorker`` loop the CLI drives — one
 operation, one handler, a second surface only in wiring. The default
-false starts nothing, so server behavior is unchanged. Postgres only:
-the worker's typed backend refusal covers DuckDB, and a refusal logs
-one line while the server continues (the mount_spa contract).
+false starts nothing, so server behavior is unchanged. Runs on both
+engines; the worker validates the backend, and a refusal logs one line
+while the server continues (the mount_spa contract).
 """
 
 from __future__ import annotations
