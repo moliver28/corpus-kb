@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +40,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PG_BASE = Path("src/corpus_kb/storage/schema.sql")
 PG_MIGRATIONS = Path("src/corpus_kb/migrations")
 DUCK_MIGRATIONS = Path("src/corpus_kb/migrations_duckdb")
+
+#: The width placeholder the migration DDL carries (issue #559). Parity
+#: compares schema SHAPE, so both sides fold at the shipped default width.
+#: Keep in lockstep with corpus_kb._setup.store_width.EMBEDDING_DIMS_PLACEHOLDER.
+WIDTH_PLACEHOLDER = "__EMBEDDING_DIMS__"
+WIDTH_SUBSTITUTE = "2560"
 
 
 @dataclass
@@ -81,10 +88,22 @@ def migration_files(root: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path
 
 
 def fold_paths(pairs: list[tuple[Path, str]], dialect: str) -> SchemaState:
-    """Fold a (path, display) file list into one schema state."""
+    """Fold a (path, display) file list into one schema state.
+
+    The width placeholder is substituted with the shipped default first
+    (issue #559): both engines carry the same placeholder, so parity
+    compares schema shape at one width, not the configured width.
+    """
     state = SchemaState()
-    for path, display in pairs:
-        fold_file(path, dialect, display, state)
+    with tempfile.TemporaryDirectory() as tmp:
+        for path, display in pairs:
+            text = (
+                path.read_text(encoding="utf-8")
+                .replace(WIDTH_PLACEHOLDER, WIDTH_SUBSTITUTE)
+            )
+            copy_path = Path(tmp) / path.name
+            copy_path.write_text(text, encoding="utf-8")
+            fold_file(copy_path, dialect, display, state)
     return state
 
 

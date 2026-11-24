@@ -79,6 +79,10 @@ class StreamConn(Protocol):
 EXEMPTION_MANIFEST: tuple[TablePlan, ...] = (
     TablePlan("tenants", "copy", pk=("tenant_id",), reason="W0 S1: global (schema.sql)"),
     TablePlan("corpus.schema_migrations", "skip", reason="W0 S1: runner-owned bookkeeping"),
+    # Issue #559: the store meta table (embedding_width row) is
+    # runner-owned store bookkeeping; a fresh target re-records its own
+    # width, so a copied row could contradict the target columns.
+    TablePlan("corpus.meta", "skip", reason="runner-owned store facts (issue #559)"),
     TablePlan("fts_watermark", "skip", reason="W0 S1: DuckDB-only FTS meta; rebuilt"),
     TablePlan("corpusapplication_events", "special", reason="W0 S1/S4: event-store leg"),
     TablePlan("corpusapplication_snapshots", "special", reason="W0 S1/S4: event-store leg"),

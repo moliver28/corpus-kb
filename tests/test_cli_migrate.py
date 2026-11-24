@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb._setup.migrate_report import EXTENSION_GATED_MIGRATIONS, MigrateReport
+from corpus_kb._setup.store_width import substitute_dims
 from corpus_kb.cli import app
 from corpus_kb.errors import ConfigError
 
@@ -508,7 +509,12 @@ async def _bootstrap_pre_043(db_name: str) -> str:
     app_dsn = f"{BASE_DSN}/{db_name}"
     conn = await asyncpg.connect(app_dsn)
     try:
-        await conn.execute(packaged_schema_path().read_text(encoding="utf-8"))
+        # The bootstrap replays the legacy 2560 regime raw: the files carry
+        # the __EMBEDDING_DIMS__ placeholder, so substitute it like the
+        # migration runners do.
+        await conn.execute(
+            substitute_dims(packaged_schema_path().read_text(encoding="utf-8"), 2560)
+        )
         await ensure_migrations_table(conn)
         for path in _numbered_migrations():
             number = int(path.name.split("_", 1)[0])
@@ -525,7 +531,7 @@ async def _bootstrap_pre_043(db_name: str) -> str:
                     path.name,
                 )
                 continue
-            await conn.execute(path.read_text(encoding="utf-8"))
+            await conn.execute(substitute_dims(path.read_text(encoding="utf-8"), 2560))
             await conn.execute(
                 "INSERT INTO corpus.schema_migrations (filename) VALUES ($1) "
                 "ON CONFLICT DO NOTHING",
@@ -554,6 +560,7 @@ async def test_pre043_scratch_applies_037_to_044_once() -> None:
             "044_ingest_ledger_doc_repair.sql",
             "045_entity_id_aliases.sql",
             "046_embedding_cache.sql",
+            "047_store_meta.sql",
         ]
         assert first.applied_now == first.pending
         second = await run_migrations(app_dsn)

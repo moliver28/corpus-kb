@@ -14,12 +14,17 @@ prefix exceeds the highest packaged forward migration is "ahead".
 Rollback files never count. The pure core (:func:`check_store_not_newer`)
 carries the contract; the readers carry one probe per engine; the serve
 paths call :func:`assert_store_supported` before they wire anything.
+
+Issue #559 adds the second refusal: a store reopened with an
+``embedding.dimensions`` other than its recorded width raises the typed
+:class:`~corpus_kb.errors.ConfigError`, one message on both engines.
 """
 
 from __future__ import annotations
 
 import asyncio
 import importlib.resources as resources
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +33,8 @@ import asyncpg
 
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb.errors import DatabaseUnavailableError, StoreNewerError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -50,9 +57,15 @@ def migration_number(name: str) -> int:
     return int(head) if head.isdigit() else 0
 
 
-def code_migration_names() -> list[str]:
-    """The packaged forward migration filenames, sorted."""
-    ref = resources.files("corpus_kb") / "migrations"
+def code_migration_names(backend: str) -> list[str]:
+    """The packaged forward migration filenames for ``backend``, sorted.
+
+    The two sets number independently (issue #230), so a DuckDB store
+    must compare against ``migrations_duckdb/`` — its 048 row measured
+    against a PG-terminated name set would refuse in error.
+    """
+    directory = "migrations_duckdb" if backend == "duckdb" else "migrations"
+    ref = resources.files("corpus_kb") / directory
     with resources.as_file(ref) as path:
         return sorted(
             p.name
@@ -114,11 +127,22 @@ def _read_applied_duckdb_sync(path: str) -> list[str] | None:
         return None
     con = duckdb.connect(path, read_only=True)
     try:
-        rows = con.execute(
-            "SELECT filename FROM corpus.schema_migrations ORDER BY filename"
-        ).fetchall()
-    except duckdb.CatalogException:
-        return None
+        # The runner records migration names UNQUALIFIED (main): a
+        # corpus.-qualified spell is ambiguous on a corpus.duckdb-named
+        # file (migration-001 rule); it stays the hand-built fallback.
+        try:
+            rows = con.execute(
+                "SELECT filename FROM schema_migrations ORDER BY filename"
+            ).fetchall()
+        except duckdb.CatalogException:
+            try:
+                rows = con.execute(
+                    "SELECT filename FROM corpus.schema_migrations ORDER BY filename"
+                ).fetchall()
+            except (duckdb.CatalogException, duckdb.BinderException):
+                return None
+        except duckdb.BinderException:
+            return None
     finally:
         con.close()
     return [str(row[0]) for row in rows]
@@ -127,12 +151,56 @@ def _read_applied_duckdb_sync(path: str) -> list[str] | None:
 async def read_applied_duckdb(conn_str: str) -> list[str] | None:
     """The applied DuckDB migration names, or None on a fresh store.
 
-    A missing file, a missing tracking table, or a missing ``corpus``
-    schema all mean fresh; other failures escape.
+    The runner-owned tracking table lives unqualified in ``main``; the
+    ``corpus``-qualified spelling is only a fallback. A missing file or
+    table means fresh; other failures escape.
     """
     from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
 
     return await asyncio.to_thread(_read_applied_duckdb_sync, duckdb_conn_string_to_path(conn_str))
+
+
+async def _store_width(conn_str: str, backend: str) -> int:
+    """The width the store was migrated with, recorded lazily when absent.
+
+    An absent meta row is a pre-parameterization store: the live column
+    width — or the legacy 2560 default — is written back, so every later
+    boot compares recorded numbers (issue #559).
+    """
+    from corpus_kb._setup import store_width as sw
+
+    is_duck = backend == "duckdb" or conn_str.startswith(DUCKDB_DSN_PREFIX)
+    if is_duck:
+        from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
+
+        path = duckdb_conn_string_to_path(conn_str)
+        stored, live = await asyncio.to_thread(sw.probe_store_width_duck_sync, path)
+    else:
+        conn = await asyncpg.connect(conn_str, timeout=3)
+        try:
+            stored = await sw.read_meta_width_pg(conn)
+            live = await sw.store_embedding_width_pg(conn)
+        finally:
+            await conn.close()
+    if stored is not None:
+        return int(stored)
+    effective = live if live is not None else sw.LEGACY_STORE_WIDTH
+    if is_duck:
+        recorded = await asyncio.to_thread(sw.backfill_store_width_duck_sync, path, effective)
+    else:
+        conn = await asyncpg.connect(conn_str, timeout=3)
+        try:
+            await sw.write_meta_width_pg(conn, effective)
+            recorded = True
+        except asyncpg.PostgresError:
+            recorded = False
+        finally:
+            await conn.close()
+    if recorded:
+        logger.info("Recorded the store embedding width %d in the store meta table.", effective)
+    else:
+        logger.warning("Could not record the store embedding width %d.", effective)
+    return effective
 
 
 async def assert_store_supported(conn_str: str, backend: str) -> StoreVersionReport | None:
@@ -142,21 +210,33 @@ async def assert_store_supported(conn_str: str, backend: str) -> StoreVersionRep
     the DSN scheme), reads the applied set once, and compares it with
     the packaged code set. An unreachable database becomes the typed
     ``DatabaseUnavailableError`` here, so every serve path answers one
-    failure class without repeating the wrap.
+    failure class without repeating the wrap. Issue #559 adds the width
+    refusal: one identical ``ConfigError`` message on both engines.
     """
+    from corpus_kb._setup.store_width import configured_embedding_dims
+    from corpus_kb.config_gates import store_width_mismatch_error
+    from corpus_kb.errors import ConfigError
+
     try:
         if backend == "duckdb" or conn_str.startswith(DUCKDB_DSN_PREFIX):
             applied = await read_applied_duckdb(conn_str)
         else:
             applied = await read_applied_pg(conn_str)
+        if applied is not None:
+            is_duck = backend == "duckdb" or conn_str.startswith(DUCKDB_DSN_PREFIX)
+            code_backend = "duckdb" if is_duck else "postgres"
+            report = check_store_not_newer(applied, code_migration_names(code_backend))
+            effective = await _store_width(conn_str, backend)
+            message = store_width_mismatch_error(configured_embedding_dims(), effective)
+            if message is not None:
+                raise ConfigError(message)
+            return report
+        return None
     except (ConnectionError, OSError, asyncpg.PostgresError) as exc:
         detail = str(exc) or type(exc).__name__
         raise DatabaseUnavailableError(
             f"Cannot reach the database to check the schema version: {detail}"
         ) from exc
-    if applied is None:
-        return None
-    return check_store_not_newer(applied, code_migration_names())
 
 
 __all__ = [

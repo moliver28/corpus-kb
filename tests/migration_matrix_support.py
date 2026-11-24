@@ -29,6 +29,7 @@ import pytest
 
 from corpus_kb._setup.migrate import applied_migrations, ensure_migrations_table
 from corpus_kb._setup.schema_apply import EXTENSION_GATED_MIGRATIONS, apply_schema
+from corpus_kb._setup.store_width import substitute_dims
 from tests import research_db
 
 PG_DIR = "src/corpus_kb/migrations"
@@ -58,6 +59,17 @@ def _git(args: list[str]) -> str | None:
 
 def git_show(ref: str, path: str) -> str | None:
     return _git(["show", f"{ref}:{path}"])
+
+
+def git_show_substituted(ref: str, path: str) -> str | None:
+    """Snapshot SQL with the #559 width placeholder at the shipped 2560.
+
+    Anchor replay simulates the legacy regime the way the runners apply
+    files: HEAD snapshots carry the placeholder text, which nothing here
+    substitutes; older anchors have no placeholder and pass through.
+    """
+    sql = git_show(ref, path)
+    return None if sql is None else substitute_dims(sql, 2560)
 
 
 def migration_files(ref: str, path: str, kind: str) -> list[str]:
@@ -112,7 +124,7 @@ def pg_dsn(name: str) -> str:
 async def build_pg_store_at(ref: str, dsn: str) -> None:
     """Rebuild the store at a release snapshot: base schema, then that
     release's migrations, recorded the way the runner records them."""
-    schema_sql = git_show(ref, BASE_SCHEMA)
+    schema_sql = git_show_substituted(ref, BASE_SCHEMA)
     if schema_sql is None:
         pytest.skip(f"anchor snapshot {ref} has no {BASE_SCHEMA}")
     files = migration_files(ref, PG_DIR, "migration set")
@@ -134,7 +146,7 @@ async def build_pg_store_at(ref: str, dsn: str) -> None:
                     "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)", name
                 )
                 continue
-            sql = git_show(ref, f"{PG_DIR}/{name}")
+            sql = git_show_substituted(ref, f"{PG_DIR}/{name}")
             if sql is None:
                 pytest.skip(f"anchor snapshot {ref} is missing migration {name}")
             async with conn.transaction():
