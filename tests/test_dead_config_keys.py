@@ -122,13 +122,14 @@ def test_removed_keys_absent_from_defaults() -> None:
         assert dotted not in yaml_leaves, dotted
 
 
-def test_removed_keys_flagged_for_users() -> None:
+def test_removed_keys_accepted_silently() -> None:
     """G21-G23/G06/G29: the validator no longer requires the dead keys.
 
     The runtime validator is presence-plus-type over RUNTIME_CONFIG_KEYS;
     an unknown key is not an error. Removal means the keys leave the
     required set (a stale user config neither fails installs nor loads a
     value), and the validator modules carry no dead enum banks.
+    Unknown-key WARN is PR-9 scope (the config-backend-parity gate).
     """
     for dotted in REMOVED_KEYS:
         assert dotted not in RUNTIME_CONFIG_KEYS, dotted

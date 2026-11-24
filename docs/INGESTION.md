@@ -909,17 +909,6 @@ Notes on the example:
 - **Test with the conformance suite.** Run your strategy through the same
   invariant checks the built-ins pass before you ship the entry point.
 
-### Why `retrieval.qa_context_in_fts` defaults to false
-
-Transcript chunks carry `qa_context` (the question, participants, exchange
-id). Including that text in the shared full-text index is **opt-in**
-(`retrieval.qa_context_in_fts: true`). The reason: Postgres `ts_rank` has no
-IDF. Question phrasing repeats across nearly every exchange. So question
-text in the shared FTS index systematically skews ranking toward transcript
-boilerplate. Keep it off until you have evaluated retrieval quality on your
-own corpus with it on. The `qa_context` columns and GIN index are available
-either way for structured access.
-
 ### Pick settings with data, not guesswork
 
 Chunking and retrieval settings interact. The calibrate sweep measures
@@ -982,19 +971,17 @@ cleanly.
 | `embedding.model` | `qwen3-embedding:4b` | Embedding model (Ollama) |
 | `embedding.dimensions` | `2560` | Vector dimensions (must equal the schema width) |
 | `embedding.base_url` | `http://localhost:11434` | Ollama API URL |
-| `storage.vector_type` | `halfvec` | Embedding column type (HNSW caps `vector` at 2000 dims) |
 | `retrieval.mode` | `hybrid_rrf` | Retrieval strategy (single supported value today) |
 | `retrieval.vector_candidates` | `150` | Live vector-arm depth (effective limit: max(candidates, k * 2)) |
 | `retrieval.lexical_candidates` | `150` | Live FTS-arm depth (same floor rule) |
 | `retrieval.rrf_k` | `60` | RRF rank constant |
 | `retrieval.expand_to_parent` | `true` | Post-fusion small-to-big parent expansion |
 | `retrieval.exclude_degraded` | `true` | Exclude degraded (zero-vector) chunks from vector-search candidates |
-| `retrieval.qa_context_in_fts` | `false` | Include transcript `qa_context` in the FTS index (opt-in — the Ingestion strategies section explains why this is off by default) |
 | `retrieval.exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for the filtered exact scan |
 | `retrieval.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
 | `retrieval.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
 | `retrieval.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
-| `retrieval.self_query.enabled` | `true` | Enable self-query filter extraction |
+| `retrieval.self_query.enabled` | `false` | Enable self-query filter extraction (opt-in) |
 | `retrieval.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
 | `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
 | `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
