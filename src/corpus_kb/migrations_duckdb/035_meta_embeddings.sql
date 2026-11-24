@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS meta_embeddings (
     meta_kind TEXT NOT NULL,
     meta_key TEXT NOT NULL,
     label TEXT NOT NULL DEFAULT '',
-    embedding FLOAT[2560] NOT NULL,
+    -- FLOAT[__EMBEDDING_DIMS__] is substituted by the migration runner from
+    -- embedding.dimensions (issue #559); see _setup/store_width.py.
+    embedding FLOAT[__EMBEDDING_DIMS__] NOT NULL,
     source_count INT NOT NULL DEFAULT 0,
     built_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, meta_kind, meta_key)

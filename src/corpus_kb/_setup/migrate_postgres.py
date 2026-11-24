@@ -22,6 +22,11 @@ from corpus_kb._setup.migrate_admin import (
     refuse_025_with_embeddings,
 )
 from corpus_kb._setup.migrate_report import GATED_MIGRATION_EXTENSIONS, MigrateReport
+from corpus_kb._setup.store_width import (
+    configured_embedding_dims,
+    record_applied_width_pg,
+    substitute_dims,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -106,8 +111,16 @@ async def run_postgres_migrations(
     session_settings: dict[str, str] | None = None,
     reset_embeddings: bool = False,
     dry_run: bool = False,
+    embedding_dims: int | None = None,
 ) -> MigrateReport:
-    """The Postgres path: plan, guard, then apply (superuser-aware)."""
+    """The Postgres path: plan, guard, then apply (superuser-aware).
+
+    The ``__EMBEDDING_DIMS__`` placeholder in the DDL is substituted with
+    ``embedding_dims`` (default: the configured ``embedding.dimensions``),
+    and the width this run leaves ``chunks_vectors`` with is recorded in
+    the store meta table (issue #559).
+    """
+    dims = embedding_dims if embedding_dims is not None else configured_embedding_dims()
     import importlib.resources as resources
 
     ref = resources.files("corpus_kb") / "migrations"
@@ -141,7 +154,11 @@ async def run_postgres_migrations(
             await refuse_025_with_embeddings(conn, pending, reset_embeddings)
             if superuser_dsn is None:
                 await apply_session_settings(conn, session_settings)
-                applied_now, applied_skipped = await _apply_pending(conn, sql_files, missing)
+                applied_now, applied_skipped = await _apply_pending(conn, sql_files, missing, dims)
+                if applied_now:
+                    recorded = await record_applied_width_pg(conn)
+                    if recorded is not None:
+                        logger.info("Recorded the store embedding width: %d", recorded)
                 logger.info("Migrations complete")
                 return MigrateReport(
                     "postgres",
@@ -161,7 +178,11 @@ async def run_postgres_migrations(
             await prepare_age_session(su_conn)
             await ensure_migrations_table(su_conn)
             await apply_session_settings(su_conn, session_settings)
-            applied_now, applied_skipped = await _apply_pending(su_conn, sql_files, missing)
+            applied_now, applied_skipped = await _apply_pending(su_conn, sql_files, missing, dims)
+            if applied_now:
+                recorded = await record_applied_width_pg(su_conn)
+                if recorded is not None:
+                    logger.info("Recorded the store embedding width: %d", recorded)
             await hand_over_to_app_role(
                 su_conn,
                 superuser_role=dsn_role(superuser_dsn),
@@ -181,12 +202,13 @@ async def run_postgres_migrations(
 
 
 async def _apply_pending(
-    conn: asyncpg.Connection, sql_files: list[Path], missing: set[str]
+    conn: asyncpg.Connection, sql_files: list[Path], missing: set[str], dims: int
 ) -> tuple[list[str], list[str]]:
     """Apply every unapplied migration file in order; return (applied, skipped).
 
     A gated migration whose extension is missing is skipped with a loud
-    warning and never recorded as applied (issue #508).
+    warning and never recorded as applied (issue #508). The width
+    placeholder in each file is substituted with ``dims`` first (#559).
     """
     done = await applied_migrations(conn)
     applied_now: list[str] = []
@@ -205,7 +227,7 @@ async def _apply_pending(
             )
             skipped.append(sql_file.name)
             continue
-        sql = sql_file.read_text(encoding="utf-8")
+        sql = substitute_dims(sql_file.read_text(encoding="utf-8"), dims)
         async with conn.transaction():
             logger.info("Applying migration: %s", sql_file.name)
             await conn.execute(sql)

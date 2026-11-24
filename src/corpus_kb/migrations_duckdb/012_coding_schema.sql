@@ -35,8 +35,10 @@ CREATE TABLE IF NOT EXISTS code_registry (
     pool_floor DOUBLE,
     residual_floor DOUBLE,
     prototype_vectors JSON,
-    definition_vector FLOAT[2560],
-    probe_vector FLOAT[2560],
+    -- FLOAT[__EMBEDDING_DIMS__] is substituted by the migration runner from
+    -- embedding.dimensions (issue #559); see _setup/store_width.py.
+    definition_vector FLOAT[__EMBEDDING_DIMS__],
+    probe_vector FLOAT[__EMBEDDING_DIMS__],
     superseded_by TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (code_id, codebook_version_id, tenant_id)
@@ -135,7 +137,7 @@ CREATE TABLE IF NOT EXISTS answer_ctx_vectors (
     tenant_id VARCHAR NOT NULL,
     -- Postgres 012 had vector(4096) NOT NULL; the 025 regime is a nullable
     -- halfvec(2560) so stale rows can exist.
-    vector FLOAT[2560],
+    vector FLOAT[__EMBEDDING_DIMS__],
     ctx_source TEXT NOT NULL DEFAULT 'question-prepend',
     built_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (chunk_id, tenant_id)
@@ -182,7 +184,7 @@ CREATE TABLE IF NOT EXISTS chunk_codes (
     confidence DOUBLE NOT NULL CHECK (confidence BETWEEN 0 AND 1),
     tier_signals JSON NOT NULL DEFAULT '{}',
     rationale TEXT,
-    rationale_vector FLOAT[2560],
+    rationale_vector FLOAT[__EMBEDDING_DIMS__],
     evidence_quote TEXT,
     qa_context_used BOOLEAN NOT NULL DEFAULT FALSE,
     route TEXT,

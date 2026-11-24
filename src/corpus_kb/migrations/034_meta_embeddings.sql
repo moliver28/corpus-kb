@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS meta_embeddings (
         CHECK (meta_kind IN ('topic', 'belief_summary', 'document', 'profile')),
     meta_key TEXT NOT NULL,
     label TEXT NOT NULL DEFAULT '',
-    embedding halfvec(2560) NOT NULL,
+    -- __EMBEDDING_DIMS__ is substituted by the migration runner from
+    -- embedding.dimensions (issue #559); see _setup/store_width.py.
+    embedding halfvec(__EMBEDDING_DIMS__) NOT NULL,
     source_count INT NOT NULL DEFAULT 0 CHECK (source_count >= 0),
     built_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, meta_kind, meta_key)

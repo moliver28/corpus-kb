@@ -24,7 +24,11 @@ def test_chunks_vectors_embedding_is_the_halfvec_2560_contract() -> None:
     # The column line itself (not a comment) pins the typmod. halfvec is
     # REQUIRED at 2560 dims: pgvector HNSW caps `vector` at 2000, `halfvec`
     # at 4000 — a plain vector(2560) column could never carry its index.
-    assert re.search(r"^\s+embedding halfvec\(2560\),\s*$", text, re.MULTILINE), (
+    # Issue #559: the width is parameterizable (__EMBEDDING_DIMS__, the
+    # runners substitute embedding.dimensions); the shipped default is 2560.
+    assert re.search(
+        r"^\s+embedding halfvec\((2560|__EMBEDDING_DIMS__)\),\s*$", text, re.MULTILINE
+    ), (
         "chunks_vectors.embedding typmod drifted — it is the dimension-regime "
         "contract that migration 025 establishes; changing it requires a "
         "coordinated column migration"
@@ -73,7 +77,9 @@ def test_migration_012_creates_4096_and_migration_025_retipes() -> None:
 def test_migration_025_renames_and_retipes_the_main_column() -> None:
     migration_025 = (MIGRATIONS / "025_halfvec_2560.sql").read_text(encoding="utf-8")
     assert "RENAME COLUMN vector TO embedding" in migration_025
-    assert "ALTER COLUMN embedding TYPE halfvec(2560) USING NULL" in migration_025
+    # Issue #559: the retype width is the __EMBEDDING_DIMS__ placeholder,
+    # substituted by the runner from embedding.dimensions.
+    assert "ALTER COLUMN embedding TYPE halfvec(__EMBEDDING_DIMS__) USING NULL" in migration_025
     assert "halfvec_cosine_ops" in migration_025
     assert "ef_construction = 128" in migration_025
     # The rollback restores the 4096 shape (data cannot come back).

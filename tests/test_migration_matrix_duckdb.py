@@ -41,7 +41,7 @@ def _build_store_at(ref: str, path: Path) -> None:
     try:
         _ensure_duckdb_migrations_table(con)
         for name in files:
-            sql = support.git_show(ref, f"{support.DUCKDB_DIR}/{name}")
+            sql = support.git_show_substituted(ref, f"{support.DUCKDB_DIR}/{name}")
             if sql is None:
                 pytest.skip(f"anchor snapshot {ref} is missing mirror {name}")
             con.execute("BEGIN TRANSACTION")

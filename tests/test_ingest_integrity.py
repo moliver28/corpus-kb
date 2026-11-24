@@ -24,6 +24,7 @@ from typing import Any, ClassVar
 import asyncpg
 import pytest
 
+from corpus_kb._setup.store_width import substitute_dims
 from corpus_kb.errors import ConfigError
 from tests.research_db import RLS_PROBE_ROLE, ensure_rls_probe, super_dsn_for
 
@@ -601,7 +602,9 @@ async def test_run_pipeline_nonconformant_plan_raises_before_any_write(
 
 async def _apply_schema_and_migrations(conn: Any) -> None:
     # The halfvec(2560) schema carries only LEGAL indexes — verbatim apply.
-    await conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+    # Issue #559: the primary-width DDL carries the __EMBEDDING_DIMS__
+    # placeholder; replay it at the shipped 2560 like the runners do.
+    await conn.execute(substitute_dims(SCHEMA_SQL.read_text(encoding="utf-8"), 2560))
     from corpus_kb._setup.migrate import ensure_migrations_table
 
     await ensure_migrations_table(conn)
@@ -610,7 +613,7 @@ async def _apply_schema_and_migrations(conn: Any) -> None:
             continue
         if path.name in _EXTENSION_GATED:
             continue
-        await conn.execute(path.read_text(encoding="utf-8"))
+        await conn.execute(substitute_dims(path.read_text(encoding="utf-8"), 2560))
         await conn.execute(
             "INSERT INTO corpus.schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
             path.name,
@@ -1069,7 +1072,7 @@ async def _create_force_rls_db() -> str:
             "GRANT CONNECT ON DATABASE corpus_kb_ir075_force_rls_test TO corpus_ir075_probe"
         )
         # The halfvec(2560) schema carries only LEGAL indexes.
-        await owner.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+        await owner.execute(substitute_dims(SCHEMA_SQL.read_text(encoding="utf-8"), 2560))
         from corpus_kb._setup.migrate import ensure_migrations_table
 
         await ensure_migrations_table(owner)
@@ -1078,7 +1081,7 @@ async def _create_force_rls_db() -> str:
                 continue
             if path.name in _IR075_EXTENSION_GATED:
                 continue
-            await owner.execute(path.read_text(encoding="utf-8"))
+            await owner.execute(substitute_dims(path.read_text(encoding="utf-8"), 2560))
             await owner.execute(
                 "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)"
                 " ON CONFLICT DO NOTHING",

@@ -79,7 +79,7 @@ BEGIN
       AND a.attname = 'embedding';
     IF col_type = 'vector(4096)' THEN
         ALTER TABLE chunks_vectors
-            ALTER COLUMN embedding TYPE halfvec(2560) USING NULL;
+            ALTER COLUMN embedding TYPE halfvec(__EMBEDDING_DIMS__) USING NULL;
     END IF;
 END $$;
 
@@ -143,7 +143,7 @@ BEGIN
                 'ALTER TABLE public.%I ALTER COLUMN %I DROP NOT NULL',
                 tables[i], cols[i]);
             EXECUTE format(
-                'ALTER TABLE public.%I ALTER COLUMN %I TYPE halfvec(2560) USING NULL',
+                'ALTER TABLE public.%I ALTER COLUMN %I TYPE halfvec(__EMBEDDING_DIMS__) USING NULL',
                 tables[i], cols[i]);
         END IF;
     END LOOP;
