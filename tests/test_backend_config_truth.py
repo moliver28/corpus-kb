@@ -42,6 +42,10 @@ PGML_RERANKER_ON_DUCKDB_ERROR = (
 PGML_EXTRACTION_ON_DUCKDB_ERROR = (
     "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
 )
+GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR = (
+    "graph.backend: postgres cannot run on the DuckDB engine."
+    " Remove graph.backend, or set database.backend to postgres."
+)
 
 
 @pytest.fixture
@@ -243,11 +247,12 @@ class TestLoadConfigGate:
     def test_duckdb_clean_selection_loads(self, tmp_path: Path):
         path = tmp_path / "config.yaml"
         path.write_text(yaml.safe_dump({"database": {"backend": "duckdb"}}), encoding="utf-8")
-        # The default age/pgml mix still raises; the clean selection loads.
+        # The default age/pgml mix still raises; the clean selection (an
+        # explicit duck graph store) loads. PR-6 G09 refuses postgres.
         clean = tmp_path / "clean.yaml"
         payload = {
             "database": {"backend": "duckdb"},
-            "graph": {"backend": "postgres"},
+            "graph": {"backend": "duckdb"},
             "extraction": {"backend": "regex"},
         }
         clean.write_text(yaml.safe_dump(payload), encoding="utf-8")
@@ -255,19 +260,19 @@ class TestLoadConfigGate:
         database = cast(dict[str, object], config["database"])
         assert database["backend"] == "duckdb"
 
-    def test_duckdb_clean_defaults_load_after_backend_default_change(self, tmp_path: Path):
-        # Issue #246 owner decision: the default extraction backend is
-        # "ml", so a duckdb switch plus a postgres graph store now loads
-        # cleanly (the old pgml default tripped the mix gate at load).
+    def test_duckdb_explicit_postgres_graph_backend_raises(self, tmp_path: Path):
+        # PR-6 G09: an explicit postgres graph backend under duckdb is
+        # refused AT LOAD (the factory layer gives hand-built dicts the
+        # same refusal). The pre-G09 load-cleanly contract is gone.
         path = tmp_path / "config.yaml"
         payload = {
             "database": {"backend": "duckdb"},
             "graph": {"backend": "postgres"},
         }
         path.write_text(yaml.safe_dump(payload), encoding="utf-8")
-        config = load_config(str(path))
-        database = cast(dict[str, object], config["database"])
-        assert database["backend"] == "duckdb"
+        with pytest.raises(ValueError) as excinfo:
+            load_config(str(path))
+        assert GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR in str(excinfo.value)
 
     def test_duckdb_explicit_pgml_extraction_still_raises_after_aliases(self, tmp_path: Path):
         # An EXPLICIT pgml extraction backend stays refused on duckdb; the

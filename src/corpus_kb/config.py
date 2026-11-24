@@ -19,6 +19,27 @@ from typing import Any, cast
 
 import yaml
 
+# Re-exports (graph_factory and tests import these from corpus_kb.config).
+# The ``x as x`` spelling marks each name as an intentional re-export, so
+# one string bank can serve both import surfaces (ruff isort splits them).
+from corpus_kb.backend_gates import (
+    AGE_ON_DUCKDB_ERROR as AGE_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR as GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_EMBEDDER_ON_DUCKDB_ERROR as PGML_EMBEDDER_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_EXTRACTION_ON_DUCKDB_ERROR as PGML_EXTRACTION_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_RERANKER_ON_DUCKDB_ERROR as PGML_RERANKER_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    backend_key_errors,
+)
 from corpus_kb.config_aliases import apply_legacy_aliases
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.errors import ConfigError
@@ -254,9 +275,11 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     # Issue #330: an UNCHOSEN graph.backend follows the database backend.
     _follow_graph_backend(config, file_config)
 
-    # Storage-portability backend truth: Postgres-only engine selections are
-    # refused while database.backend is duckdb (the mix gate sees the aliases).
-    mix_errors = backend_mix_errors(config)
+    # Backend-mismatch truth: Postgres-only engine selections are refused
+    # while database.backend is duckdb, DuckDB-only settings while it is
+    # postgres (the gate sees the aliases and the raw file tree for the
+    # explicit-set rules).
+    mix_errors = backend_mix_errors(config, file_config)
     if mix_errors:
         raise ValueError(mix_errors[0])
 
@@ -350,45 +373,15 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(_ENV_OVERRIDES.values()) | 
 )
 
 
-# Backend-mix refusals (storage-portability program §11 rule 15 string
-# bank — the texts are binding and used verbatim; validate_configs mirrors
-# them because the CI validate-configs job installs only PyYAML and cannot
-# import this package. tests/test_backend_config_truth.py pins the
-# equality between the two renderings).
-AGE_ON_DUCKDB_ERROR = "Set database.backend to postgres, or remove the graph.backend setting."
-PGML_EMBEDDER_ON_DUCKDB_ERROR = (
-    "PostgresML runs only on Postgres. The Ollama embedder will be used instead."
-)
-PGML_RERANKER_ON_DUCKDB_ERROR = (
-    "PostgresML reranking runs only on Postgres. The Ollama reranker will be used instead."
-)
-PGML_EXTRACTION_ON_DUCKDB_ERROR = (
-    "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
-)
+# The backend-mix refusal constants (AGE_ON_DUCKDB_ERROR, PGML_*_ON_DUCKDB_ERROR)
+# are re-exported from corpus_kb.backend_gates (see the import block above) —
+# one string bank, one gate body, both import surfaces keep working.
 
 
 def _section_dict(config: dict[str, object], section: str) -> dict[str, object]:
     """The named config section when it is a mapping, else an empty dict."""
     node = config.get(section)
     return node if isinstance(node, dict) else {}
-
-
-def _effective_extraction_backend(config: dict[str, object]) -> str | None:
-    """The extraction backend the alias layer would settle on.
-
-    Mirrors ``apply_extraction_backend_alias`` precedence: a non-empty
-    ``extraction.backend`` wins; only when it is absent does the legacy
-    ``graph.extractor`` alias stay authoritative.
-    """
-    extraction = _section_dict(config, "extraction")
-    raw = extraction.get("backend")
-    if isinstance(raw, str) and raw:
-        return raw
-    graph = _section_dict(config, "graph")
-    raw = graph.get("extractor")
-    if isinstance(raw, str) and raw:
-        return raw
-    return None
 
 
 def _follow_graph_backend(config: dict[str, object], file_config: dict[str, object]) -> None:
@@ -411,34 +404,22 @@ def _follow_graph_backend(config: dict[str, object], file_config: dict[str, obje
         graph_cfg["backend"] = "duckdb"
 
 
-def backend_mix_errors(config: dict[str, object]) -> list[str]:
-    """Refuse Postgres-only engine selections while ``database.backend`` is duckdb.
+def backend_mix_errors(
+    config: dict[str, object], file_config: dict[str, object] | None = None
+) -> list[str]:
+    """Refuse engine-mismatched backend keys, in one fixed order.
 
-    One operation, one truth: AGE and PostgresML (embedder, legacy
-    ``search.reranker``, extraction) physically cannot run on DuckDB, so a
-    duckdb selection that still names one is refused AT LOAD with a
-    plain-English remediation — never a silent downgrade. Returns every
-    violation in a fixed order (age, embedder, reranker, extraction);
-    empty when the backend is not ``duckdb`` (Postgres accepts all of
-    these) — an unknown ``database.backend`` value is NOT a mix and is
-    left to ``validate_configs``' enum rule. Pure: no IO, no globals.
+    Thin wrapper over :func:`corpus_kb.backend_gates.backend_key_errors`
+    (one operation, one truth). ``file_config`` is the RAW user file tree:
+    ``load_config`` passes it so the explicit-set rules (retrieval.hnsw.*,
+    graph.backend, graph.duckdb_graph_backend) fire AT LOAD; hand-built
+    dicts pass nothing, and only the always-on rules (age, pgml under
+    duckdb) can fire. Empty when no rule matches — an unknown
+    ``database.backend`` is NOT a mix (``validate_configs``' enum rule
+    owns it). Pure: no IO, no globals.
     """
-    database = _section_dict(config, "database")
-    if database.get("backend") != "duckdb":
-        return []
-    errors: list[str] = []
-    graph = _section_dict(config, "graph")
-    if graph.get("backend") == "age":
-        errors.append(AGE_ON_DUCKDB_ERROR)
-    embedding = _section_dict(config, "embedding")
-    if "pgml" in (embedding.get("provider"), embedding.get("fallback_provider")):
-        errors.append(PGML_EMBEDDER_ON_DUCKDB_ERROR)
-    search = _section_dict(config, "search")
-    if search.get("reranker") == "pgml":
-        errors.append(PGML_RERANKER_ON_DUCKDB_ERROR)
-    if _effective_extraction_backend(config) == "pgml":
-        errors.append(PGML_EXTRACTION_ON_DUCKDB_ERROR)
-    return errors
+    database_backend = str(_section_dict(config, "database").get("backend") or "postgres")
+    return backend_key_errors(config, file_config, database_backend)
 
 
 def get_default_config() -> dict[str, object]:

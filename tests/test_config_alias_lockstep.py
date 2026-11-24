@@ -20,8 +20,8 @@ from typing import cast
 
 import pytest
 
+from corpus_kb.backend_gates import _effective_extraction_backend
 from corpus_kb.config import (
-    _effective_extraction_backend,
     apply_extraction_backend_alias,
     load_config,
 )
