@@ -48,10 +48,11 @@ def test_real_migration_name_sets_pass() -> None:
     assert "extraction_cache" in result.duck_forward
     assert "statements" in result.pg_rollback
     assert "statements" in result.duck_rollback
-    # Exactly the two allowlisted DuckDB-only forward names.
+    # Exactly the three allowlisted DuckDB-only forward names.
     assert set(result.duck_forward) - set(result.pg_forward) == {
         "base_schema",
         "ingest_runs_source",
+        "meta_embeddings_checks",
     }
     # Issue #330 added the pre-offset rollback twins: the rollback sets
     # now pair completely.
