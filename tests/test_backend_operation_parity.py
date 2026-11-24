@@ -248,13 +248,23 @@ async def test_all_parity_operations_run_on_duckdb(
     )
 
     failures: list[str] = []
+    # The three analysis date ops run HOT here: the dormant default (every
+    # analysis flag off) would mask the date path behind a "disabled"
+    # envelope, so these legs unmask it with the over_time flag on. The
+    # backfill answers its honest engine envelope (the DuckDB documents
+    # row is immutable once chunks reference it); the trends leg reaches
+    # its store read and answers on no data.
+    hot_config: dict[str, Any] = {
+        "analysis": {"topics": {"over_time": {"enabled": True}}},
+    }
+    hot_ops = {"topics_trends", "analysis_backfill_dates", "analyze_run"}
     for op in PARITY_OPS:
         leg = LEGS.get(op)
         if leg is None:
             failures.append(f"{op}: no shared leg in test_surface_parity_deep")
             continue
         try:
-            envelope = await leg.shared(ctx)
+            envelope = await leg.shared({**ctx, "config": hot_config} if op in hot_ops else ctx)
         except Exception as exc:  # collected, never first-stop
             failures.append(f"{op}: {type(exc).__name__}: {exc}")
             continue

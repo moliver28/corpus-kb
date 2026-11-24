@@ -92,7 +92,6 @@
     "src/corpus_kb/storage/duckpgq.py": 251,
     "src/corpus_kb/storage/graph_store.py": 580,
     "src/corpus_kb/surface_registry.py": 1793,
-    "src/corpus_kb/tools/analysis_tools.py": 265,
     "src/corpus_kb/tools/ingest_common.py": 422,
     "src/corpus_kb/tools/ingest_embed.py": 318,
     "src/corpus_kb/tools/ingest_store.py": 660,
