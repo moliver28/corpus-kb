@@ -131,10 +131,9 @@ def test_dead_env_mappings_are_ignored(no_env_overrides: None) -> None:
     with patch.dict("os.environ", dead_vars, clear=False):
         cfg = load_config()  # must not raise
 
-    # storage.* is a CANONICAL section now (vector_type); the dead env var
-    # must not have invented keys inside it.
-    storage = cast(dict[str, object], cfg["storage"])
-    assert "path" not in storage
+    # The dead storage env var must not invent a storage section (the
+    # section left the defaults with its dead vector_type key).
+    assert "storage" not in cfg
     installer = cast(dict[str, object], cfg["installer"])
     assert "profile" not in installer
 

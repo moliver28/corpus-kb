@@ -2,7 +2,6 @@
 # Every key here has a live consumer; dead keys are removed on sight
 # (zero-drift audit row 11). Environment overrides: see docs/ADMIN.md.
 server:
-  transport: stdio
   host: localhost
   port: 8010
   # Gates the OpenAI-compatible /v1 adapter (POST /v1/chat/completions,
@@ -41,11 +40,6 @@ embedding:
   # embedding.model is a qwen3-embedding* token-level family; otherwise an
   # honest pooled fallback (embedding_note in the ingest result).
   late_chunking: true
-
-storage:
-  # chunks_vectors.embedding column type. halfvec is required at 2560 dims:
-  # pgvector HNSW caps the plain vector type at 2000, halfvec at 4000.
-  vector_type: halfvec
 
 # Website (URL) ingestion (src/corpus_kb/web/). ingest_url builds its
 # WebFetchConfig from this section — the shipped YAML is the live contract
@@ -158,13 +152,6 @@ graph_policy:
 retrieval:
   # Only hybrid_rrf exists today; other values are rejected at load time.
   mode: hybrid_rrf
-  # DuckDB vector-search mode: exact_scan (default, deterministic) or hnsw
-  # (the experimental vss extension; doctor warns). Postgres keeps its
-  # pgvector HNSW and ignores this key.
-  vector_index: exact_scan
-  # DuckDB fts-index rebuild debounce (seconds, positive). DuckDB FTS has
-  # no auto-refresh; the gateway rebuilds the index on this debounce.
-  fts_rebuild_debounce_s: 2.0
   # Live per-arm candidate depths before fusion (effective limit is
   # max(candidates, k * 2), so small values never under-fetch below k).
   vector_candidates: 150
@@ -177,18 +164,15 @@ retrieval:
   # rows whose stored vector is flagged degraded (all-zero backfill,
   # migration 022). Seed documents stay discoverable either way.
   exclude_degraded: true
-  # Opt-in only (default false): when true, migration 023 maintains the
-  # qa_context FTS expression index so transcript Q/A text is full-text
-  # searchable. Off by default because Postgres ts_rank has no IDF —
-  # question text in the shared index skews ranking unsoundly.
-  qa_context_in_fts: false
   # U21: below this estimated selectivity, filtered queries take the exact
   # scan instead of the HNSW probe.
   exact_filter_selectivity_threshold: 0.05
   # Matryoshka two-tier retrieval: candidate fan-out is k * this multiplier.
   candidate_multiplier: 8
+  # Self-query parsing (one LLM call per search; opt-in — the flag gates
+  # parser construction at server start).
   self_query:
-    enabled: true
+    enabled: false
     model: qwen3:4b
     base_url: http://localhost:11434
     timeout_seconds: 8
@@ -279,6 +263,8 @@ topics:
   llm_base_url: http://localhost:11434
   fixture_dir: tests/fixtures/topics_recorded
   live_fallback: false
+  # Zero-shot match floor (documents below it fall back to clustering).
+  zeroshot_min_similarity: 0.7
 
 # Corpus analysis program (src/corpus_kb/analysis/, analysis/settings.py
 # is the source of truth for these values). Weak-supervision labeling,

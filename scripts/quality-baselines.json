@@ -45,7 +45,7 @@
     "src/corpus_kb/coding/confidence_calibration.py": 308,
     "src/corpus_kb/coding/inductive_cluster.py": 323,
     "src/corpus_kb/coding/structured_output.py": 271,
-    "src/corpus_kb/config.py": 960,
+    "src/corpus_kb/config.py": 937,
     "src/corpus_kb/contracts/catalogue_analysis.py": 410,
     "src/corpus_kb/contracts/catalogue_research.py": 379,
     "src/corpus_kb/domain/codebook.py": 428,
@@ -82,7 +82,7 @@
     "src/corpus_kb/research/promote_code.py": 369,
     "src/corpus_kb/research/release/service.py": 285,
     "src/corpus_kb/research/report_governance.py": 271,
-    "src/corpus_kb/research/retrieval_settings.py": 261,
+    "src/corpus_kb/research/retrieval_settings.py": 256,
     "src/corpus_kb/research/search_settings.py": 269,
     "src/corpus_kb/server_wiring.py": 581,
     "src/corpus_kb/storage/age_graph_store.py": 626,
@@ -103,7 +103,7 @@
     "tests/test_analysis_route_tools.py": 1120,
     "tests/test_error_taxonomy.py": 1052,
     "tests/test_method_register.py": 1132,
-    "tests/test_search_honesty.py": 1065,
+    "tests/test_search_honesty.py": 1058,
     "tests/test_surface_parity_deep.py": 3124
   },
   "persona_meter": {

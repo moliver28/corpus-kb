@@ -896,9 +896,8 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     # legacy search.* spellings are LOADER aliases, not shipped-YAML keys.
     # The website-ingestion feature added the web.* fetch/crawl keys.
     # W4C config-truth added extraction.backend (the preferred backend key).
-    # The storage-portability program added database.backend, graph.max_hops,
-    # and the two DuckDB-side retrieval knobs (docs/research/
-    # storage-portability-program.md §3).
+    # The storage-portability program added database.backend and
+    # graph.max_hops (docs/research/storage-portability-program.md §3).
     # Issue #348 added the per-server socket keys (server.socket_path and
     # server.socket_port).
     assert {
@@ -908,7 +907,6 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "embedding.mrl_trained": bool,
         "embedding.late_chunking": bool,
         "embedding.query_instruction": bool,
-        "storage.vector_type": str,
         "ingest.chunking.enabled": bool,
         "ingest.chunking.child_tokens": int,
         "ingest.chunking.chunk_tokens": int,
@@ -923,10 +921,6 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "ingest.contextualize.document_first_prompt": bool,
         "ingest.contextualize.apply_to": list,
         "retrieval.mode": str,
-        # Storage-portability keys: the DuckDB-side search knobs. Postgres
-        # ignores both (validate_configs pins the enum rules separately).
-        "retrieval.vector_index": str,
-        "retrieval.fts_rebuild_debounce_s": float,
         "retrieval.vector_candidates": int,
         "retrieval.lexical_candidates": int,
         "retrieval.rrf_k": int,
@@ -956,6 +950,7 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_reduction": bool,
         "topics.llm": str,
         "topics.llm_base_url": str,
+        "topics.zeroshot_min_similarity": float,
         # UI SPA program Task 3 (the lifecycle SPA's runtime-tunable block).
         "ui.spa.poll_ms": int,
         "ui.spa.request_timeout_s": float,
@@ -1031,7 +1026,6 @@ def test_validate_runtime_config_accepts_bool() -> None:
     cast(dict[str, object], config["retrieval"]).update(
         {
             "exclude_degraded": True,
-            "qa_context_in_fts": False,
             "matryoshka_enabled": False,
         }
     )
@@ -1040,7 +1034,6 @@ def test_validate_runtime_config_accepts_bool() -> None:
     cast(dict[str, object], config_off["retrieval"]).update(
         {
             "exclude_degraded": False,
-            "qa_context_in_fts": False,
             "matryoshka_enabled": False,
         }
     )

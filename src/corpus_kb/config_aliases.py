@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 _ALIAS_RENAMES: tuple[tuple[str, str], ...] = (
     ("search.rrf_k", "retrieval.rrf_k"),
     ("search.exclude_degraded", "retrieval.exclude_degraded"),
-    ("search.qa_context_in_fts", "retrieval.qa_context_in_fts"),
     ("search.exact_filter_selectivity_threshold", "retrieval.exact_filter_selectivity_threshold"),
     ("search.candidate_multiplier", "retrieval.candidate_multiplier"),
     ("search.matryoshka_enabled", "retrieval.matryoshka_enabled"),

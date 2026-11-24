@@ -17,13 +17,10 @@ try:
         SUPPORTED_DUCKDB_GRAPH_BACKENDS,
         SUPPORTED_GRAPH_POLICY_MODES,
         SUPPORTED_RETRIEVAL_MODES,
-        SUPPORTED_VECTOR_INDEX_MODES,
-        SUPPORTED_VECTOR_TYPES,
     )
     from corpus_kb._setup.validate_configs_rules import (
         _contextualize_block_errors,
         _database_block_errors,
-        _fts_debounce_errors,
         _max_hops_errors,
         _queue_block_errors,
         _reranking_block_errors,
@@ -39,12 +36,9 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     SUPPORTED_DUCKDB_GRAPH_BACKENDS = _keys.SUPPORTED_DUCKDB_GRAPH_BACKENDS
     SUPPORTED_GRAPH_POLICY_MODES = _keys.SUPPORTED_GRAPH_POLICY_MODES
     SUPPORTED_RETRIEVAL_MODES = _keys.SUPPORTED_RETRIEVAL_MODES
-    SUPPORTED_VECTOR_INDEX_MODES = _keys.SUPPORTED_VECTOR_INDEX_MODES
-    SUPPORTED_VECTOR_TYPES = _keys.SUPPORTED_VECTOR_TYPES
     _rules = _importlib.import_module("validate_configs_rules")
     _contextualize_block_errors = _rules._contextualize_block_errors
     _database_block_errors = _rules._database_block_errors
-    _fts_debounce_errors = _rules._fts_debounce_errors
     _max_hops_errors = _rules._max_hops_errors
     _queue_block_errors = _rules._queue_block_errors
     _reranking_block_errors = _rules._reranking_block_errors
@@ -91,11 +85,6 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
             errors.append(
                 f"retrieval.mode: must be one of {sorted(SUPPORTED_RETRIEVAL_MODES)}, got {mode!r}"
             )
-        vector_index = retrieval.get("vector_index")
-        if vector_index not in SUPPORTED_VECTOR_INDEX_MODES:
-            modes = ", ".join(sorted(SUPPORTED_VECTOR_INDEX_MODES))
-            errors.append(f"retrieval.vector_index: must be one of ({modes}), got {vector_index!r}")
-        errors.extend(_fts_debounce_errors(retrieval.get("fts_rebuild_debounce_s")))
         if retrieval.get("matryoshka_enabled") is True:
             embedding = config.get("embedding")
             mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
@@ -106,15 +95,6 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
                     "sound for Matryoshka-trained models; qwen3-embedding is MRL-trained, "
                     "nomic-embed-text is not)"
                 )
-
-    storage = config.get("storage")
-    if isinstance(storage, dict):
-        vector_type = storage.get("vector_type")
-        if vector_type not in SUPPORTED_VECTOR_TYPES:
-            errors.append(
-                f"storage.vector_type: must be one of {sorted(SUPPORTED_VECTOR_TYPES)}, "
-                f"got {vector_type!r}"
-            )
 
     ingest = config.get("ingest")
     if isinstance(ingest, dict):
@@ -139,8 +119,8 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
     Every key must be PRESENT (explicit in both config.yaml files — the
     default lives in code, but the shipped YAML is the visible contract)
     and hold the expected type. Also enforces the cross-field rules:
-    ``retrieval.mode`` is enum-locked to hybrid_rrf, ``storage.vector_type``
-    to halfvec, ``reranking.backend`` to null or the supported set,
+    ``retrieval.mode`` is enum-locked to hybrid_rrf,
+    ``reranking.backend`` to null or the supported set,
     ``reranking.return_top_k`` is a positive int in range, and
     ``retrieval.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
     true`` (the two-stage arm front-slices embeddings, which is only sound
