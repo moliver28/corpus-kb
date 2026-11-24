@@ -54,7 +54,7 @@ A path gate decides when the legs install and pull Ollama models. The `changes` 
 
 Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 30` on the ubuntu test leg, `40` on windows/macos (hung Ollama connects; PR #189 raised the ubuntu cap with suite-run rationale).
 
-The release chain sits outside ci.yml. `tag-release.yml` fires on a pushed `v[0-9]*` tag, or on a manual dispatch. It checks its guards and creates the GitHub Release with the `RELEASE_PAT` secret. The release event then starts three workflows. `release.yml` publishes to TestPyPI or PyPI per the version shape. `changelog.yml` opens a bot PR into master. `production-sync.yml` opens a bot PR from master into production. Tag rule: package tags are `v<semver>` cut on master. The tag version must equal the `pyproject.toml` version. A dispatch run is a dry run by default.
+The release chain sits outside ci.yml. `tag-release.yml` fires on a pushed `v[0-9]*` tag, or on a manual dispatch. It checks its guards and creates the GitHub Release with the `RELEASE_PAT` secret. The release event then starts three workflows. `release.yml` publishes to TestPyPI or PyPI per the version shape. `changelog.yml` opens a bot PR into master. `production-sync.yml` opens a bot PR from master into production. Tag rule: package tags are `v<semver>` cut on master. Merge develop into master before cutting a tag. The tag push runs the workflow copy saved on the tagged commit. Until that merge lands, a tag push does nothing. The tag version must equal the `pyproject.toml` version. A dispatch run is a dry run by default.
 
 ## Repo Structure & Ownership
 
