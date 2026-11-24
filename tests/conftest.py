@@ -175,6 +175,26 @@ async def graph_store(pg_pool):
     await store.close()
 
 
+@pytest.fixture(autouse=True)
+def _noop_graph_advance_on_parity_world(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stub the graph projection fold inside the surface-parity world.
+
+    The parity legs answer ``add_entity``/``add_relation`` through the
+    real tool layer, whose read-your-writes fold (issue #530) needs a
+    live store. Every other advance in that offline world is stubbed the
+    same way, so the tool envelope stays the one real thing per leg.
+    """
+    if "parity_env" not in request.fixturenames:
+        return
+
+    async def _noop(pool: object, tenant_id: object) -> None:
+        return None
+
+    monkeypatch.setattr("corpus_kb.projections.catchup.advance_graph_projections", _noop)
+
+
 # ---------------------------------------------------------------------------
 # Research-domain throwaway database (todo-11): requested-only session
 # fixture — tests that never ask for it pay nothing; CI (no Postgres) skips
