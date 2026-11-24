@@ -264,6 +264,8 @@ topics:
   llm_base_url: http://localhost:11434
   fixture_dir: tests/fixtures/topics_recorded
   live_fallback: false
+  # Zero-shot match floor (documents below it fall back to clustering).
+  zeroshot_min_similarity: 0.7
 
 # Corpus analysis program (src/corpus_kb/analysis/, analysis/settings.py
 # is the source of truth for these values). Weak-supervision labeling,

@@ -96,11 +96,14 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # -- topics (Wave 4, src/corpus_kb/topics/) ------------------------------
     # min_topic_size is str|int ("auto" or a positive int): the union is
     # enforced by _topics_block_errors below, not by the single-type map.
+    # The zero-shot floor is a float here; its (0, 1] range rule lives in
+    # the topics loader.
     "topics.enabled": bool,
     "topics.method": str,
     "topics.llm_reduction": bool,
     "topics.llm": str,
     "topics.llm_base_url": str,
+    "topics.zeroshot_min_similarity": float,
     # -- server (HTTP adapter gates) -----------------------------------------
     "server.openai_compat": bool,
     # -- database (storage-portability program §3) ----------------------------

@@ -950,6 +950,7 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_reduction": bool,
         "topics.llm": str,
         "topics.llm_base_url": str,
+        "topics.zeroshot_min_similarity": float,
         # UI SPA program Task 3 (the lifecycle SPA's runtime-tunable block).
         "ui.spa.poll_ms": int,
         "ui.spa.request_timeout_s": float,
