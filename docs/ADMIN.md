@@ -579,27 +579,52 @@ See `.github/workflows/` for the exact definitions.
 
 ## Release path
 
-A release moves through six steps:
+A release needs one manual procedure. You run five steps. The chain after the tag push is automatic.
+
+1. Bump the version on develop. Branch `chore/release-<x>-<y>-<z>` off develop. Change two lines in one commit: `version` in `pyproject.toml`, and the root `version` line in `uv.lock`. Commit title: `chore: release X.Y.Z`. Open a PR to develop. Merge when CI is green.
+2. Merge develop into master. Open the PR with base `master`, head `develop`. Title it `chore: release X.Y.Z`. Full CI runs on this PR. Merge when green.
+3. Create the tag on master. `git tag vX.Y.Z <master-sha> && git push origin vX.Y.Z`. The version must equal the `pyproject.toml` version.
+4. Merge the two bot PRs. `changelog.yml` opens one into master. `production-sync.yml` opens one into production. Bot PRs get no CI (GITHUB_TOKEN). Re-arm each one: close it, then reopen it. CI runs. Merge when green.
+5. Verify. The version shows on PyPI (TestPyPI for an `rc`). The docker image `X.Y.Z-pg17` exists. The production tip equals the master tip.
+
+The chain behind step 3:
 
 ```
-1. merge develop into master
-2. tag push (vX.Y.Z on master)
-   -> tag-release.yml: checks the guards, creates the GitHub Release
-   -> release.yml: prerelease to TestPyPI, final release to PyPI
-   -> changelog.yml: pull request that appends CHANGELOG.md on master
-   -> production-sync.yml: pull request that syncs master into production
+tag push
+   -> tag-release.yml: guards + GitHub Release
+   -> release.yml: prerelease to TestPyPI, final to PyPI
+   -> changelog.yml: bot PR -> master
+   -> production-sync.yml: bot PR -> production
 ```
 
-Do the merge first. The tag push runs the workflow copy stored on the tagged commit. Until develop merges, master lacks `tag-release.yml`, and a tag push does nothing.
+Rules that keep the chain alive:
 
-`tag-release.yml` also runs by hand. A manual run prints the release command. It creates nothing unless you set `dry_run` to false. The tag version must equal the `version` line in `pyproject.toml`, and the tag must sit on master.
+- Do the merge first. The tag push runs the workflow copy stored on the tagged commit. Until develop merges, master lacks `tag-release.yml`, and a tag push does nothing. No run appears, and no error appears.
+- A version with an `rc`, `a`, `b`, or `dev` part publishes to TestPyPI. A final version publishes to PyPI. Final publishes are permanent. A wrong one can only be yanked on pypi.org (owner UI).
+- `release.yml`, `changelog.yml`, and `production-sync.yml` run the copies on the default branch (develop). An edit to them takes effect only after it lands on develop. `tag-release.yml` runs the copy at the tagged commit.
+- Nothing else carries the version. `openapi.py` reads it from the package. Do not edit version pins anywhere else.
+
+Manual drill: `tag-release.yml` also runs by hand. A manual run prints the release command. It creates nothing unless you set `dry_run` to false.
 
 One-time setups, both done on 2026-11-24:
 
 1. The `RELEASE_PAT` secret exists. Releases made with the workflow token do not start the downstream workflows. If the token expires, a release fails loudly at the creation step. Store a new token with `gh secret set RELEASE_PAT --repo moliver28/corpus-kb`.
 2. The TestPyPI publisher for `publish.yml` is registered on the project. Issue #570 documents the proof.
 
-A tag whose version part ends in `rc`, `a`, `b`, or `dev` goes to TestPyPI first. TestPyPI is the staging index. A final version publishes to PyPI.
+Failure signatures (symptom -> cause -> fix):
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Tag pushed, no workflow runs at all | Tag landed before the develop->master merge | Delete the tag (`gh api -X DELETE repos/moliver28/corpus-kb/git/refs/tags/vX.Y.Z`). Do the merge. Create the tag again. |
+| `invalid-publisher` or `invalid-pending-publisher` in release.yml | The index-side trusted publisher is missing | Owner-only web fix: add the trusted publisher on pypi.org or test.pypi.org (Account -> Publishing). Fields: project, owner, repo, workflow name, environment. Then re-run failed jobs. |
+| Every PR workflow shows `startup_failure` | Repo Actions setting flipped to local-only | `gh api -X PUT repos/moliver28/corpus-kb/actions/permissions -F enabled=true -F allowed_actions=all` |
+| Publish run red with `400 File already exists` | Re-publish of an existing version | Harmless. Do not fix. |
+| Two old red runs: Publish (2026-11-24) and Tag release negative path | Permanent proof artifacts | Never re-run or "fix" them. |
+| tag-release.yml opened an issue on the tag push | A guard failed (version mismatch, tag not on master, release exists) | Follow the issue. The release-exists guard exits clean on purpose. |
+| Bot PR has no checks | GITHUB_TOKEN PRs get no CI | Close + reopen to re-arm, then merge. |
+| Sync PR unmergeable: missing `Validate Commit Messages` check | master tip predates the push-trigger fix | After the release merge, the master push runs the check. If still missing, follow the recipe in the production-sync.yml header. |
+
+A final version publishes to PyPI.
 
 ---
 
