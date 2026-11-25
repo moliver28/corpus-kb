@@ -137,6 +137,7 @@ INGEST_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("crawl", default=False),
             ParamSpec("source_type"),
             ParamSpec("validate"),
+            ParamSpec("visibility"),
             _TENANT,
         ),
         envelope_keys=("status", "pages", "total_documents"),

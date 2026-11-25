@@ -1,0 +1,14 @@
+name: external-site
+description: >
+  Starter profile for external website corpora. Pages come in through
+  ingest-url with the web pipeline; mark internal wikis with visibility
+  internal when you ingest them.
+data_type: external_site
+ingestion:
+  default: web_structure
+extraction:
+  mode: few_shot
+templates:
+  - preference
+  - opinion
+  - sentiment_target

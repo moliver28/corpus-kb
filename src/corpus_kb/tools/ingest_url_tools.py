@@ -43,6 +43,7 @@ async def ingest_url(
     crawl: bool = False,
     source_type: str | None = None,
     validate: str | None = None,
+    visibility: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, object]:
     """Fetch (or crawl) a website and run the ingest pipeline per page.
@@ -61,6 +62,8 @@ async def ingest_url(
     ``validate`` is the optional validation gate handed to every page's
     pipeline run (off | advisory | enforce | calibrate); None falls back
     to the active profile's ``validate`` value, then ``off``.
+    ``visibility`` stamps public/internal into each page's document
+    metadata.
 
     Returns ``{"status": "success", "pages": [...], "total_documents": N}``
     where ``pages`` holds one run_pipeline result dict (or a structured
@@ -71,6 +74,15 @@ async def ingest_url(
         error = _validate_strategy_override(source_type)
         if error is not None:
             return {"status": "error", "message": error}
+    if visibility is not None and visibility not in {"public", "internal"}:
+        return {
+            "status": "error",
+            "message": "Visibility must be public or internal.",
+        }
+    if visibility is not None:
+        document_cfg = config.setdefault("document", {})
+        if isinstance(document_cfg, dict):
+            document_cfg["visibility"] = visibility
     fetch_config = web_config_from_mapping(config.get("web"))
     fetch_errors: list[dict[str, str]] = []
     try:

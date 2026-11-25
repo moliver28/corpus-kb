@@ -166,7 +166,7 @@ Tokens are cached for performance.
         assert status == "error"
         message = result["message"]
         assert isinstance(message, str)
-        assert "Invalid source_type" in message
+        assert "Unknown source type" in message
 
     @pytest.mark.requires_ollama
     @pytest.mark.asyncio

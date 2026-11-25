@@ -656,3 +656,8 @@ closed_count
 # degraded embed paths and read by the timeout tests and future receipt
 # surfaces; the vulture src scan sees only the writes.
 last_note
+
+# Typed source_types registry (master-db W3): SourceTypeSpec.metadata_keys is
+# declared data-surface; later typed-ingest waves read it. The resolver
+# functions left this list when ingest_common wired them (same PR).
+metadata_keys

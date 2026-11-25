@@ -84,10 +84,11 @@ curl -X POST http://localhost:8010/api/ingest/text \
   -d '{"text": "Hello world", "source": "notes", "source_type": "text"}'
 ```
 
-`source_type` is the document type. It must be one of `code`, `markdown`,
-`text`, `transcript`; anything else returns
-`{"status": "error", "message": "Invalid source_type: <value>"}` — the
-same envelope the tool layer returns.
+`source_type` is the document type. The registry gate accepts `code`,
+`markdown`, `text`, `participant-session`, `internal-meeting`, and the alias
+`transcript`. Anything else returns
+`{"status": "error", "message": "Unknown source type <value>. Use code, markdown, text, participant-session, internal-meeting, or transcript."}` —
+the same envelope the tool layer returns.
 
 Ingest envelopes (`file`, `text`, `directory`) match the shared tool
 envelope exactly. They add the declared additive event-store wrapper

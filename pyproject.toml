@@ -996,6 +996,12 @@ corpus-kb = "corpus_kb.cli:app"
 # skipped, never fatal.
 [project.entry-points."corpus_kb.ingestion_strategies"]
 
+# Third-party source-type plugin group (master-db W3). Intentionally EMPTY
+# here: the built-in source types register directly in code
+# (corpus_kb.ingestion.source_types). A downstream package declares its
+# source types under this group; a broken plugin is logged and skipped.
+[project.entry-points."corpus_kb.source_types"]
+
 [tool.commitizen]
 # Customized Conventional Commits driver. The `cz_customize` plugin reads
 # the schema pattern and change type map from the `[tool.commitizen.customize]`

@@ -10,9 +10,9 @@ the socket JSON-RPC ``ingest_file``/``ingest_text`` ALL go through them.
 ``source_type`` means ONE thing on every surface:
   - file ingest: an optional INGESTION-STRATEGY override (validated against
     ``ingestion.registry``); unknown names return an error envelope.
-  - text ingest: the DOCUMENT source type, whitelisted to
-    {code, markdown, text, transcript} with the same error message
-    everywhere (``Invalid source_type: <value>``).
+  - text ingest: the DOCUMENT source type, gated by the typed
+    ``ingestion.source_types`` registry with the same error message
+    everywhere (``Unknown source type <value>``).
 The detected document type is recorded by the pipeline in the envelope and
 copied into the event-store Document aggregate, so the audit ledger stays
 coherent.
@@ -345,7 +345,10 @@ async def test_socket_ingest_text_whitelist_matches_tool_message(
     )
     assert response["result"] == {
         "status": "error",
-        "message": f"Invalid source_type: {source_type}",
+        "message": (
+            f"Unknown source type {source_type!r}. "
+            "Use code, markdown, text, participant-session, internal-meeting, or transcript."
+        ),
     }
 
 
@@ -362,7 +365,10 @@ def test_http_ingest_text_whitelist_matches_tool_message(
     assert response.status_code == 200
     assert response.json() == {
         "status": "error",
-        "message": f"Invalid source_type: {source_type}",
+        "message": (
+            f"Unknown source type {source_type!r}. "
+            "Use code, markdown, text, participant-session, internal-meeting, or transcript."
+        ),
     }
 
 

@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 __all__ = ["_run_document_stages"]
 
 
+def _declared_visibility(config: dict[str, Any]) -> str | None:
+    """The caller-declared visibility for typed external-site ingests."""
+    value = ((config or {}).get("document") or {}).get("visibility")
+    return value if value in {"public", "internal"} else None
+
+
 def _book_title(config: dict[str, Any]) -> str | None:
     """The per-book title from the config's ``ingestion`` block, or None.
 
@@ -172,6 +178,9 @@ async def _run_document_stages(
     title = _book_title(config)
     if title is not None:
         doc.document.metadata["title"] = title
+    declared = _declared_visibility(config)
+    if declared is not None:
+        doc.document.metadata["visibility"] = declared
 
     unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
     if unchanged_doc is not None:
