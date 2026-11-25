@@ -1,12 +1,11 @@
 """The four latency-path drivers behind bench_latency.py (master-db W2).
 
-One driver per spec section 9 path: ``cold_start_samples`` (P1 boot to
-bind plus the first search answer), ``ingest_samples`` (P2 per-document
-ingest, degraded embed, plus the claim short-circuit proof),
-``matrix_sample`` (P3 one screen over 10k synthetic vectors), and
-``route_samples`` (P4 route p50 over a fixed phrase list, phrase-only
-mode). Every returned number is a measurement; Ollama down is the
-designed degraded path. Nothing here fabricates a sample.
+One driver per spec section 9 path: P1 ``cold_start_samples`` (boot to
+bind plus the first search answer), P2 ``ingest_samples`` (per-document
+ingest plus the claim short-circuit proof), P3 ``matrix_sample`` (one
+screen over 10k synthetic vectors), and P4 ``route_samples`` (route p50
+over a fixed phrase list). Every number is a measurement; Ollama down is
+the designed degraded path. Nothing here fabricates a sample.
 """
 
 from __future__ import annotations
@@ -63,21 +62,16 @@ def console_script() -> str:
     return found
 
 
-def _ports_answer(start: int, count: int) -> bool:
-    """True when any port in the range already accepts connections."""
-    for port in range(start, start + count):
-        with socket.socket() as sock:
-            sock.settimeout(0.2)
-            if sock.connect_ex(("127.0.0.1", port)) == 0:
-                return True
-    return False
-
-
 def _pick_base_port(start: int, count: int) -> int:
     """The first base port whose whole range refuses connections."""
     base = max(1024, start)
     for _ in range(20):
-        if not _ports_answer(base, count):
+        busy = False
+        for port in range(base, base + count):
+            with socket.socket() as sock:
+                sock.settimeout(0.2)
+                busy = busy or sock.connect_ex(("127.0.0.1", port)) == 0
+        if not busy:
             return base
         base += count + 10
     raise RuntimeError("No free port range for the cold-start bench.")
@@ -130,18 +124,24 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
                 "CORPUS_KB_DATABASE_URL": dsn,
                 "CORPUS_KB_DATABASE_BACKEND": "duckdb",
                 "CORPUS_KB_GRAPH_BACKEND": "duckdb",
+                "CORPUS_KB_HOST": "127.0.0.1",  # CI may otherwise bind ::1 only
                 "CORPUS_KB_UI_OPEN": "0",  # never open a browser tab
             }
+            log = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")
             proc = subprocess.Popen(
                 [exe, "start", "--transport", "http", "--port", str(port)],
-                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env, stdout=log, stderr=subprocess.STDOUT,
             )
             try:
                 ready = await _poll_boot(port, False, READY_DEADLINE_S)
                 first_query = await _poll_boot(port, True, QUERY_DEADLINE_S)
+            except TimeoutError as exc:
+                log.seek(0)
+                raise TimeoutError(f"{exc} Boot log tail: {log.read()[-2000:]}") from None
             finally:
                 _terminate_tree(proc)
-                time.sleep(1.0)  # Windows releases the store file locks after the kill
+                log.close()
+                time.sleep(1.0)
         samples.append((ready, first_query))
     return samples
 
