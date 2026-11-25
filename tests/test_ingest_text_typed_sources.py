@@ -6,13 +6,18 @@ from __future__ import annotations
 def test_ingest_text_rejects_unknown_type_with_registry_message():
     import asyncio
 
+    import pytest
+
+    from corpus_kb.errors import SourceTypeUnknownError
     from corpus_kb.tools.ingest_common import ingest_text
 
-    result = asyncio.run(ingest_text("body", pg_pool=None, source_type="nonsense"))
-    assert result["status"] == "error"
-    assert result["message"].startswith("Unknown source type")  # the owned refusal message
-    assert "nonsense" in result["message"]
-    assert len(result["message"].split(". ")[0].split()) <= 20  # STE100 shape
+    # W4-3: the refusal raises the typed taxonomy error.
+    with pytest.raises(SourceTypeUnknownError) as excinfo:
+        asyncio.run(ingest_text("body", pg_pool=None, source_type="nonsense"))
+    message = str(excinfo.value)
+    assert message.startswith("Unknown source type")  # the owned refusal message
+    assert "nonsense" in message
+    assert len(message.split(". ")[0].split()) <= 20  # STE100 shape
 
 
 def test_ingest_text_accepts_registry_names_and_aliases():

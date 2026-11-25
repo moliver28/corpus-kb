@@ -629,11 +629,17 @@ async def test_ingest_text_accepts_transcript_source_type(
 
 
 async def test_ingest_text_rejects_unknown_source_type() -> None:
+    from corpus_kb.errors import SourceTypeUnknownError
     from corpus_kb.tools import ingest_common
 
-    result = await ingest_common.ingest_text("x", None, source_type="bogus")
-    assert result["status"] == "error"
-    assert "Unknown source type 'bogus'" in result["message"]
+    # W4-3: the refusal is the typed taxonomy error (status 400, -32006, 1).
+    with pytest.raises(SourceTypeUnknownError) as excinfo:
+        await ingest_common.ingest_text("x", None, source_type="bogus")
+    assert "Unknown source type 'bogus'" in str(excinfo.value)
+    assert excinfo.value.error_type == "source_type_unknown"
+    assert excinfo.value.http_status == 400
+    assert excinfo.value.socket_code == -32006
+    assert excinfo.value.cli_exit == 1
 
 
 # ---------------------------------------------------------------------------
