@@ -591,6 +591,19 @@
       }),
     }),
     'corpus_kb.tools.project_tools': dict({
+      'project_claim': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'slug': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'project_claim_list': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'slug': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'project_drop': dict({
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'slug': 'POSITIONAL_OR_KEYWORD',

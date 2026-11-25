@@ -2,15 +2,11 @@
 
 Every research/coding surface gets one row: its CLI subcommand path, its MCP
 tool name, the HTTP route where one exists, a one-line description. The
-harness command pack (``scripts/gen_harness_pack.py``) is GENERATED from the
-WRAPPERS below — never hand-written (r7.2 single-source sync); editing a
-generated wrapper without a registry change fails ``--check``.
+harness command pack is GENERATED from the WRAPPERS this module re-exports
+(r7.2 single-source sync; a hand edit fails ``--check``).
 
-STRICTLY STDLIB-ONLY: zero ``corpus_kb`` or third-party imports (r9 — the
-agent-config-consistency CI job installs NO dependencies, so any import here
-is a ModuleNotFoundError the local bar cannot catch). Consumers load this
-file by path (``importlib.util.spec_from_file_location``), not as a package
-member.
+STRICTLY STDLIB-ONLY: zero ``corpus_kb`` or third-party imports (r9);
+loaders read this file by path, not as a package member.
 """
 
 from __future__ import annotations
@@ -19,17 +15,14 @@ import importlib.util
 from pathlib import Path as _Path
 from typing import NamedTuple
 
-# --------------------------------------------------------------------------
-# Surfaces: one row per research/coding command pair (CLI + MCP)
-# --------------------------------------------------------------------------
+# -- Surfaces: one row per research/coding command pair (CLI + MCP) -------
 
 
 class Surface(NamedTuple):
     """One research/coding surface (CLI subcommand + MCP tool).
 
-    NamedTuple (not dataclass) so any file-path loader works WITHOUT
-    registering the module in ``sys.modules`` first — dataclass annotation
-    resolution requires the module to be importable by name.
+    NamedTuple (not dataclass): path loaders work without ``sys.modules``
+    registration, which dataclass annotation resolution would need.
     """
 
     name: str
@@ -37,9 +30,8 @@ class Surface(NamedTuple):
     mcp_tool: str
     description: str
     http_route: str | None = None  # set for every surface outside the parity allowlist
-    # The transports this operation declares, as a per-op surface set. The
-    # default is full parity (cli+mcp+http); an HTTP-by-nature operation
-    # declares the smaller set and stays exempt from the others (ruling 4a).
+    # Transports the op declares; default full parity (ruling 4a exempts
+    # HTTP-by-nature ops from the rest).
     surfaces: tuple[str, ...] = ("cli", "mcp", "http")
 
 
@@ -551,9 +543,22 @@ SURFACES: tuple[Surface, ...] = (
         description="Drop one project raw table and its registry row.",
         http_route="/api/project/drop",
     ),
+    Surface(
+        name="project-claim",
+        cli_path="project-claim",
+        mcp_tool="project_claim",
+        description="Claim one stored document into the named project.",
+        http_route="/api/project/claim",
+    ),
+    Surface(
+        name="project-claim-list",
+        cli_path="project-claim-list",
+        mcp_tool="project_claim_list",
+        description="List the claims for a doc or project slug.",
+        http_route="/api/project/claim-list",
+    ),
     # -- UI manifest self-upgrade reads (issue #182): the Review and Ask
-    #    screens resolve these ids through getOp; the names follow the
-    #    manifest ids the shipped screens already reference. --------------
+    #    screens resolve these ids through getOp. ------------------------
     Surface(
         name="documents-list",
         cli_path="list-documents",
@@ -707,8 +712,7 @@ WRAPPERS = _wrappers_mod.WRAPPERS
 
 ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planned)
 
-# Description MUST byte-match the existing mcp-configs/*.json entries
-# (check_agent_configs compares descriptions across editors).
+# Description MUST byte-match the mcp-configs/*.json entries (check_agent_configs).
 SERVER_NAME = "corpus-kb"
 SERVER_DESCRIPTION = (
     "Local knowledge base for files, transcripts, and code. "
@@ -721,14 +725,8 @@ SERVER_ARGS: tuple[str, ...] = ("--transport", "stdio")
 # auto-approvable only when it performs NO store write and NO ingest
 # write under ANY declared parameter. ``AUTO_APPROVE_WRITE_TOOLS`` names
 # the write side; the derived list is every MCP tool minus those rows,
-# sorted. The lockstep test (``tests/test_auto_approve_lockstep.py``)
-# recomputes the universe from the catalogue plus this registry and
-# fails when a new op is not classified into exactly one of the two
-# sets. Two judgment calls the rule allows: ``coding_export`` and
-# ``research_report`` write a file the caller names — no store row, no
-# ingest — so they ride. The legacy master-tool names (``sql_query``,
-# ``retrieve_context``, and friends) are no longer live MCP tools, so
-# no host list carries them.
+# sorted. The lockstep test recomputes the universe from the catalogue
+# plus this registry and fails when a new op lands in neither set.
 AUTO_APPROVE_WRITE_TOOLS: frozenset[str] = frozenset(
     {
         # ingest writes: documents, chunks, vectors, entities, relations
@@ -760,6 +758,7 @@ AUTO_APPROVE_WRITE_TOOLS: frozenset[str] = frozenset(
         "analysis_embed_meta",
         "project_provision",
         "project_drop",
+        "project_claim",
         "queue_enqueue",
         "queue_cancel",
         "codebook_promote",
@@ -821,6 +820,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "notebook_overlap",
     "notebook_uncoded",
     "outliers_rank",
+    "project_claim_list",
     "project_list",
     "projects_list",
     "query",

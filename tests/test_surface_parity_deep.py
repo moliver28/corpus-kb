@@ -3,26 +3,18 @@
 The catalogue in ``corpus_kb.contracts`` is THE source of truth: this test
 and ``corpus-kb operations`` iterate the SAME rows, so they cannot diverge.
 For each catalogue operation the SAME arguments go through the legs the
-catalogue declares:
+catalogue declares: (a) ``shared`` — the ONE function every surface routes
+through (the tool layer); (b) ``http`` — the Starlette route via TestClient
+(stubbed pool); (c) ``socket`` — the JSON-RPC request-processing entry
+point; (d) ``mcp`` — the registry-generated MCP server via the SDK's
+in-memory transport, no stdio subprocess.
 
-  (a) ``shared``  — the ONE shared function every surface must route
-      through (the tool layer; for handler-paired socket/HTTP ops it pins
-      the shared envelope construction);
-  (b) ``http``    — the Starlette route via TestClient (stubbed pool);
-  (c) ``socket``  — the JSON-RPC request-processing entry point;
-  (d) ``mcp``     — the registry-generated MCP server (Wave 4A) called
-      through the SDK's in-memory transport, no stdio subprocess.
-
-Per operation the gate asserts:
-
-  1. SUCCESS envelope key-sets are equal across legs, minus the additive
-     keys the catalogue declares for that surface (``http_extra`` /
-     ``socket_extra``). An undeclared extra key on ONE surface fails with
-     a printed diff. The MCP surface declares NO extras: the tool
-     functions ARE the envelope, so its key-set must equal the shared
-     leg's exactly.
-  2. The catalogue's ``envelope_keys`` are all present on the shared leg,
-     so the documented contract holds on the real envelopes.
+Per operation the gate asserts: (1) SUCCESS envelope key-sets are equal
+across legs, minus the additive keys the catalogue declares for that
+surface — an undeclared extra key on ONE surface fails with a printed
+diff, and the MCP surface declares NO extras because the tool functions
+ARE the envelope; and (2) the catalogue's ``envelope_keys`` are all
+present on the shared leg.
 
 Sync rules (program standard 2, registry-first): a catalogue row without
 legs (or legs without a row) fails ``test_catalogue_and_legs_agree``, and
@@ -34,10 +26,6 @@ catalogue row declares a REDUCED surface set (the multipart upload is
 HTTP-only by nature — ruling 4a). The gates read each row's declared
 surface kinds, so a missing non-declared leg is DECLARED-EXEMPT, never a
 silent skip: the row itself carries the declaration.
-
-Fully offline: the DB layer is stubbed at the same seams
-tests/test_ingest_integrity.py and tests/test_search_honesty.py use; the
-release/research handlers are stubbed at the handler seam.
 """
 
 from __future__ import annotations
@@ -86,6 +74,7 @@ from _parity_legs import (
     ENTITY_A,
     ENTITY_B,
     LEGS,
+    PROJECT_ID,
     TEXT_BODY,
     _shared_demo_load,
 )
@@ -180,6 +169,12 @@ class _LockConn:
     async def _fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
         if "ingest_queue" in sql:
             return dict(_QUEUE_ROW)
+        if "research_projects" in sql:
+            return {"project_id": PROJECT_ID}
+        if "origin_project_id" in sql:
+            return {"origin_project_id": None}
+        if "project_claims" in sql:
+            return {"project_id": PROJECT_ID}
         # The stored alpha/beta a rebuild pooled — beliefs_timeline and
         # beliefs_predict return the real success envelope against it.
         return {"alpha": 3.0, "beta": 1.0, "evidence_count": 4, "era_count": 1}
@@ -240,6 +235,9 @@ class _StubStore:
 
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         return self.unchanged
+
+    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+        return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
         return "doc-1", "run-1"

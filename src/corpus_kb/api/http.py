@@ -143,6 +143,8 @@ from corpus_kb.api.routes_meta import (
 )
 from corpus_kb.api.routes_meta_embed import analysis_embed_meta_route
 from corpus_kb.api.routes_project import (
+    project_claim_list_route,
+    project_claim_route,
     project_drop_route,
     project_list_route,
     project_provision_route,
@@ -239,20 +241,18 @@ def create_http_app() -> FastAPI:
         Route("/api/conflicts/scan", conflicts_scan_route, methods=["POST"]),
         Route("/api/conflicts/list", conflicts_list_route, methods=["POST"]),
         Route("/api/conflicts/resolve", conflicts_resolve_route, methods=["POST"]),
-        # Living Corpus W4: the belief ops.
         Route("/api/beliefs/current", beliefs_current_route, methods=["POST"]),
         Route("/api/beliefs/timeline", beliefs_timeline_route, methods=["POST"]),
         Route("/api/beliefs/predict", beliefs_predict_route, methods=["POST"]),
-        # Living Corpus W5: the tune op.
         Route("/api/extraction-tune", extraction_tune_route, methods=["POST"]),
-        # Textbook-ingestion program (Wave 1): the ingest queue ops.
         Route("/api/queue/enqueue", queue_enqueue_route, methods=["POST"]),
         Route("/api/queue/status", queue_status_route, methods=["POST"]),
         Route("/api/queue/cancel", queue_cancel_route, methods=["POST"]),
-        # Track C: the per-project raw-table ops.
         Route("/api/project/provision", project_provision_route, methods=["POST"]),
         Route("/api/project/list", project_list_route, methods=["POST"]),
         Route("/api/project/drop", project_drop_route, methods=["POST"]),
+        Route("/api/project/claim", project_claim_route, methods=["POST"]),
+        Route("/api/project/claim-list", project_claim_list_route, methods=["POST"]),
         Route("/api/beliefs/compare", beliefs_compare_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),

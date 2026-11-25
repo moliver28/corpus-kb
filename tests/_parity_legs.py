@@ -1,11 +1,9 @@
 """Shared parity legs for the deep surface-parity gate (test helper).
 
-Holds the ONE shared function per catalogue operation, the leg
-invocation specs, and the LEGS table. Moved verbatim from
-tests/test_surface_parity_deep.py (W4-1) so that gate file stays
-under its ceiling. This module is a test helper, NOT a collected test
-module: the name has no test_ prefix, so pytest never collects it.
-test_surface_parity_deep.py imports the names above.
+The ONE shared function per catalogue operation, the leg specs, and the
+LEGS table (moved from tests/test_surface_parity_deep.py, W4-1). A test
+helper, NOT a collected module: no test_ prefix. The gate file imports
+the names it needs.
 """
 
 from __future__ import annotations
@@ -142,8 +140,8 @@ _TRANSCRIPT = {
 }
 _ASK = {"status": "answer", "sentences": ["parity sentence."], "evidence": [], "llm_calls": 1}
 
-# Canned envelopes for the promoted research ops (full surface parity wave):
-# the key sets the shared tool layer really returns.
+# Canned envelopes for the promoted research ops: the key sets the
+# shared tool layer really returns.
 _INGEST_PATH = {
     "status": "success",
     "files_found": 1,
@@ -196,8 +194,7 @@ _REQUIRED_REPORT_KEYS = (
     "run_manifest",
     "codebook_diff",
 )
-# The schema-pinned artifact: the real SCHEMA_VERSION or validate_required
-# reports the report itself missing.
+# The schema-pinned artifact: the real SCHEMA_VERSION or a missing report.
 _REPORT = {"schema_version": "1.0", **{key: {} for key in _REQUIRED_REPORT_KEYS}}
 _REVIEWED = {
     "status": "success",
@@ -231,9 +228,8 @@ _CYCLE = {
     "resume_hint": "",
 }
 
-# Canned coding envelopes (issue #350): the key sets the CodingHandler
-# methods really return; the class methods are patched to these so all
-# four surfaces (routes' singleton included) answer one envelope.
+# Canned coding envelopes (issue #350): patched onto the CodingHandler
+# methods so all four surfaces answer one envelope.
 _EMBED_CODEBOOK = {"status": "success", "codes_embedded": 2, "codebook_version_id": CV}
 _POOL = {
     "status": "success",
@@ -285,9 +281,7 @@ _SATURATION = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Shared-leg implementations (the ONE function each surface must route via)
-# ---------------------------------------------------------------------------
+# -- Shared-leg implementations (the ONE function each surface routes via) --
 
 
 async def _shared_ingest_text(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -324,9 +318,8 @@ class _FakeUploadSource:
 async def _shared_ingest_upload(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.ingest_upload_tools import ingest_upload
 
-    # The route passes NO config: the ambient config is the upload path's
-    # real contract (the multipart form carries no config block), so the
-    # shared leg makes the same call and both legs answer one envelope.
+    # The upload path carries no config block: the ambient config is the
+    # real contract, so the shared leg makes the same call.
     source = _FakeUploadSource("parity.txt", "text/plain", TEXT_BODY.encode())
     return await ingest_upload(source, ctx["pool"])
 
@@ -364,9 +357,8 @@ async def _shared_ingest_reingest(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_demo_load(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.demo_kb import load_demo_kb
 
-    # The route passes NO config: the ambient config is the demo path's
-    # real contract (POST /api/demo/load carries no config block), so the
-    # shared leg makes the same call and all legs answer one receipt.
+    # The demo path carries no config block: the ambient config is the
+    # real contract, so the shared leg makes the same call.
     return await load_demo_kb(None, ctx["pool"])
 
 
@@ -378,8 +370,8 @@ async def _shared_topics_list(ctx: dict[str, Any]) -> dict[str, Any]:
     return await topics_tools_module.topics_list(ctx["pool"], config=ctx["config"], limit=50)
 
 
-# -- Analysis program Wave 0 (stub handlers: the disabled envelope is the
-#    shared contract every surface answers, exactly like the topics ops) --
+# -- Analysis program Wave 0 (stub handlers; disabled envelope is the
+#    shared contract, exactly like the topics ops) --
 
 
 async def _shared_topics_trends(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -400,8 +392,7 @@ async def _shared_labeling_lfs(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_labeling_triage(ctx: dict[str, Any]) -> dict[str, Any]:
     # cv_folds=2: the canned world holds 4 labeled units in 2 classes, so
-    # the leg exercises the REAL triage run (numpy logistic, fixed seed),
-    # not just the guard envelope.
+    # the leg exercises the REAL triage run, not just the guard envelope.
     return await labeling_triage_tools_module.labeling_triage(
         ctx["pool"], config=ctx["config"], cv_folds=2
     )
@@ -431,8 +422,8 @@ async def _shared_analyze_run(ctx: dict[str, Any]) -> dict[str, Any]:
     return await analysis_tools_module.analyze_run(ctx["pool"], config=ctx["config"])
 
 
-# -- AMR program wave 2 (real handlers; the stubbed world answers on each
-#    op's honest guard path, or through the module's own test seams) ------
+# -- AMR program wave 2 (real handlers; stubbed world answers on each
+#    op's honest guard path or the module's own test seams) --
 
 
 async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -446,11 +437,9 @@ async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# The route leg stacks four authored phrases of method 29, so the phrase
-# path (CI, embedder unavailable) scores 4/6 and resolves the intent;
-# the embedding path (Ollama up) resolves on the centroid cosine. Both
-# modes answer the same guaranteed key set, so the leg is stable in
-# every environment.
+# The route leg stacks four authored phrases of method 29 (phrase path
+# scores 4/6, embedding path resolves on the cosine); both modes answer
+# the same guaranteed key set, so the leg is stable everywhere.
 _ROUTE_QUESTION = (
     "Find duplicate or paraphrased records before analysis. "
     "Which records say nearly the same thing? "
@@ -491,10 +480,8 @@ _SEED_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 async def _seed_one_conflict(ctx: dict[str, Any]) -> str:
-    """Seed doc + chunk + two statements + one flag; return the flag id.
-
-    Idempotent on the deterministic hashes: re-runs reuse the rows.
-    """
+    """Seed doc + chunk + two statements + one flag; return the flag id
+    (idempotent on the deterministic hashes: re-runs reuse the rows)."""
     pool = ctx["pool"]
     async with pool.acquire() as conn:
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", _SEED_TENANT)
@@ -575,9 +562,8 @@ async def _shared_conflicts_resolve(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# -- Textbook program W1: the queue ops. The stub pool answers the canned
-#    _QUEUE_ROW for every ingest_queue statement, so enqueue rides the
-#    dedup path and cancel rides the success path on every surface.
+# -- Textbook program W1: the queue ops. The stub pool answers the
+#    canned _QUEUE_ROW for every ingest_queue statement.
 
 
 async def _shared_queue_enqueue(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -596,9 +582,8 @@ async def _shared_queue_cancel(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# -- Track C: the per-project raw-table ops. The stub pool answers the
-#    "already provisioned" shape for provision (fetchval 0 is not None),
-#    an empty registry for list, and a registered table for drop.
+# -- Track C: the per-project raw-table ops (the stub pool answers
+#    provision's already-provisioned shape, empty list, one drop row).
 
 
 async def _shared_project_provision(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -611,6 +596,14 @@ async def _shared_project_list(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_project_drop(ctx: dict[str, Any]) -> dict[str, Any]:
     return await project_tools_module.project_drop(ctx["pool"], slug="parity-notes")
+
+
+async def _shared_project_claim(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_claim(ctx["pool"], doc_id=DOC_ID, slug=_PROJECT_SLUG)
+
+
+async def _shared_project_claim_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_claim_list(ctx["pool"])
 
 
 _SEED_BELIEF = {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
@@ -708,16 +701,15 @@ async def _shared_beliefs_compare(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _shared_extraction_tune(ctx: dict[str, Any]) -> dict[str, Any]:
-    # dry_run: the parity world has no filesystem contract; the envelope
-    # shape (and the canned mine row) are what the legs pin.
+    # dry_run: no filesystem contract in the parity world; the envelope
+    # shape and the canned mine row are what the legs pin.
     return await extraction_tune_tools_module.extraction_tune(
         ctx["pool"], config=ctx["config"], dry_run=True
     )
 
 
 async def _shared_analysis_embed_meta(ctx: dict[str, Any]) -> dict[str, Any]:
-    # document kind only: the profile kind would call the real embedder
-    # (env-dependent); the canned conn answers the mapping reads empty.
+    # document kind only: the profile kind calls the real embedder.
     return await meta_embed_tools_module.analysis_embed_meta(
         ctx["pool"], config=ctx["config"], kinds="document"
     )
@@ -744,8 +736,8 @@ async def _shared_duplicates_screen(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _shared_outliers_rank(ctx: dict[str, Any]) -> dict[str, Any]:
-    # k stays at or below the canned corpus minus two: the canned world is
-    # tiny, and the k-th-nearest scan must never meet the self marker.
+    # k stays at or below the canned corpus minus two: the k-th-nearest
+    # scan must never meet the self marker.
     return await vector_screen_tools_module.outliers_rank(ctx["pool"], config=ctx["config"], k=2)
 
 
@@ -916,7 +908,7 @@ async def _shared_notebook_ask(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# -- Promoted research ops: the shared tool layer is the ONE function ------
+# -- Promoted research ops: the shared tool layer is the ONE function --
 
 
 async def _shared_research_ingest(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -969,9 +961,8 @@ async def _shared_research_demo(ctx: dict[str, Any]) -> dict[str, Any]:
     return await research_demo()
 
 
-# -- Issue #350: the chunk-coding ops + the event-store health read. The
-#    tool layer builds CodingHandler over the caller's pool, so the canned
-#    class methods answer every surface identically.
+# -- Issue #350: the chunk-coding ops + the event-store health read (the
+#    canned CodingHandler methods answer every surface identically).
 
 
 async def _shared_coding_embed_codebook(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1054,7 +1045,7 @@ class _Leg:
     shared: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
     http: Callable[[dict[str, Any]], dict[str, Any]]
     socket: Callable[[dict[str, Any]], tuple[str, dict[str, Any]]] | None = None
-    # The MCP tool arguments (ops with an MCP surface only; the catalogue
+    # MCP tool arguments (ops with an MCP surface; the catalogue
     # registers those tools under the operation's own name).
     mcp: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
@@ -1117,9 +1108,8 @@ LEGS: dict[str, _Leg] = {
         _sock("ingest_url", {"url": "https://parity.example.com"}),
         _mcp({"url": "https://parity.example.com"}),
     ),
-    # Multipart upload (ruling 4a): the catalogue row declares HTTP only,
-    # so the leg pair is shared + http alone — the missing cli/socket/mcp
-    # legs are DECLARED-EXEMPT, not skips (see test_catalogue_and_legs_agree).
+    # Multipart upload (ruling 4a): HTTP only, so the leg pair is
+    # shared + http alone; the missing legs are DECLARED-EXEMPT, not skips.
     "ingest_upload": _Leg(
         _shared_ingest_upload,
         _post_multipart("/api/ingest/upload", "parity.txt", TEXT_BODY),
@@ -1179,8 +1169,7 @@ LEGS: dict[str, _Leg] = {
         _sock("labeling_lfs", {"limit": 50}),
         _mcp({"limit": 50}),
     ),
-    # Label-quality pair (U39 triage + F6 gold check) over the canned
-    # labeling world; the gold file rides the ctx like the ingest file.
+    # Label-quality pair (U39 triage + F6 gold check, canned world).
     "labeling_triage": _Leg(
         _shared_labeling_triage,
         _post("/api/labeling/triage", {"cv_folds": 2}),
@@ -1316,8 +1305,8 @@ LEGS: dict[str, _Leg] = {
             "resolved_by": "parity-leg",
         },
     ),
-    # -- Living Corpus W4: the belief ops. The timeline/predict/compare
-    #    legs seed one like->dislike arc and rebuild before reading.
+    # -- Living Corpus W4: the belief ops (timeline/predict/compare legs
+    #    seed one like->dislike arc and rebuild before reading).
     "beliefs_current": _Leg(
         _shared_beliefs_current,
         _post("/api/beliefs/current", {}),
@@ -1332,9 +1321,8 @@ LEGS: dict[str, _Leg] = {
         _sock("extraction_tune", {"dry_run": True}),
         _mcp({"dry_run": True}),
     ),
-    # -- Textbook program W1: the queue ops. The enqueue leg points at the
-    #    tmp file; the stub pool answers the canned pending row, so
-    #    enqueue dedupes and cancel succeeds on every surface.
+    # -- Textbook program W1: the queue ops. The enqueue leg points at
+    #    the tmp file; the stub pool answers the canned pending row.
     "queue_enqueue": _Leg(
         _shared_queue_enqueue,
         lambda ctx: {
@@ -1375,6 +1363,18 @@ LEGS: dict[str, _Leg] = {
         _post("/api/project/drop", {"slug": _PROJECT_SLUG}),
         _sock("project_drop", {"slug": _PROJECT_SLUG}),
         _mcp({"slug": _PROJECT_SLUG}),
+    ),
+    "project_claim": _Leg(
+        _shared_project_claim,
+        _post("/api/project/claim", {"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
+        _sock("project_claim", {"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
+        _mcp({"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
+    ),
+    "project_claim_list": _Leg(
+        _shared_project_claim_list,
+        _post("/api/project/claim-list", {"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
+        _sock("project_claim_list", {"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
+        _mcp({"doc_id": DOC_ID, "slug": _PROJECT_SLUG}),
     ),
     # -- Living Corpus W6: the meta-embed build (document kind only; the
     #    profile kind would call the real embedder — env-dependent).
@@ -1785,10 +1785,8 @@ LEGS: dict[str, _Leg] = {
         _sock("research_demo", {}),
         mcp=_mcp({}),
     ),
-    # Lifecycle UI op (momus F8 close-out): the demo load row. The
-    # registry row declares cli+mcp+http, so the leg pair is shared +
-    # http + mcp — no socket surface exists, and that absence is the
-    # row's declaration, not a skip.
+    # Lifecycle UI op (momus F8 close-out): cli+mcp+http only; the
+    # absent socket surface is the row's declaration, not a skip.
     "demo_load": _Leg(
         _shared_demo_load,
         _post("/api/demo/load", {}),
@@ -1856,9 +1854,7 @@ async def _shared_release_status(ctx: dict[str, Any]) -> dict[str, Any]:
     return await release_tools_module.release_status(ctx["pool"], CV)
 
 
-# ---------------------------------------------------------------------------
-# Offline stubs (pool / pipeline store / eventsourcing app / handlers)
-# ---------------------------------------------------------------------------
+# -- Offline stubs (pool / pipeline store / eventsourcing app / handlers) --
 
 #: The canned ingest_queue row every queue statement returns on the stub
 #: pool: the SELECT column set of queue/store.py, one pending row.

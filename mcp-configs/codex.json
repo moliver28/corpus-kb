@@ -54,6 +54,7 @@
         "notebook_overlap",
         "notebook_uncoded",
         "outliers_rank",
+        "project_claim_list",
         "project_list",
         "projects_list",
         "query",
