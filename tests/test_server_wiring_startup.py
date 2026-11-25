@@ -426,3 +426,39 @@ async def test_query_stack_and_projections_share_one_embedder(
     assert isinstance(projections, ProjectionWiring)
     assert recorded["embedder"] == handlers.embedder
     assert made[0][0] is cfg
+
+
+def test_coerce_server_port_rejects_non_numeric():
+    from corpus_kb.server_port import coerce_server_port
+
+    with pytest.raises(ConfigError) as caught:
+        coerce_server_port({"port": "abc"})
+    assert "server.port" in str(caught.value)
+
+
+def test_coerce_server_port_range_and_defaults():
+    from corpus_kb.server_port import coerce_server_port
+
+    with pytest.raises(ConfigError):
+        coerce_server_port({"port": 0})
+    with pytest.raises(ConfigError):
+        coerce_server_port({"port": 70000})
+    assert coerce_server_port({}) == 8010
+    assert coerce_server_port({"port": 8010}) == 8010
+
+
+@pytest.mark.asyncio
+async def test_run_all_refuses_bad_port_before_binding():
+    import corpus_kb.server_wiring as sw
+
+    services = {
+        "http_app": object(),
+        "socket_server": object(),
+        "embed_projection": object(),
+        "docs_projection": object(),
+        "event_reader": object(),
+        "pool": None,
+        "config": {"server": {"port": "abc"}},
+    }
+    with pytest.raises(ConfigError):
+        await sw.run_all(services)  # must raise ConfigError, not ValueError

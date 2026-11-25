@@ -394,6 +394,8 @@ async def run_all(services: dict[str, Any]) -> None:
     """
     import uvicorn
 
+    from corpus_kb.server_port import coerce_server_port
+
     http_app = services["http_app"]
     socket_server = services["socket_server"]
     embed_projection = services["embed_projection"]
@@ -403,7 +405,7 @@ async def run_all(services: dict[str, Any]) -> None:
 
     server_cfg = config.get("server", {})
     host = server_cfg.get("host", "localhost")
-    port = int(server_cfg.get("port", 8010))
+    port = coerce_server_port(server_cfg)
 
     # Start socket server
     await socket_server.start()
@@ -418,9 +420,7 @@ async def run_all(services: dict[str, Any]) -> None:
     docs_projection_task = asyncio.create_task(docs_projection.run(default_tenant, event_reader))
 
     # Browser auto-open (UX program Wave 3): fires ONLY when the [ui]
-    # extra actually mounted and CORPUS_KB_UI_OPEN is not "0".
-    # Lazy import beside the SPA mount: the auto-open guard lives with the
-    # UI surface it depends on (corpus_kb.ui.browser_open).
+    # extra mounted and CORPUS_KB_UI_OPEN is not "0" (lazy import, beside the SPA mount).
     from corpus_kb.ui.browser_open import schedule_browser_open
 
     browser_task = schedule_browser_open(services, str(host), port)
