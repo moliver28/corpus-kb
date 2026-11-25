@@ -44,6 +44,9 @@ DATA_TYPES: frozenset[str] = frozenset(
         # textbook starter profile. The strategy gates on page count and
         # falls back to the default plan for short files.
         "textbook",
+        # Typed source labels (master-db W3): the shipped typed profiles.
+        "internal_meeting",
+        "external_site",
     }
 )
 # Mirrors tools.pipeline.validate.MODES (kept literal so profiles never

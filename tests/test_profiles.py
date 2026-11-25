@@ -444,3 +444,17 @@ def test_calibrate_more_than_eight_candidates_rejected(profiles_dir: Path) -> No
             profiles_dir,
             f"calibrate:\n  candidates: [{many}]\n  sample: s\n  golden: g\n",
         )
+
+
+def test_typed_source_profiles_load() -> None:
+    """The two typed source profiles load with their default strategies."""
+    base = Path(__file__).resolve().parent.parent / "profiles"
+    config: dict[str, object] = {"profiles": {"dir": str(base)}}
+    meeting = load_profile(config, "internal-meeting")
+    assert meeting is not None
+    assert meeting.name == "internal-meeting"
+    assert meeting.default_strategy == "markdown_sections"
+    site = load_profile(config, "external-site")
+    assert site is not None
+    assert site.name == "external-site"
+    assert site.default_strategy == "web_structure"
