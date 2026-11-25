@@ -67,16 +67,16 @@ def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     return mount_notebooks(http_app, settings.directory)
 
 
-async def initialize_postgres_pool(
-    connection_string: str,
-) -> asyncpg.Pool:
+async def initialize_postgres_pool(connection_string: str) -> asyncpg.Pool:
     """Create and return an asyncpg connection pool."""
+    from corpus_kb.storage import connect as _connect
+
     try:
         pool = await asyncpg.create_pool(
             connection_string,
-            min_size=5,
-            max_size=20,
-            command_timeout=60.0,
+            min_size=_connect.POOL_MIN_SIZE,
+            max_size=_connect.POOL_MAX_SIZE,
+            command_timeout=_connect.POOL_COMMAND_TIMEOUT_S,
         )
     except Exception as exc:
         raise DatabaseUnavailableError(
