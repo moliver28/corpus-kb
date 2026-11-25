@@ -103,6 +103,16 @@ def _setup_tracing(cfg: dict[str, Any]) -> None:
         logger.warning("Tracing not enabled: %s. Remedy: %s", exc, remedy)
 
 
+async def _await_cancelled(*tasks: asyncio.Task[object]) -> None:
+    """Await cancelled tasks; one bad task never aborts the rest of shutdown."""
+    for task in tasks:
+        try:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        except Exception as exc:
+            logger.warning("Projection stopped with an error: %s", exc)
+
+
 async def _wire_query_stack(
     cfg: dict[str, Any], pool: asyncpg.Pool | DuckDbGateway
 ) -> tuple[OllamaEmbedder | PgmlEmbedder, QueryHandler, CommandHandler]:
@@ -388,10 +398,7 @@ async def startup(
 
 
 async def run_all(services: dict[str, Any]) -> None:
-    """Run HTTP + socket servers concurrently. MCP runs separately via FastMCP.
-
-    Projections run as background tasks within the same event loop.
-    """
+    """Run the servers until stopped; projections and HTTP share one loop."""
     import uvicorn
 
     from corpus_kb.server_port import coerce_server_port
@@ -407,12 +414,9 @@ async def run_all(services: dict[str, Any]) -> None:
     host = server_cfg.get("host", "localhost")
     port = coerce_server_port(server_cfg)
 
-    # Start socket server
     await socket_server.start()
 
-    # Start projection background tasks (ALL registered projections run — the
-    # pre-spike wiring started only embed_projection, leaving DocumentsProjection
-    # constructed but never running).
+    # ALL registered projections run (the pre-spike wiring started only embed_projection).
     from uuid import UUID
 
     default_tenant = UUID(DEFAULT_TENANT_ID)
@@ -425,15 +429,12 @@ async def run_all(services: dict[str, Any]) -> None:
 
     browser_task = schedule_browser_open(services, str(host), port)
 
-    # Queue autorun (textbook program Wave 3): ONE background drain task
-    # when queue.autorun is true; the default false starts nothing. The
-    # worker runs on the pool or the gateway (issue #330 queue twins); a
-    # typed refusal logs one line while the server continues.
+    # Queue autorun (textbook program Wave 3): ONE background drain task when
+    # queue.autorun is true; a typed refusal logs one line and the server continues.
     from corpus_kb.queue.autorun import start_queue_autorun
 
     queue_autorun = start_queue_autorun(services["pool"] or services.get("gateway"), config)
 
-    # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
         http_app,
         host=host,
@@ -455,9 +456,7 @@ async def run_all(services: dict[str, Any]) -> None:
         await socket_server.stop()
         projection_task.cancel()
         docs_projection_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await projection_task
-            await docs_projection_task
+        await _await_cancelled(projection_task, docs_projection_task)
         logger.info("All servers stopped")
 
 

@@ -462,3 +462,72 @@ async def test_run_all_refuses_bad_port_before_binding():
     }
     with pytest.raises(ConfigError):
         await sw.run_all(services)  # must raise ConfigError, not ValueError
+
+
+@pytest.mark.asyncio
+async def test_run_all_survives_dirty_projection_cancel(monkeypatch, caplog):
+    import asyncio
+    import sys
+    import types
+
+    import corpus_kb.server_wiring as sw
+
+    stub_uvicorn = types.ModuleType("uvicorn")
+
+    class StubConfig:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class StubServer:
+        def __init__(self, config):
+            pass
+
+        async def serve(self):
+            # One loop tick, like the real serve(): the projection tasks
+            # reach their await before shutdown cancels them.
+            await asyncio.sleep(0)
+
+    stub_uvicorn.Config = StubConfig
+    stub_uvicorn.Server = StubServer
+    monkeypatch.setitem(sys.modules, "uvicorn", stub_uvicorn)
+    monkeypatch.setattr("corpus_kb.ui.browser_open.schedule_browser_open", lambda *a, **k: None)
+    monkeypatch.setattr("corpus_kb.queue.autorun.start_queue_autorun", lambda *a, **k: None)
+
+    class StubSocket:
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    class DirtyProjection:
+        async def run(self, tenant, reader):
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                raise RuntimeError("projection crashed while cancelling") from None
+
+    class CleanProjection:
+        def __init__(self):
+            self.cancel_observed = False
+
+        async def run(self, tenant, reader):
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                self.cancel_observed = True
+                raise
+
+    clean = CleanProjection()
+    services = {
+        "http_app": object(),
+        "socket_server": StubSocket(),
+        "embed_projection": DirtyProjection(),
+        "docs_projection": clean,
+        "event_reader": object(),
+        "pool": None,
+        "config": {"server": {"port": 8010}},
+    }
+    await sw.run_all(services)  # before the fix this raises RuntimeError
+    assert clean.cancel_observed
+    assert "Projection stopped with an error" in caplog.text
