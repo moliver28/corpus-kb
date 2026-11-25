@@ -29,6 +29,7 @@ from typing import Any
 
 import asyncpg
 
+from ...ingestion.source_types import VISIBILITY_VALUES
 from ...storage.gateway import SqlGateway
 from ...storage.rag_backend import RagBackend
 from ._facade import _ic
@@ -45,7 +46,7 @@ __all__ = ["_run_document_stages"]
 def _declared_visibility(config: dict[str, Any]) -> str | None:
     """The caller-declared visibility for typed external-site ingests."""
     value = ((config or {}).get("document") or {}).get("visibility")
-    return value if value in {"public", "internal"} else None
+    return value if value in VISIBILITY_VALUES else None
 
 
 def _book_title(config: dict[str, Any]) -> str | None:
@@ -83,6 +84,7 @@ def _ledger_stages(
     validation_report: dict[str, Any] | None,
     validation_mode: str,
     calibration_summary: dict[str, Any] | None,
+    declared_visibility: str | None = None,
 ) -> dict[str, Any]:
     """The ledger stages JSONB: stage counts plus additive payloads.
 
@@ -90,7 +92,10 @@ def _ledger_stages(
     calibrate mode: the validation report rides the ledger stages JSONB
     (the Wave 7 calibration feed) without blocking and without touching
     the envelope. Wave 7: the calibration sweep summary rides it the same
-    way; a refused sweep writes nothing (its reason went to the log).
+    way; a refused sweep writes nothing (its reason went to the log). The
+    declared visibility rides it too (only when declared): the DuckDB
+    unchanged probe reads it from there, because the DuckDB documents row
+    cannot refresh its metadata stamp.
     """
     stages: dict[str, Any] = {
         "chunks": artifacts.pg_chunk_count,
@@ -101,6 +106,8 @@ def _ledger_stages(
         "extractor_id": artifacts.extractor_id,
         "errors": errors,
     }
+    if declared_visibility is not None:
+        stages["visibility"] = declared_visibility
     if artifacts.hierarchy_settings.enabled:
         stages["shadow_chunk_count"] = artifacts.shadow_chunk_count
         stages["shadow_vector_count"] = artifacts.shadow_vector_count
@@ -182,7 +189,7 @@ async def _run_document_stages(
     if declared is not None:
         doc.document.metadata["visibility"] = declared
 
-    unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
+    unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash, declared)
     if unchanged_doc is not None:
         return _skipped_envelope(doc, unchanged_doc)
 
@@ -203,7 +210,12 @@ async def _run_document_stages(
         await _commit_document(ingest_sink, doc, errors)
 
         stages = _ledger_stages(
-            artifacts, errors, validation_report, validation_mode, calibration_summary
+            artifacts,
+            errors,
+            validation_report,
+            validation_mode,
+            calibration_summary,
+            declared_visibility=declared,
         )
 
         # Close the ledger LAST — completed only when no stage recorded an

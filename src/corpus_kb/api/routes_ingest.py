@@ -145,6 +145,7 @@ async def ingest_url_route(request: Request) -> JSONResponse:
         crawl=opt_bool(body.get("crawl"), False),
         source_type=body.get("source_type"),
         validate=opt_str(body.get("validate")),
+        visibility=body.get("visibility"),
     )
     return JSONResponse(result)
 

@@ -443,7 +443,9 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
             self._pool = pool
             self._tenant_id = tenant_id
 
-        async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
+        async def unchanged_doc_id(
+            self, path: str, file_hash: str, declared_visibility: str | None = None
+        ) -> None:
             return None
 
         async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:

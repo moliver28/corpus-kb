@@ -37,7 +37,9 @@ class IngestSink(Protocol):
     @property
     def gateway(self) -> SqlGateway: ...
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None: ...
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None: ...
 
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]: ...
 
@@ -100,9 +102,11 @@ class ChunkSink:
         """The wrapped store's SQL gateway."""
         return self._store.gateway
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         """Delegates to the store's dedupe probe."""
-        return await self._store.unchanged_doc_id(source, file_hash)
+        return await self._store.unchanged_doc_id(source, file_hash, declared_visibility)
 
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
         """Delegates to the store's ledger open."""

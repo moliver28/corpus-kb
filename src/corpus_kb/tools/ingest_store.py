@@ -154,15 +154,14 @@ class PostgresIngestStore:
         """The underlying SQL gateway (statement writes reuse it)."""
         return self._gateway
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         """Return the doc_id when this exact content was already ingested cleanly.
 
-        Two conditions must hold together: a documents row for this source
-        whose file_hash still matches (the file is unchanged), AND a completed
-        ``ingest_runs`` row for that hash whose stages recorded no errors (the
-        last ingest of it stored everything). A running, failed, or
-        errored-stages past run does NOT count as unchanged — re-ingest heals
-        it instead of silently skipping.
+        Three conditions hold together: the file_hash matches, a completed run
+        for that hash recorded no errors, and a declared visibility equals the
+        stored stamp (None keeps legacy). A failed past run heals, never skips.
         """
         async with self._gateway.transaction(self._tenant_id) as tx:
             row = await tx.fetchrow(
@@ -170,6 +169,7 @@ class PostgresIngestStore:
                 self._tenant_id,
                 source,
                 file_hash,
+                declared_visibility,
             )
             return row["doc_id"] if row is not None else None
 

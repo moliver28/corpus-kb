@@ -278,6 +278,7 @@ async def _ingest_url_flow(
     source_type: str | None,
     json_output: bool,
     validate: ValidateMode | None,
+    visibility: str | None = None,
 ) -> int:
     from corpus_kb.tools.ingest_tools import ingest_url
 
@@ -285,10 +286,9 @@ async def _ingest_url_flow(
         _unknown_strategy_exit(source_type)
     cfg = _load_config()
     if max_pages is not None:
-        raw_web = cfg.get("web")
-        web_cfg = dict(raw_web) if isinstance(raw_web, dict) else {}
-        web_cfg["max_pages"] = max_pages
-        cfg = {**cfg, "web": web_cfg}
+        web = cfg.get("web")
+        base = web if isinstance(web, dict) else {}
+        cfg = {**cfg, "web": {**base, "max_pages": max_pages}}
     pool = await _open_pool(cfg)
     try:
         aggregate = await ingest_url(
@@ -298,6 +298,7 @@ async def _ingest_url_flow(
             TENANT_DEFAULT,
             crawl=crawl,
             source_type=source_type,
+            visibility=visibility,
             **validate_kwargs(validate),
         )
     finally:
@@ -332,12 +333,9 @@ def ingest_url_command(
     max_pages: int | None = typer.Option(
         None, "--max-pages", min=1, help="Cap pages fetched (overrides web.max_pages)"
     ),
-    source_type: str = typer.Option(
-        None,
-        "--source-type",
-        help="Ingestion strategy override (default: web_structure via detection)",
-    ),
+    source_type: str = typer.Option(None, "--source-type", help="Ingestion strategy override"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+    visibility: str = typer.Option(None, "--visibility", help="Stamp page visibility"),
     validate: ValidateMode | None = _VALIDATE_OPT,
 ) -> int:
     """Fetch a website and ingest its HTML pages (web_structure strategy).
@@ -346,7 +344,9 @@ def ingest_url_command(
     rejects an unknown --validate value with exit 2.
     """
     return _run_sync(
-        lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output, validate)
+        lambda: _ingest_url_flow(
+            url, crawl, max_pages, source_type, json_output, validate, visibility
+        )
     )
 
 

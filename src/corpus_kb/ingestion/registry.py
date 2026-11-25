@@ -4,7 +4,8 @@ Resolution precedence (plan Section 0, pinned):
   1. EXPLICIT override (CLI --source-type / MCP tool param — a strategy name)
   2. project config mapping ``ingestion.strategies[source_type]``
   3. content detection (each registered strategy's detect() on the head)
-  4. ``ingestion.default`` (a strategy name, default "default")
+  4. the typed source_types registry (the spec's declared strategy)
+  5. ``ingestion.default`` (a strategy name, default "default")
 
 Built-ins register directly in code (see :func:`_ensure_ready`); third-party
 strategies load ONCE via the ``corpus_kb.ingestion_strategies`` entry-point
@@ -134,7 +135,7 @@ class StrategyResolution:
     """
 
     strategy: IngestionStrategy
-    basis: str  # "explicit" | "profile" | "config" | "detection" | "default"
+    basis: str  # "explicit" | "profile" | "config" | "detection" | "registry" | "default"
     detection: DetectResult | None = None
     detected: str | None = None
     mapped_source_type: str | None = None
@@ -151,10 +152,10 @@ def resolve_strategy(
     """Resolve ONE strategy for one document (precedence pinned in Section 0).
 
     Precedence: explicit override > profile mapping > config mapping >
-    content detection > default (the profile's default wins over the
-    config's when a profile is active). ``profile`` is a
-    :class:`corpus_kb.profiles.IngestionProfile` (typed loosely so the
-    registry never imports the profiles package).
+    content detection > the source_types registry's declared strategy >
+    default (the profile's default wins over the config's when a profile
+    is active). ``profile`` is a :class:`corpus_kb.profiles.IngestionProfile`
+    (typed loosely so the registry never imports the profiles package).
 
     Raises :class:`UnknownStrategyError` for an unknown explicit override or
     an unknown config-mapped strategy name (loud, never a silent fallback —
@@ -183,6 +184,11 @@ def resolve_strategy(
         and detection.confidence >= DETECT_ADOPT_CONFIDENCE
     ):
         return StrategyResolution(detected_strategy, "detection", detection, detected_name)
+    declared_name = _declared_strategy_name(source_type)
+    if declared_name is not None:
+        return StrategyResolution(
+            get_strategy(declared_name), "registry", detection, detected_name, source_type
+        )
     return StrategyResolution(
         get_strategy(_default_strategy_name(config, profile)), "default", detection, detected_name
     )
@@ -239,6 +245,20 @@ def _config_strategy_name(source_type: str, config: dict[str, object]) -> str | 
             f"ingestion.strategies[{source_type!r}] must name a strategy, got {raw!r}"
         )
     return raw
+
+
+def _declared_strategy_name(source_type: str) -> str | None:
+    """The strategy a typed source declares, or None for untyped names.
+
+    The source_types registry fallback (precedence step 4): after the
+    config map and detection miss, a canonical name or alias resolves to
+    the strategy its spec declares (docs/INGESTION.md typed-source table).
+    Generic and unknown names return None, so they keep the default path.
+    """
+    from .source_types import resolve_source_type
+
+    spec = resolve_source_type(source_type)
+    return spec.strategy if spec is not None else None
 
 
 def _default_strategy_name(config: dict[str, object], profile: object | None = None) -> str:

@@ -32,7 +32,11 @@ from typing import Any, cast
 
 import asyncpg
 
-from corpus_kb.ingestion.source_types import canonical_source_type, is_accepted_ingest_text_type
+from corpus_kb.ingestion.source_types import (
+    canonical_source_type,
+    is_accepted_ingest_text_type,
+    unknown_type_message,
+)
 
 from ..config import load_config
 from ..errors import ConfigError
@@ -404,11 +408,7 @@ async def ingest_text(
     falls back to the profile value, then ``off``.
     """
     if not is_accepted_ingest_text_type(source_type):
-        return {
-            "status": "error",
-            "message": f"Unknown source type {source_type!r}. "
-            "Use code, markdown, text, participant-session, internal-meeting, or transcript.",
-        }
+        return {"status": "error", "message": unknown_type_message(source_type)}
     config = load_config_or_pass(config)
     return await run_pipeline(
         text,

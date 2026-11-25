@@ -149,7 +149,9 @@ class _RecordingStore:
         self.chunks_by_doc: dict[str, list[Chunk]] = {}
         self.finished: list[tuple[str, list[str]]] = []
 
-    async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
+    async def unchanged_doc_id(
+        self, path: str, file_hash: str, declared_visibility: str | None = None
+    ) -> None:
         del path, file_hash
         return None
 

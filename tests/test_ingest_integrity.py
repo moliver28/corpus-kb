@@ -245,7 +245,9 @@ class _StubStore:
         self.fail_args: tuple[str, str] | None = None
         _StubStore.last = self
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         self.calls.append("probe")
         return type(self).unchanged_doc
 
@@ -784,6 +786,47 @@ async def test_ledger_failed_run_never_enables_probe(integrity_pool) -> None:
     assert "EmbeddingError" in row["error"]
     # documents.file_hash MATCHES but the run failed: probe must not skip.
     assert await store.unchanged_doc_id(doc.path, file_hash) is None
+
+
+@pytest.mark.requires_postgres
+async def test_declared_visibility_folds_into_probe_and_upsert_merges_stamp(
+    integrity_pool,
+) -> None:
+    """A changed visibility declaration re-ingests; a match skips; the stamp lands.
+
+    The upsert metadata merge (latest declared keys win) refreshes the row
+    stamp, so the probe can compare the declaration against it.
+    """
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    store = PostgresIngestStore(integrity_pool, TENANT)
+    doc = _document("vis-probe")
+    file_hash = "d" * 64
+
+    doc.metadata["visibility"] = "public"
+    doc_id, run_id = await store.begin_run(doc, file_hash)
+    await store.finish_run(run_id, file_hash, {"chunks": 1, "errors": []}, [])
+
+    # Same hash, same declared visibility: skip.
+    assert await store.unchanged_doc_id(doc.path, file_hash, "public") == doc_id
+    # Same hash, changed declared visibility: no skip (the old probe hid this).
+    assert await store.unchanged_doc_id(doc.path, file_hash, "internal") is None
+    # No declaration: the legacy content-only skip stays intact.
+    assert await store.unchanged_doc_id(doc.path, file_hash) == doc_id
+
+    # Re-ingest under the new declaration: the upsert merges the new stamp.
+    doc.metadata["visibility"] = "internal"
+    _doc_id2, run_id2 = await store.begin_run(doc, file_hash)
+    await store.finish_run(run_id2, file_hash, {"chunks": 1, "errors": []}, [])
+    row = await _tenant_fetchrow(
+        integrity_pool,
+        "SELECT metadata->>'visibility' AS vis FROM documents WHERE doc_id = $1::uuid",
+        doc_id,
+    )
+    assert row["vis"] == "internal"
+    # The probe now matches the new stamp and refuses the old one.
+    assert await store.unchanged_doc_id(doc.path, file_hash, "internal") == doc_id
+    assert await store.unchanged_doc_id(doc.path, file_hash, "public") is None
 
 
 @pytest.mark.requires_postgres

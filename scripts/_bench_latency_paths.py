@@ -19,6 +19,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import httpx
@@ -31,20 +32,32 @@ from corpus_kb.tools.analysis_route_tools import analysis_route
 from corpus_kb.tools.ingest_common import ingest_text
 from corpus_kb.tools.vector_screen_tools import duplicates_screen
 
-__all__ = ["ROUTE_PHRASES", "cold_start_samples", "ingest_samples", "matrix_sample", "route_samples"]
+__all__ = [
+    "ROUTE_PHRASES",
+    "cold_start_samples",
+    "ingest_samples",
+    "matrix_sample",
+    "route_samples",
+]
 
 READY_DEADLINE_S = QUERY_DEADLINE_S = 120.0  # boot and first-search bounds
 POLL_INTERVAL_S = 0.05
 MATRIX_DOCS = 10_000
 MATRIX_DIMS = 2560
 MATRIX_SEED = 20261124
+MATRIX_RUNS = 3  # screens per seeded store; p50 = median of three
 
 ROUTE_PHRASES = (
-    "how do participants describe onboarding", "what blocks adoption",
-    "which users churn after week two", "summarize sentiment by segment",
-    "find conflicting statements", "cluster the open ends",
-    "which theme grew over time", "who mentioned pricing",
-    "what did the control group say", "rank the biggest pain points",
+    "how do participants describe onboarding",
+    "what blocks adoption",
+    "which users churn after week two",
+    "summarize sentiment by segment",
+    "find conflicting statements",
+    "cluster the open ends",
+    "which theme grew over time",
+    "who mentioned pricing",
+    "what did the control group say",
+    "rank the biggest pain points",
 )
 
 
@@ -66,8 +79,12 @@ def _pick_base_port(start: int, count: int) -> int:
 def _terminate_tree(proc: subprocess.Popen[Any]) -> None:
     """Kill the boot process and its children (the script shim spawns one)."""
     if os.name == "nt":
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
     else:
         proc.terminate()
     try:
@@ -80,7 +97,11 @@ def _terminate_tree(proc: subprocess.Popen[Any]) -> None:
 async def _poll_boot(port: int, query: bool, deadline_s: float) -> float:
     """Seconds until boot answers: the status route 200, or search 200 JSON."""
     started = time.perf_counter()
-    url = f"http://127.0.0.1:{port}/api/search" if query else f"http://127.0.0.1:{port}/api/ingest/status"
+    url = (
+        f"http://127.0.0.1:{port}/api/search"
+        if query
+        else f"http://127.0.0.1:{port}/api/ingest/status"
+    )
     async with httpx.AsyncClient(timeout=30.0 if query else 2.0) as client:
         while time.perf_counter() - started < deadline_s:
             try:
@@ -104,7 +125,9 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
         raise RuntimeError("The fts extension is required; see the setup output above.")
     exe = shutil.which("corpus-kb")
     if exe is None:
-        raise RuntimeError("The corpus-kb console script is not on PATH. Install the package first.")
+        raise RuntimeError(
+            "The corpus-kb console script is not on PATH. Install the package first."
+        )
     base_port = _pick_base_port(base_port, iterations)
     samples: list[tuple[float, float]] = []
     for offset in range(iterations):
@@ -124,7 +147,9 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
             log = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")
             proc = subprocess.Popen(
                 [exe, "start", "--transport", "http", "--port", str(port)],
-                env=env, stdout=log, stderr=subprocess.STDOUT,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
             )
             try:
                 ready = await _poll_boot(port, False, READY_DEADLINE_S)
@@ -180,7 +205,13 @@ async def ingest_samples(scratch_dsn: str, doc_count: int) -> list[float]:
 
 
 async def matrix_sample(scratch_dsn: str) -> float:
-    """P3: seed 10k synthetic vectors, time one ``duplicates_screen`` call."""
+    """P3: seed 10k synthetic vectors, time ``duplicates_screen`` three times.
+
+    One screen is one sample; three samples give the p50 a denominator
+    (a single float can be a lucky or unlucky run). The screen is
+    read-only, so all three samples share one seeded store; the extra
+    CI cost is two screen runs, not two reseeds.
+    """
     tenant = str(uuid.uuid4())
     rng = np.random.default_rng(MATRIX_SEED)
     vectors = rng.standard_normal((MATRIX_DOCS, MATRIX_DIMS))
@@ -190,7 +221,10 @@ async def matrix_sample(scratch_dsn: str) -> float:
         await store.execute(
             "INSERT INTO documents (doc_id, tenant_id, source, source_type, chunk_count) "
             "VALUES (?, ?, ?, 'text', ?)",
-            doc_id, tenant, f"bench-matrix/{tenant}", MATRIX_DOCS,
+            doc_id,
+            tenant,
+            f"bench-matrix/{tenant}",
+            MATRIX_DOCS,
         )
         chunk_ids = [str(uuid.uuid4()) for _ in range(MATRIX_DOCS)]
         chunk_rows = [
@@ -203,20 +237,21 @@ async def matrix_sample(scratch_dsn: str) -> float:
             chunk_rows,
         )
         vector_rows = [
-            (chunk_ids[i], tenant, vector_literal(vectors[i].tolist()))
-            for i in range(MATRIX_DOCS)
+            (chunk_ids[i], tenant, vector_literal(vectors[i].tolist())) for i in range(MATRIX_DOCS)
         ]
         await store.executemany(
             "INSERT INTO chunks_vectors (chunk_id, tenant_id, embedding) "
             "VALUES (?, ?, CAST(? AS FLOAT[2560]))",
             vector_rows,
         )
-        started = time.perf_counter()
-        envelope = await duplicates_screen(store, tenant_id=tenant)
-        elapsed = time.perf_counter() - started
-        if str(envelope.get("status")) != "success":
-            raise AssertionError(f"duplicates_screen returned {envelope.get('status')}")
-        return elapsed
+        samples: list[float] = []
+        for _ in range(MATRIX_RUNS):
+            started = time.perf_counter()
+            envelope = await duplicates_screen(store, tenant_id=tenant)
+            samples.append(time.perf_counter() - started)
+            if str(envelope.get("status")) != "success":
+                raise AssertionError(f"duplicates_screen returned {envelope.get('status')}")
+        return median(samples)
     finally:
         await store.close()
 

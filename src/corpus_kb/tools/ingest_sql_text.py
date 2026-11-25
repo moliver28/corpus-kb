@@ -11,12 +11,17 @@ from __future__ import annotations
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 
+# The metadata merge follows the title COALESCE precedent: keys the new run
+# declares win, keys it does not declare persist. Without the merge a
+# declared visibility would never land on a re-ingest (the conflict branch
+# kept the first insert's JSON).
 DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
         chunk_count, file_size, file_hash, metadata, document_date, title)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT (tenant_id, source) DO UPDATE
     SET chunk_count = $5, file_size = $6, file_hash = $7,
+        metadata = COALESCE(documents.metadata, '{}'::jsonb) || EXCLUDED.metadata,
         document_date = COALESCE(EXCLUDED.document_date, documents.document_date),
         title = COALESCE(EXCLUDED.title, documents.title),
         updated_at = NOW()
@@ -96,9 +101,13 @@ PG_VECTOR_TYPEMOD_SQL = (
     "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'embedding'"
 )
 
+# The $4 clause folds the declared visibility into the probe against the
+# document row's stamp; the DOCUMENT_UPSERT_SQL metadata merge keeps that
+# stamp on the latest declared value. NULL keeps the legacy behavior.
 _UNCHANGED_TAIL_PG = """
     FROM documents d
     WHERE d.tenant_id = $1 AND d.source = $2 AND d.file_hash = $3
+      AND ($4::text IS NULL OR d.metadata->>'visibility' = $4::text)
       AND EXISTS (
           SELECT 1 FROM ingest_runs r
           WHERE r.tenant_id = d.tenant_id
@@ -110,7 +119,13 @@ _UNCHANGED_TAIL_PG = """
 
 # DuckDB: the documents row is immutable once referenced, so "this content
 # is current" means the NEWEST run for this source started with this hash
-# and completed clean (migration 030 adds ingest_runs.source).
+# and completed clean (migration 030 adds ingest_runs.source). The $4
+# clause folds the declared visibility into the probe THROUGH THE LEDGER
+# (the pipeline records the run's declared visibility in stages): a changed
+# declaration re-ingests (the old skip would hide it), a match still skips,
+# and NULL keeps the legacy content-only behavior. The document row's own
+# metadata cannot refresh here (the row is immutable), so the ledger is
+# this backend's freshness record.
 UNCHANGED_DOC_DUCKDB_SQL = """
     SELECT d.doc_id::text AS doc_id
     FROM documents d
@@ -122,6 +137,7 @@ UNCHANGED_DOC_DUCKDB_SQL = """
             AND r.start_hash = $3
             AND r.status = 'completed'
             AND (r.stages->'errors') = '[]'::JSON
+            AND ($4 IS NULL OR (r.stages->>'visibility') IS NOT DISTINCT FROM $4)
             AND NOT EXISTS (
                 SELECT 1 FROM ingest_runs newer
                 WHERE newer.tenant_id = r.tenant_id

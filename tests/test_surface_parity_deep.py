@@ -416,9 +416,9 @@ async def _shared_delete_document(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _shared_ingest_url(ctx: dict[str, Any]) -> dict[str, Any]:
-    from corpus_kb.tools.ingest_url_tools import ingest_url
-
-    return await ingest_url("https://parity.example.com", ctx["pool"], config=ctx["config"])
+    return await ingest_url_tools_module.ingest_url(
+        "https://parity.example.com", ctx["pool"], config=ctx["config"], visibility="internal"
+    )
 
 
 async def _shared_ingest_status(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1185,9 +1185,9 @@ LEGS: dict[str, _Leg] = {
     ),
     "ingest_url": _Leg(
         _shared_ingest_url,
-        _post("/api/ingest/url", {"url": "https://parity.example.com"}),
-        _sock("ingest_url", {"url": "https://parity.example.com"}),
-        _mcp({"url": "https://parity.example.com"}),
+        _post("/api/ingest/url", {"url": "https://parity.example.com", "visibility": "internal"}),
+        _sock("ingest_url", {"url": "https://parity.example.com", "visibility": "internal"}),
+        _mcp({"url": "https://parity.example.com", "visibility": "internal"}),
     ),
     # Multipart upload (ruling 4a): the catalogue row declares HTTP only,
     # so the leg pair is shared + http alone — the missing cli/socket/mcp
@@ -2051,7 +2051,7 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         self.unchanged: str | None = None
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(self, *args: object) -> str | None:
         return self.unchanged
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:

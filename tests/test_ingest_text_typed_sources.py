@@ -15,6 +15,38 @@ def test_ingest_text_rejects_unknown_type_with_registry_message():
     assert len(result["message"].split(". ")[0].split()) <= 20  # STE100 shape
 
 
+def test_refusal_message_advertises_resolvable_names():
+    """Every advertised name is accepted and resolves its declared strategy."""
+    import asyncio
+
+    from corpus_kb.ingestion.registry import resolve_strategy
+    from corpus_kb.ingestion.source_types import (
+        TEXT_INGEST_NAMES,
+        is_accepted_ingest_text_type,
+        unknown_type_message,
+    )
+
+    assert len(TEXT_INGEST_NAMES) == 6
+    prose = "Plain prose, no headings and no speaker turns."
+    declared = {
+        "participant-session": "transcript",
+        "internal-meeting": "markdown_sections",
+        "transcript": "transcript",
+    }
+    for name in TEXT_INGEST_NAMES:
+        assert is_accepted_ingest_text_type(name), name
+        if name in declared:
+            resolution = resolve_strategy(name, "x.txt", prose, {})
+            assert resolution.basis == "registry", name
+            assert resolution.strategy.name == declared[name], name
+
+    # The refusal message is the owned helper's output (one source of truth).
+    from corpus_kb.tools.ingest_common import ingest_text
+
+    result = asyncio.run(ingest_text("body", pg_pool=None, source_type="nonsense"))
+    assert result["message"] == unknown_type_message("nonsense")
+
+
 def test_ingest_text_accepts_registry_names_and_aliases():
     import asyncio
 
