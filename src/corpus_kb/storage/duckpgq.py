@@ -1,5 +1,3 @@
-# allow: SIZE_OK — one responsibility (the DuckPGQ traversal branch); most
-# lines are declarative SQL text plus the one-shot install/load helper.
 """DuckPGQ traversal branch for the DuckDB graph store (opt-in).
 
 Active when ``graph.duckdb_graph_backend: duckpgq`` (and the database

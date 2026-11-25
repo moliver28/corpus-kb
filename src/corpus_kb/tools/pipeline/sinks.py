@@ -41,6 +41,10 @@ class IngestSink(Protocol):
         self, source: str, file_hash: str, declared_visibility: str | None = None
     ) -> str | None: ...
 
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None: ...
+
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]: ...
 
     async def finish_run(
@@ -107,6 +111,12 @@ class ChunkSink:
     ) -> str | None:
         """Delegates to the store's dedupe probe."""
         return await self._store.unchanged_doc_id(source, file_hash, declared_visibility)
+
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        """Delegates to the store's hash-first dedupe probe."""
+        return await self._store.unchanged_hash_doc_id(file_hash, declared_visibility)
 
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
         """Delegates to the store's ledger open."""

@@ -1,10 +1,4 @@
-"""The analysis method register: 33 NLP methods as validated data.
-
-The register YAML (``analysis.method_register_path``, default
-``config/analysis_methods.yaml``) is the single source of truth.
-Import ``rank_methods`` from ``method_register_rubric``; routing,
-progression, dataflow, and table checks live in their own modules.
-"""
+"""The analysis method register: 33 NLP methods as validated data."""
 
 from __future__ import annotations
 

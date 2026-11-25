@@ -254,6 +254,8 @@ async def test_relation_reingest_twice_is_idempotent(pg_pool) -> None:
     relation ids, so orphan rows from run one must be gone or the insert
     hits ``relations_pkey`` and the run lands as ``partial``.
     """
+    from uuid import uuid4
+
     from corpus_kb.tools.ingest_common import ingest_text
 
     source = "test-relation-reingest-twice"
@@ -267,7 +269,11 @@ async def test_relation_reingest_twice_is_idempotent(pg_pool) -> None:
             "prompt_version": "test-prompt-v1",
         },
     }
-    text = "ServiceA depends on ServiceB for auth."
+    # Unique content per run: the W4 hash-first probe answers ANY clean
+    # row carrying this hash, and the shared corpus_kb_test holds
+    # same-sentence rows from other sources. The delete between the runs
+    # removes the only row, so run two really executes (issue #360).
+    text = "ServiceA depends on ServiceB for auth. [" + str(uuid4()) + "]"
     await _purge_relation_residue(pg_pool, source)
     first = await ingest_text(
         text=text, pg_pool=pg_pool, source_type="text", config=config, source=source

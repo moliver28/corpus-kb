@@ -94,13 +94,17 @@ def resolve_predicates(
         semantic_query = parsed.semantic_query
         dynamic_predicates = list(parsed.predicates)
     if query.source_type:
+        from corpus_kb.ingestion.source_types import canonical_source_type
         from corpus_kb.rag.self_query import Predicate
 
         dynamic_predicates.append(
             Predicate(
                 target="documents.source_type",
                 op="=",
-                value=query.source_type,
+                # RVW4-02: legacy alias names (web) resolve to the W3
+                # canonical stamp (external-site), so canonical filters
+                # match canonical rows; unknown names pass through.
+                value=canonical_source_type(query.source_type) or query.source_type,
             )
         )
     return semantic_query, dynamic_predicates

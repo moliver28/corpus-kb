@@ -136,22 +136,3 @@ def is_accepted_ingest_text_type(name: str) -> bool:
         return True
     spec = resolve_source_type(name)
     return spec.text_ingest if spec is not None else False
-
-
-# The names the ingest-text refusal message advertises, in message order.
-# Every name must pass the acceptance gate and resolve a strategy (the
-# registry fallback); tests bind this tuple to that promise.
-TEXT_INGEST_NAMES: tuple[str, ...] = (
-    "code",
-    "markdown",
-    "text",
-    "participant-session",
-    "internal-meeting",
-    "transcript",
-)
-
-
-def unknown_type_message(name: str) -> str:
-    """The ingest-text refusal text: the unknown name plus the accepted list."""
-    names = ", ".join((*TEXT_INGEST_NAMES[:-1], f"or {TEXT_INGEST_NAMES[-1]}"))
-    return f"Unknown source type {name!r}. Use {names}."

@@ -147,6 +147,37 @@ UNCHANGED_DOC_DUCKDB_SQL = """
       )
 """
 
+# Hash-first dedupe probe (W4, F-06): binds the ledger start_hash, not the
+# source path, so the same content under another path still matches. The
+# clean-run tail is copied VERBATIM from the path probes above. DuckDB
+# keeps the path probe's per-source ledger currency (documents.file_hash
+# is frozen at first insert there), so changed-then-re-offered content
+# heals. ORDER BY + LIMIT 1 keep the answer deterministic (rule 9). The $3
+# clause folds the declared visibility in exactly like the path probes:
+# the document stamp on Postgres, the ledger stages record on DuckDB.
+HASH_DOC_PG_SQL = (
+    "SELECT d.doc_id::text AS doc_id FROM documents d"
+    " WHERE d.tenant_id = $1 AND d.file_hash = $2"
+    " AND ($3::text IS NULL OR d.metadata->>'visibility' = $3::text)"
+    " AND EXISTS (SELECT 1 FROM ingest_runs r WHERE r.tenant_id = d.tenant_id"
+    " AND r.start_hash = d.file_hash AND r.status = 'completed'"
+    " AND r.stages->'errors' = '[]'::jsonb)"
+    " ORDER BY d.doc_id LIMIT 1"
+)
+HASH_DOC_DUCKDB_SQL = (
+    "SELECT d.doc_id::text AS doc_id FROM documents d"
+    " WHERE d.tenant_id = $1"
+    " AND EXISTS (SELECT 1 FROM ingest_runs r WHERE r.tenant_id = d.tenant_id"
+    " AND r.source = d.source AND r.start_hash = $2 AND r.status = 'completed'"
+    " AND (r.stages->'errors') = '[]'::JSON"
+    " AND ($3 IS NULL OR (r.stages->>'visibility') IS NOT DISTINCT FROM $3)"
+    " AND NOT EXISTS (SELECT 1 FROM ingest_runs newer"
+    " WHERE newer.tenant_id = r.tenant_id AND newer.source = r.source"
+    " AND (newer.started_at, newer.run_id) > (r.started_at, r.run_id)))"
+    " ORDER BY d.doc_id LIMIT 1"
+)
+
+
 _FINISH_TAIL = """
     UPDATE ingest_runs SET
         status = $2,

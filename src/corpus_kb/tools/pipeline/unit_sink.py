@@ -110,6 +110,14 @@ class UnitSink:
         doc_id = await ledger_doc_id(self._store, self._tenant_id, Path(source), file_hash)
         return None if doc_id is None else str(doc_id)
 
+    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+        """The research lane keeps path-bound probing, so this answers None.
+
+        The claim branch then rides the path-probe fallback and the
+        research-lane skip behavior stays exactly as before.
+        """
+        return None
+
     # -- IngestSink port legs with no research write -----------------------
 
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:

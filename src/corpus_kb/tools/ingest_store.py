@@ -1,30 +1,22 @@
 """Ingest write layer over the SqlGateway (storage portability WP).
 
 Every document/chunk/vector/entity/relation write and the ``ingest_runs``
-integrity ledger live here; ``ingest_common`` keeps only orchestration
-(partition -> chunk -> embed -> extract -> store) and calls into
-:class:`PostgresIngestStore`. One pipeline, two backends: the store takes
-an asyncpg pool (wrapped in :class:`~corpus_kb.storage.gateway.PostgresGateway`)
-or any ``SqlGateway`` (e.g. ``DuckDbGateway``); backend SQL deltas live in
-``ingest_sql.py`` and the Postgres SQL text stays byte-identical.
+integrity ledger live here; ``ingest_common`` keeps only orchestration and
+calls into :class:`PostgresIngestStore`. One pipeline, two backends: the
+store takes an asyncpg pool or any ``SqlGateway``; backend SQL deltas live
+in ``ingest_sql.py``, and the chunk/vector write bodies live in
+``ingest_store_chunks.py``.
 
-Ledger semantics (migration 022):
+Ledger semantics (migration 022): ``begin_run`` opens a ``status='running'``
+row with the content hash BEFORE any stage writes; ``finish_run`` closes it
+LAST — completed only when the stage error list is empty. The dedupe probe
+skips only content whose last run COMPLETED with no stage errors, so a
+crashed or partial ingest is re-ingested, never enshrined.
 
-* :meth:`PostgresIngestStore.begin_run` opens a ``status='running'`` row with
-  the content hash BEFORE any stage writes.
-* :meth:`PostgresIngestStore.finish_run` closes it LAST — completed only when
-  the stage error list is empty, failed with the error text otherwise.
-* :meth:`PostgresIngestStore.unchanged_doc_id` is the dedupe probe: it skips
-  only content whose last run COMPLETED with an empty error list, so a
-  crashed or partial ingest can never be enshrined as unchanged.
-
-Every method runs inside ``gateway.transaction(tenant_id)`` — on Postgres
-that is the held-connection scope with the tenant GUC (``set_config``
-is_local) issued FIRST, before any other statement: a LOCAL GUC issued on
-an asyncpg autocommit connection evaporates with its statement, which
-would leave every later write GUC-less and rejected on FORCE-RLS tables
-(migration 011+). On DuckDB the scope is BEGIN..COMMIT and tenancy rides
-on the explicit ``tenant_id`` predicate every statement already carries.
+Every method runs inside ``gateway.transaction(tenant_id)``: Postgres sets
+the tenant GUC first (a LOCAL GUC on an autocommit connection evaporates,
+which would leave later writes rejected on FORCE-RLS tables, migration
+011+); DuckDB rides BEGIN..COMMIT plus the explicit tenant predicate.
 """
 
 from __future__ import annotations
@@ -40,41 +32,32 @@ from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 from ..analysis.dates import parse_date_value
-from ..errors import ConfigError
 from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
 from . import ingest_batch
 from .ingest_batch import entity_persisted_metadata
-from .ingest_sql import (
-    duckdb_vector_width_probe,
-    ingest_sql_for,
-    pg_vector_type_mod_probe,
-    vector_width_config_error,
-    vector_write_params,
+from .ingest_sql import ingest_sql_for, pg_vector_type_mod_probe
+from .ingest_store_chunks import (
+    _CHUNK_TOMBSTONE_SQL,
+    store_chunks_duckdb,
+    vector_row,
+)
+from .ingest_store_chunks import (
+    store_vectors as _store_vector_rows,
 )
 
 logger = logging.getLogger(__name__)
 
-_CHUNK_TOMBSTONE_SQL = (
-    "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
-    "AND chunk_index >= $3 AND tombstoned_at IS NULL"
-)
-_CHUNK_DEGRADED_SQL = "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2"
 _CHUNK_COUNT_SQL = (
     "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2 AND tombstoned_at IS NULL"
 )
-
-# DuckDB: a chunks row referenced by ANY child row (vectors, relations,
-# topics, labels, predictions) cannot be rewritten (an UPDATE rewrites the
-# row), so a changed or tombstoned chunk's dependents go first. Every one of
-# these child rows is derived/replaceable per the migrations that add them.
-_DUCKDB_DEPENDENT_TABLES = (
-    "chunks_vectors",
-    "relations",
-    "chunk_topics",
-    "chunk_labels",
-    "chunk_predictions",
+_CLAIM_SQL = (
+    "INSERT INTO project_claims (tenant_id, project_id, doc_id, source_project_id)"
+    " VALUES ($1, $2, $3, $4)"
+    " ON CONFLICT (tenant_id, project_id, doc_id) DO NOTHING"
+    " RETURNING project_id"
 )
+_ORIGIN_SQL = "SELECT project_id::text FROM documents WHERE tenant_id = $1 AND doc_id = $2"
 
 
 def gateway_backend(gateway: SqlGateway) -> str:
@@ -98,12 +81,11 @@ async def assert_vector_column_width(
 ) -> None:
     """Fail fast when ``dimensions`` cannot enter ``chunks_vectors.embedding``.
 
-    The shipped Postgres schema fixes the column at ``halfvec(2560)`` (the
-    native width of the default qwen3-embedding:4b), so a model emitting any
-    other width CANNOT ingest. Probe the catalog once and raise a typed
-    ConfigError naming the schema reality and the two config keys, BEFORE
-    the per-chunk inserts fail mid-transaction. The probe is advisory: an
-    unreadable catalog or a missing table defers to the INSERT's own error.
+    The shipped Postgres schema fixes the column at halfvec(2560) (the
+    native width of the default qwen3-embedding:4b), so a model emitting
+    any other width CANNOT ingest. The probe raises a typed ConfigError
+    before the per-chunk inserts fail mid-transaction. It is advisory:
+    an unreadable catalog defers to the INSERT's own error.
     """
     await pg_vector_type_mod_probe(gw, dimensions, embedding_model)
 
@@ -173,6 +155,41 @@ class PostgresIngestStore:
             )
             return row["doc_id"] if row is not None else None
 
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        """The hash-first dedupe probe (F-06): same clean-run requirement as
+        ``unchanged_doc_id``, but the bind is the hash alone, so a match
+        answers across path spellings. A declared visibility folds in like
+        the path probe, so a changed stamp re-ingests here too.
+        """
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            row = await tx.fetchrow(
+                self._sql.unchanged_hash_sql,
+                self._tenant_id,
+                file_hash,
+                declared_visibility,
+            )
+            return row["doc_id"] if row is not None else None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        """Insert one project_claims row (W4); True only when it was new.
+
+        The dedup skip branch's write: membership rides the claims table.
+        """
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            row = await tx.fetchrow(
+                _CLAIM_SQL, self._tenant_id, project_id, doc_id, source_project_id
+            )
+            return row is not None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        """The origin project of a document (None when no project is set)."""
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            return await tx.fetchval(_ORIGIN_SQL, self._tenant_id, doc_id)
+
     async def count_chunks_for_document(self, doc_id: str) -> int:
         """The document's total live chunk count in the store.
 
@@ -188,14 +205,10 @@ class PostgresIngestStore:
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
         """Upsert the document row and open the 'running' ledger row, atomically.
 
-        Runs FIRST in the pipeline, before any chunk/vector/extraction work:
-        the ledger row is the promise that ``finish_run`` (or ``fail_run``)
-        will close it. Returns (doc_id, run_id).
-
-        Postgres upserts the document row (chunk_count/file_hash refresh).
-        DuckDB only INSERTS: the row is FK-referenced by child tables and
-        DuckDB cannot rewrite a referenced row, so the existing doc_id is
-        fetched and run freshness moves to the ledger (migration 030).
+        Runs FIRST in the pipeline, before any chunk/vector/extraction work.
+        Returns (doc_id, run_id). Postgres upserts the document row; DuckDB
+        only INSERTS (a referenced row cannot be rewritten), so the stored
+        doc_id is fetched and run freshness moves to the ledger (030).
         """
         async with self._gateway.transaction(self._tenant_id) as tx:
             row = await tx.fetchrow(
@@ -231,10 +244,8 @@ class PostgresIngestStore:
     async def update_document(self, document: Document, file_hash: str) -> None:
         """Refresh the document row at run end (Postgres only).
 
-        On DuckDB the documents row is immutable once child rows reference
-        it (the engine rewrites rows on UPDATE), so this is a no-op there:
-        run freshness lives in the ``ingest_runs`` ledger (migration 030)
-        and the dedupe probe reads it from there.
+        DuckDB rows are immutable once referenced, so this is a no-op there;
+        run freshness lives in the ``ingest_runs`` ledger (migration 030).
         """
         if self._sql.is_duckdb:
             logger.debug("update_document skipped: DuckDB documents rows are immutable")
@@ -261,7 +272,7 @@ class PostgresIngestStore:
         stages: dict[str, Any],
         errors: list[str],
     ) -> None:
-        """Close the ledger row LAST, after every store stage has settled.
+        """Close the ledger row LAST.
 
         Empty error list -> completed with finish_hash + the stages summary;
         any error -> failed with the joined error text and no finish_hash.
@@ -294,11 +305,8 @@ class PostgresIngestStore:
     async def set_run_project(self, run_id: str, project_id: str) -> None:
         """Attach a project to a ledger run (migration 036). Best effort: never raises.
 
-        Callers pass a run id the ingest chain handed out (``begin_run``); a
-        run row that never existed (the research path keeps no corpus ledger
-        row) simply matches zero rows. A missing column (migration not yet
-        applied) or an unreachable database is a warning, never an ingest
-        failure.
+        A run row that never existed matches zero rows; a missing column or
+        an unreachable database is a warning, never an ingest failure.
         """
         try:
             async with self._gateway.transaction(self._tenant_id) as tx:
@@ -316,8 +324,8 @@ class PostgresIngestStore:
     async def set_document_project(self, doc_id: str, project_id: str) -> None:
         """Attach a project to the document row (migration 016). Best effort: never raises.
 
-        Mirrors ``set_run_project``: a missing row, column, or database is
-        a warning, never an ingest failure.
+        Mirrors ``set_run_project``: a missing row or database is a warning,
+        never an ingest failure.
         """
         try:
             async with self._gateway.transaction(self._tenant_id) as tx:
@@ -333,21 +341,17 @@ class PostgresIngestStore:
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.
 
-        Postgres writes set-based (one statement per partition of work,
-        ``ingest_batch``); DuckDB keeps the per-row loop (single-writer
-        local engine, plus the pre-rewrite dependent deletes below).
-
-        DuckDB pre-pass: the engine's FK checks consult the last COMMITTED
-        state (same-transaction deletes are invisible to them), so the
-        derived dependents of every rewritten chunk are deleted AND
-        committed in their own scope BEFORE the rewrites land. All deleted
-        rows are derived/replaceable (vectors, relations, topics, labels,
-        predictions), and a changed chunk is re-embedded right after.
+        Postgres writes set-based (``ingest_batch``); DuckDB keeps the
+        per-row loop. DuckDB pre-pass: the engine's FK checks consult the
+        last COMMITTED state, so the derived dependents of every rewritten
+        chunk are deleted AND committed in their own scope BEFORE the
+        rewrites land; all deleted rows are derived/replaceable, and a
+        changed chunk is re-embedded right after.
         """
         if not chunks:
             return set()
         if self._sql.is_duckdb:
-            return await self._store_chunks_duckdb(chunks)
+            return await store_chunks_duckdb(self._gateway, self._tenant_id, chunks)
         return await self._store_chunks_pg(chunks)
 
     async def _store_chunks_pg(self, chunks: list[Chunk]) -> set[str]:
@@ -381,105 +385,6 @@ class PostgresIngestStore:
             await tx.execute(_CHUNK_TOMBSTONE_SQL, self._tenant_id, doc_id, len(chunks))
         return needs_embedding
 
-    async def _store_chunks_duckdb(self, chunks: list[Chunk]) -> set[str]:
-        """Per-row chunk write path (DuckDB): FK commit-visibility pre-pass."""
-        needs_embedding: set[str] = set()
-        doc_id = chunks[0].document_id
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                row = await tx.fetchrow(
-                    "SELECT chunk_id, chunk_hash FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                )
-                if row is not None and row["chunk_hash"] != chunk.chunk_hash:
-                    await self._delete_chunk_dependents(tx, "WHERE chunk_id = $1", row["chunk_id"])
-            await self._delete_chunk_dependents(
-                tx,
-                "WHERE tenant_id = $1 AND chunk_id IN (SELECT chunk_id FROM chunks "
-                "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index >= $3)",
-                self._tenant_id,
-                doc_id,
-                len(chunks),
-            )
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                existing = await tx.fetchrow(
-                    "SELECT chunk_id, chunk_hash FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                )
-                if existing is None:
-                    row = await tx.fetchrow(
-                        """
-                        INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
-                            text, source_type, entity_name, heading_path, file_path,
-                            start_line, end_line, metadata, chunk_hash, source_timestamp,
-                            context_blurb)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                        ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
-                        RETURNING chunk_id
-                        """,
-                        chunk.chunk_id,
-                        self._tenant_id,
-                        chunk.document_id,
-                        chunk_index,
-                        chunk.text,
-                        chunk.source_type,
-                        chunk.entity_name,
-                        json.dumps(chunk.heading_path) if chunk.heading_path else None,
-                        chunk.metadata.get("file_path") if chunk.metadata else None,
-                        chunk.start_line,
-                        chunk.end_line,
-                        json.dumps(chunk.metadata),
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                    )
-                    if row is not None:
-                        needs_embedding.add(str(row["chunk_id"]))
-                elif existing["chunk_hash"] != chunk.chunk_hash:
-                    await tx.execute(
-                        """
-                        UPDATE chunks SET text = $1, chunk_hash = $2, source_timestamp = $3,
-                            context_blurb = $4, metadata = $5, superseded_at = NULL,
-                            tombstoned_at = NULL
-                        WHERE chunk_id = $6
-                        """,
-                        chunk.text,
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                        json.dumps(chunk.metadata),
-                        existing["chunk_id"],
-                    )
-                    chunk.chunk_id = str(existing["chunk_id"])
-                    needs_embedding.add(str(existing["chunk_id"]))
-                else:
-                    # Hash unchanged, no-op. DuckDB: relations built later in
-                    # this run carry the in-memory chunk_id, so it is
-                    # re-pointed at the stored row (extractors key
-                    # relations on chunk.chunk_id).
-                    chunk.chunk_id = str(existing["chunk_id"])
-            await tx.execute(
-                _CHUNK_TOMBSTONE_SQL,
-                self._tenant_id,
-                chunks[0].document_id if chunks else None,
-                len(chunks),
-            )
-        return needs_embedding
-
-    async def _delete_chunk_dependents(self, tx: SqlGateway, where: str, *args: Any) -> None:
-        """Drop a chunk's derived child rows (DuckDB pre-rewrite step)."""
-        for table in _DUCKDB_DEPENDENT_TABLES:
-            await tx.execute(f"DELETE FROM {table} {where}", *args)
-
     async def store_vectors(
         self,
         chunks: list[Chunk],
@@ -487,94 +392,27 @@ class PostgresIngestStore:
         dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
-        """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str).
-
-        Re-embed OVERWRITES: ``vector_1024`` is replaced, never COALESCEd with
-        the stored slice, so a re-embed cannot leave a stale matryoshka slice
-        next to a fresh vector. Each write also states the row's ``degraded``
-        flag honestly (all-zero vectors are the embedder-failure marker) and
-        mirrors it onto the owning chunks row.
-
-        Width guard: the embedding column is probed ONCE up front (Postgres
-        catalog typmod, DuckDB ``PRAGMA table_info``) and any width error
-        inside the loop is re-raised as the same typed ConfigError — a
-        model/dimension mismatch is a config problem, not a write failure.
+        """Insert chunk vectors; the full contract lives on
+        ingest_store_chunks.store_vectors (overwrite + honest degraded flag).
         """
         if not chunks:
             return 0
-        active = [chunk for chunk in chunks if chunk.embedding is not None]
-        params, degraded_flags = [], []
-        for chunk in active:
-            row, degraded = self._vector_row(chunk, embedding_model, dimensions, vectors_1024 or {})
-            params.append(row)
-            degraded_flags.append(degraded)
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            await self._probe_vector_width(tx, dimensions, embedding_model)
-            try:
-                if active:
-                    await tx.executemany(self._sql.vector_insert_sql, params)
-                    if self._sql.is_duckdb:
-                        await tx.executemany(
-                            _CHUNK_DEGRADED_SQL,
-                            [
-                                (chunk.chunk_id, self._tenant_id, degraded)
-                                for chunk, degraded in zip(active, degraded_flags, strict=False)
-                            ],
-                        )
-                    else:
-                        await ingest_batch.mirror_degraded(
-                            tx, [chunk.chunk_id for chunk in active], degraded_flags
-                        )
-            except ConfigError:
-                raise
-            except Exception as exc:
-                raise vector_width_config_error(exc, embedding_model) from exc
-        return len(active)
-
-    async def _probe_vector_width(
-        self, tx: SqlGateway, dimensions: int, embedding_model: str
-    ) -> None:
-        if self._sql.is_duckdb:
-            await duckdb_vector_width_probe(tx, dimensions, embedding_model)
-        else:
-            await pg_vector_type_mod_probe(tx, dimensions, embedding_model)
-
-    def _vector_row(
-        self,
-        chunk: Chunk,
-        embedding_model: str,
-        dimensions: int,
-        vectors_1024: dict[str, list[float]],
-    ) -> tuple[tuple[object, ...], bool]:
-        """One chunk's vector bind row: (params, degraded flag)."""
-        v1024 = vectors_1024.get(str(chunk.chunk_id))
-        degraded = all(v == 0.0 for v in chunk.embedding) if chunk.embedding else True
-        assert chunk.embedding is not None
-        embedding_param, v1024_param = vector_write_params(chunk.embedding, v1024)
-        params = (
-            chunk.chunk_id,
-            self._tenant_id,
-            embedding_param,
-            v1024_param,
-            embedding_model,
-            dimensions,
-            degraded,
-        )
-        return params, degraded
+        v1024 = vectors_1024 or {}
+        rows = [
+            vector_row(self._tenant_id, chunk, embedding_model, dimensions, v1024)
+            for chunk in chunks
+            if chunk.embedding is not None
+        ]
+        return await _store_vector_rows(self._gateway, self._tenant_id, rows)
 
     async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
-        """Insert entities into the entities table.
+        """Insert entities; returns ``{extraction_id: canonical_id}``.
 
-        Returns ``{extraction_id: canonical_id}``: the (tenant_id, name,
-        entity_type) dedup keeps the FIRST stored row for a known entity,
-        so relations must point at the canonical id, never the extraction-
-        time one (an unknown extraction id violates the relations FK on the
-        next ingest of a document mentioning a known entity).
-
-        The entities table has no confidence/extractor_id columns
-        (migration 008 added them to relations only), so that provenance
-        is merged into the persisted metadata JSONB here instead of being
-        dropped at the write boundary.
+        The (tenant_id, name, entity_type) dedup keeps the FIRST stored row
+        for a known entity, so relations must point at the canonical id,
+        never the extraction-time one. Provenance (no confidence/extractor
+        columns on entities, migration 008) merges into the persisted
+        metadata JSONB at this boundary.
         """
         id_map: dict[str, str] = {}
         if not entities:
@@ -615,11 +453,10 @@ class PostgresIngestStore:
     ) -> int:
         """Insert relations into the relations table. Returns count.
 
-        model_version/prompt_version label which extractor configuration
-        produced these relations (read from corpus_kb.graph.model_version/
-        graph.prompt_version in config by the run_pipeline caller); None
-        for relations added through a path with no extractor provenance
-        (e.g. the direct add_relation graph-tool API).
+        model_version/prompt_version label the extractor configuration that
+        produced them (read from corpus_kb.graph.model_version and
+        corpus_kb.graph.prompt_version in config by the run_pipeline
+        caller); None for relations with no extractor provenance.
         """
         if not relations:
             return 0

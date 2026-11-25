@@ -74,6 +74,19 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         pass
 
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        return None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        return None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        return True
+
     async def unchanged_doc_id(
         self, source: str, file_hash: str, declared_visibility: str | None = None
     ) -> str | None:

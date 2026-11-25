@@ -22,7 +22,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
-from test_surface_parity_deep import _QUEUE_ID, CV, DOC_ID, LEGS, RELEASE_ID, TENANT
+from _parity_legs import _QUEUE_ID, CV, DOC_ID, LEGS, RELEASE_ID, TENANT
 
 from tests.live_embed import live_embed_dimensions, live_embed_model
 

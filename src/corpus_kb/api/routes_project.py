@@ -60,3 +60,34 @@ async def project_drop_route(request: Request) -> JSONResponse:
         slug=opt_str(body.get("slug")) or "",
     )
     return JSONResponse(result)
+
+
+@route_errors
+async def project_claim_route(request: Request) -> JSONResponse:
+    """POST /api/project/claim — claim one stored document into a project."""
+    from corpus_kb.tools.project_tools import project_claim
+
+    body = await parse_body(request)
+    result = await project_claim(
+        await _pool(),
+        tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
+        doc_id=opt_str(body.get("doc_id")) or "",
+        slug=opt_str(body.get("slug")) or "",
+        project_id=opt_str(body.get("project_id")),
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def project_claim_list_route(request: Request) -> JSONResponse:
+    """POST /api/project/claim-list — the claim rows, doc or project filtered."""
+    from corpus_kb.tools.project_tools import project_claim_list
+
+    body = await parse_body(request)
+    result = await project_claim_list(
+        await _pool(),
+        tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
+        doc_id=opt_str(body.get("doc_id")),
+        slug=opt_str(body.get("slug")),
+    )
+    return JSONResponse(result)

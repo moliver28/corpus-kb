@@ -1,11 +1,9 @@
 """The four latency-path drivers behind bench_latency.py (master-db W2).
 
-One driver per spec section 9 path: P1 ``cold_start_samples`` (boot to
-bind plus the first search answer), P2 ``ingest_samples`` (per-document
-ingest plus the claim short-circuit proof), P3 ``matrix_sample`` (one
-screen over 10k synthetic vectors), and P4 ``route_samples`` (route p50
-over a fixed phrase list). Every number is a measurement; Ollama down is
-the designed degraded path. Nothing here fabricates a sample.
+P1 ``cold_start_samples`` (boot to bind plus first search), P2 ``ingest_samples``
+(per-document ingest plus the claim short-circuit proof), P3 ``matrix_sample``
+(screens over 10k synthetic vectors), P4 ``route_samples`` (route p50). Ollama
+down is the designed degraded path; nothing here fabricates a sample.
 """
 
 from __future__ import annotations
@@ -32,20 +30,9 @@ from corpus_kb.tools.analysis_route_tools import analysis_route
 from corpus_kb.tools.ingest_common import ingest_text
 from corpus_kb.tools.vector_screen_tools import duplicates_screen
 
-__all__ = [
-    "ROUTE_PHRASES",
-    "cold_start_samples",
-    "ingest_samples",
-    "matrix_sample",
-    "route_samples",
-]
-
 READY_DEADLINE_S = QUERY_DEADLINE_S = 120.0  # boot and first-search bounds
 POLL_INTERVAL_S = 0.05
-MATRIX_DOCS = 10_000
-MATRIX_DIMS = 2560
-MATRIX_SEED = 20261124
-MATRIX_RUNS = 3  # screens per seeded store; p50 = median of three
+MATRIX_DOCS, MATRIX_DIMS, MATRIX_SEED, MATRIX_RUNS = 10_000, 2560, 20261124, 3
 
 ROUTE_PHRASES = (
     "how do participants describe onboarding",
@@ -97,11 +84,7 @@ def _terminate_tree(proc: subprocess.Popen[Any]) -> None:
 async def _poll_boot(port: int, query: bool, deadline_s: float) -> float:
     """Seconds until boot answers: the status route 200, or search 200 JSON."""
     started = time.perf_counter()
-    url = (
-        f"http://127.0.0.1:{port}/api/search"
-        if query
-        else f"http://127.0.0.1:{port}/api/ingest/status"
-    )
+    url = f"http://127.0.0.1:{port}{'/api/search' if query else '/api/ingest/status'}"
     async with httpx.AsyncClient(timeout=30.0 if query else 2.0) as client:
         while time.perf_counter() - started < deadline_s:
             try:
@@ -119,8 +102,7 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
     """P1: boot one server per iteration; return (ready, first-query) seconds."""
     from corpus_kb._setup.setup_duckdb import preinstall_extensions
 
-    # The RAG mirror needs fts; `setup` installs it into the machine-wide
-    # cache, and a fresh runner has none, so pre-install the same way.
+    # The RAG mirror needs fts; a fresh runner has none, so pre-install like `setup`.
     if preinstall_extensions() != 0:
         raise RuntimeError("The fts extension is required; see the setup output above.")
     exe = shutil.which("corpus-kb")
@@ -136,8 +118,7 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
             dsn = duckdb_path_to_conn_string(Path(tmp) / "bench.duckdb")
             run_duckdb_migrations(dsn)
             # database.backend keys the DuckDB arm; the tracked config ships graph.backend: age.
-            env = {
-                **os.environ,
+            env = os.environ | {
                 "CORPUS_KB_DATABASE_URL": dsn,
                 "CORPUS_KB_DATABASE_BACKEND": "duckdb",
                 "CORPUS_KB_GRAPH_BACKEND": "duckdb",
@@ -190,9 +171,8 @@ async def ingest_samples(scratch_dsn: str, doc_count: int) -> list[float]:
         before = await store.fetchval("SELECT COUNT(*) FROM chunks_vectors")
         again = await ingest_text(_doc_text(0), store, "text", None, source="bench/doc-0.txt")
         after = await store.fetchval("SELECT COUNT(*) FROM chunks_vectors")
-        # Claim short-circuit: skip envelope, zero vector growth. Under the
-        # degraded embed the healing rule re-ingests instead (unchanged needs
-        # a clean run): same document, still no new rows. Either adds no rows.
+        # Claim short-circuit: skip envelope, zero vector growth. Under the degraded
+        # embed the healing rule re-ingests; either path adds no new rows.
         if str(again.get("status")) not in {"skipped", "success"}:
             raise AssertionError(f"The repeat ingest returned {again.get('status')}: {again}")
         if after != before:
@@ -205,16 +185,14 @@ async def ingest_samples(scratch_dsn: str, doc_count: int) -> list[float]:
 
 
 async def matrix_sample(scratch_dsn: str) -> float:
-    """P3: seed 10k synthetic vectors, time ``duplicates_screen`` three times.
+    """P3: seed 10k synthetic vectors, screen ``duplicates_screen`` three times.
 
-    One screen is one sample; three samples give the p50 a denominator
-    (a single float can be a lucky or unlucky run). The screen is
-    read-only, so all three samples share one seeded store; the extra
-    CI cost is two screen runs, not two reseeds.
+    The read-only screen shares one seeded store; the median of three gives
+    the p50 a denominator (one float can be a lucky run). The extra CI cost
+    is two screen runs, not two reseeds.
     """
     tenant = str(uuid.uuid4())
-    rng = np.random.default_rng(MATRIX_SEED)
-    vectors = rng.standard_normal((MATRIX_DOCS, MATRIX_DIMS))
+    vectors = np.random.default_rng(MATRIX_SEED).standard_normal((MATRIX_DOCS, MATRIX_DIMS))
     store = await open_store(scratch_dsn)
     try:
         doc_id = str(uuid.uuid4())

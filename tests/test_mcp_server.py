@@ -139,7 +139,7 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # usability_severity, emotion_tag) == 103. The set under
     # the pin is the catalogue/registry UNION, so a tool added without a row
     # (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 103
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 105
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
@@ -204,6 +204,19 @@ async def test_round_trip_ingest_text(monkeypatch: pytest.MonkeyPatch, tmp_path:
     class _StubStore:
         def __init__(self, pool: Any, tenant_id: str = "t") -> None:
             pass
+
+        async def unchanged_hash_doc_id(
+            self, file_hash: str, declared_visibility: str | None = None
+        ) -> str | None:
+            return None
+
+        async def document_origin_project(self, doc_id: str) -> str | None:
+            return None
+
+        async def claim_document(
+            self, doc_id: str, project_id: str, source_project_id: str | None
+        ) -> bool:
+            return True
 
         async def unchanged_doc_id(
             self, source: str, file_hash: str, declared_visibility: str | None = None
