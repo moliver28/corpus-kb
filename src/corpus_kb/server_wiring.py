@@ -198,6 +198,7 @@ class HandlerWiring:
     command_handler: CommandHandler
     query_handler: QueryHandler
     router_handler: RouterHandler
+    embedder: OllamaEmbedder | PgmlEmbedder
 
 
 async def _wire_handlers(
@@ -214,6 +215,7 @@ async def _wire_handlers(
         command_handler=command_handler,
         query_handler=query_handler,
         router_handler=router_handler,
+        embedder=embedder,
     )
 
 
@@ -228,15 +230,17 @@ class ProjectionWiring:
 
 
 async def _wire_projections(
-    cfg: dict[str, Any], pool: asyncpg.Pool, app: CorpusApplication
+    cfg: dict[str, Any],
+    pool: asyncpg.Pool,
+    app: CorpusApplication,
+    *,
+    embedder: OllamaEmbedder | PgmlEmbedder,
 ) -> ProjectionWiring:
     """Step 4 + 4b: the projections, their reader, and the RAG backend.
 
     The shared read path runs over the eventsourcing lib's events table
     (topic/state + notification_id bigserial), decoding via the app
     Mapper. The table is lib-owned and named after the application class.
-    The projection embedder is built separately; the provider comes from
-    ``embedding.provider``.
     """
     from corpus_kb.domain.application import events_table_name
     from corpus_kb.projections.checkpoint import CheckpointManager, set_checkpoint_manager
@@ -247,7 +251,6 @@ async def _wire_projections(
     )
     from corpus_kb.projections.embed_projection import EmbedChunksProjection, set_embed_projection
     from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.rag import create_embedder
     from corpus_kb.storage.llamaindex_backend import create_initialized_rag_backend
 
     checkpoint_mgr = CheckpointManager(pool)
@@ -257,15 +260,13 @@ async def _wire_projections(
 
     event_reader = EventReader(pool, app.mapper, events_table_name(app))
 
-    embedder = create_embedder(cfg, pool)
     embed_projection = EmbedChunksProjection(pool, embedder, checkpoint_mgr, dlq_handler)
     set_embed_projection(embed_projection)
 
     docs_projection = DocumentsProjection(pool, checkpoint_mgr, dlq_handler)
     set_documents_projection(docs_projection)
 
-    # LlamaIndex RAG backend (additive, Ollama-only); None without the
-    # [llamaindex] extra (the factory logs one honest line and degrades).
+    # LlamaIndex RAG backend: None without the [llamaindex] extra (one honest log line).
     rag_backend = await create_initialized_rag_backend(cfg)
     return ProjectionWiring(
         embed_projection=embed_projection,
@@ -301,8 +302,7 @@ def _wire_http(cfg: dict[str, Any]) -> HttpWiring:
     ui_mounted = mount_spa(http_app, cfg)
     notebooks_mounted = wire_notebooks(http_app, cfg)
     # Issue #348: one socket endpoint per server — derived from the port
-    # (or set with server.socket_path / CORPUS_KB_SOCKET_PATH), never the
-    # shared default, so two study servers cannot take each other over.
+    # (or server.socket_path / CORPUS_KB_SOCKET_PATH), never the shared default.
     socket_server = get_socket_server(resolve_socket_target(cfg))
     return HttpWiring(
         http_app=http_app,
@@ -364,7 +364,7 @@ async def startup(
     pool = await initialize_postgres_pool(conn_str)
 
     handlers = await _wire_handlers(cfg, pool, conn_str, backend)
-    projections = await _wire_projections(cfg, pool, handlers.app)
+    projections = await _wire_projections(cfg, pool, handlers.app, embedder=handlers.embedder)
     http = _wire_http(cfg)
 
     logger.info("All components initialized")
