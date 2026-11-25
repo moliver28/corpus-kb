@@ -33,24 +33,18 @@ from corpus_kb.tools.vector_screen_tools import duplicates_screen
 
 __all__ = ["ROUTE_PHRASES", "cold_start_samples", "ingest_samples", "matrix_sample", "route_samples"]
 
-READY_DEADLINE_S = 120.0  # the spec's boot bound for one server start
-QUERY_DEADLINE_S = 120.0  # the bound for the first search answer after bind
+READY_DEADLINE_S = QUERY_DEADLINE_S = 120.0  # boot and first-search bounds
 POLL_INTERVAL_S = 0.05
 MATRIX_DOCS = 10_000
 MATRIX_DIMS = 2560
 MATRIX_SEED = 20261124
 
 ROUTE_PHRASES = (
-    "how do participants describe onboarding",
-    "what blocks adoption",
-    "which users churn after week two",
-    "summarize sentiment by segment",
-    "find conflicting statements",
-    "cluster the open ends",
-    "which theme grew over time",
-    "who mentioned pricing",
-    "what did the control group say",
-    "rank the biggest pain points",
+    "how do participants describe onboarding", "what blocks adoption",
+    "which users churn after week two", "summarize sentiment by segment",
+    "find conflicting statements", "cluster the open ends",
+    "which theme grew over time", "who mentioned pricing",
+    "what did the control group say", "rank the biggest pain points",
 )
 
 
@@ -110,6 +104,12 @@ async def _poll_boot(port: int, query: bool, deadline_s: float) -> float:
 
 async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[float, float]]:
     """P1: boot one server per iteration; return (ready, first-query) seconds."""
+    from corpus_kb._setup.setup_duckdb import preinstall_extensions
+
+    # The RAG mirror needs fts; `setup` installs it into the machine-wide
+    # cache, and a fresh runner has none, so pre-install the same way.
+    if preinstall_extensions() != 0:
+        raise RuntimeError("The fts extension is required; see the setup output above.")
     exe = console_script()
     base_port = _pick_base_port(base_port, iterations)
     samples: list[tuple[float, float]] = []
