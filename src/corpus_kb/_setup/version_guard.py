@@ -123,13 +123,16 @@ async def read_applied_pg(conn_str: str) -> list[str] | None:
 def _read_applied_duckdb_sync(path: str) -> list[str] | None:
     import duckdb
 
+    from corpus_kb.storage.duckdb_support import map_connect_error
+
     if not Path(path).exists():
         return None
-    con = duckdb.connect(path, read_only=True)
     try:
-        # The runner records migration names UNQUALIFIED (main): a
-        # corpus.-qualified spell is ambiguous on a corpus.duckdb-named
-        # file (migration-001 rule); it stays the hand-built fallback.
+        con = duckdb.connect(path, read_only=True)
+    except Exception as exc:
+        raise map_connect_error(exc) from exc
+    try:
+        # Migration names are UNQUALIFIED (main); the corpus. spell is the fallback.
         try:
             rows = con.execute(
                 "SELECT filename FROM schema_migrations ORDER BY filename"
@@ -150,10 +153,7 @@ def _read_applied_duckdb_sync(path: str) -> list[str] | None:
 
 async def read_applied_duckdb(conn_str: str) -> list[str] | None:
     """The applied DuckDB migration names, or None on a fresh store.
-
-    The runner-owned tracking table lives unqualified in ``main``; the
-    ``corpus``-qualified spelling is only a fallback. A missing file or
-    table means fresh; other failures escape.
+    Unqualified ``main`` first, ``corpus`` fallback; fresh on a missing file or table.
     """
     from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
 

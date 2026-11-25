@@ -67,16 +67,16 @@ def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     return mount_notebooks(http_app, settings.directory)
 
 
-async def initialize_postgres_pool(
-    connection_string: str,
-) -> asyncpg.Pool:
+async def initialize_postgres_pool(connection_string: str) -> asyncpg.Pool:
     """Create and return an asyncpg connection pool."""
+    from corpus_kb.storage import connect as _connect
+
     try:
         pool = await asyncpg.create_pool(
             connection_string,
-            min_size=5,
-            max_size=20,
-            command_timeout=60.0,
+            min_size=_connect.POOL_MIN_SIZE,
+            max_size=_connect.POOL_MAX_SIZE,
+            command_timeout=_connect.POOL_COMMAND_TIMEOUT_S,
         )
     except Exception as exc:
         raise DatabaseUnavailableError(
@@ -101,6 +101,16 @@ def _setup_tracing(cfg: dict[str, Any]) -> None:
     except Exception as exc:
         remedy = getattr(exc, "remediation", "")
         logger.warning("Tracing not enabled: %s. Remedy: %s", exc, remedy)
+
+
+async def _await_cancelled(*tasks: asyncio.Task[object]) -> None:
+    """Await cancelled tasks; one bad task never aborts the rest of shutdown."""
+    for task in tasks:
+        try:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        except Exception as exc:
+            logger.warning("Projection stopped with an error: %s", exc)
 
 
 async def _wire_query_stack(
@@ -198,6 +208,7 @@ class HandlerWiring:
     command_handler: CommandHandler
     query_handler: QueryHandler
     router_handler: RouterHandler
+    embedder: OllamaEmbedder | PgmlEmbedder
 
 
 async def _wire_handlers(
@@ -214,6 +225,7 @@ async def _wire_handlers(
         command_handler=command_handler,
         query_handler=query_handler,
         router_handler=router_handler,
+        embedder=embedder,
     )
 
 
@@ -228,15 +240,17 @@ class ProjectionWiring:
 
 
 async def _wire_projections(
-    cfg: dict[str, Any], pool: asyncpg.Pool, app: CorpusApplication
+    cfg: dict[str, Any],
+    pool: asyncpg.Pool,
+    app: CorpusApplication,
+    *,
+    embedder: OllamaEmbedder | PgmlEmbedder,
 ) -> ProjectionWiring:
     """Step 4 + 4b: the projections, their reader, and the RAG backend.
 
     The shared read path runs over the eventsourcing lib's events table
     (topic/state + notification_id bigserial), decoding via the app
     Mapper. The table is lib-owned and named after the application class.
-    The projection embedder is built separately; the provider comes from
-    ``embedding.provider``.
     """
     from corpus_kb.domain.application import events_table_name
     from corpus_kb.projections.checkpoint import CheckpointManager, set_checkpoint_manager
@@ -247,7 +261,6 @@ async def _wire_projections(
     )
     from corpus_kb.projections.embed_projection import EmbedChunksProjection, set_embed_projection
     from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.rag import create_embedder
     from corpus_kb.storage.llamaindex_backend import create_initialized_rag_backend
 
     checkpoint_mgr = CheckpointManager(pool)
@@ -257,15 +270,13 @@ async def _wire_projections(
 
     event_reader = EventReader(pool, app.mapper, events_table_name(app))
 
-    embedder = create_embedder(cfg, pool)
     embed_projection = EmbedChunksProjection(pool, embedder, checkpoint_mgr, dlq_handler)
     set_embed_projection(embed_projection)
 
     docs_projection = DocumentsProjection(pool, checkpoint_mgr, dlq_handler)
     set_documents_projection(docs_projection)
 
-    # LlamaIndex RAG backend (additive, Ollama-only); None without the
-    # [llamaindex] extra (the factory logs one honest line and degrades).
+    # LlamaIndex RAG backend: None without the [llamaindex] extra (one honest log line).
     rag_backend = await create_initialized_rag_backend(cfg)
     return ProjectionWiring(
         embed_projection=embed_projection,
@@ -301,8 +312,7 @@ def _wire_http(cfg: dict[str, Any]) -> HttpWiring:
     ui_mounted = mount_spa(http_app, cfg)
     notebooks_mounted = wire_notebooks(http_app, cfg)
     # Issue #348: one socket endpoint per server — derived from the port
-    # (or set with server.socket_path / CORPUS_KB_SOCKET_PATH), never the
-    # shared default, so two study servers cannot take each other over.
+    # (or server.socket_path / CORPUS_KB_SOCKET_PATH), never the shared default.
     socket_server = get_socket_server(resolve_socket_target(cfg))
     return HttpWiring(
         http_app=http_app,
@@ -364,7 +374,7 @@ async def startup(
     pool = await initialize_postgres_pool(conn_str)
 
     handlers = await _wire_handlers(cfg, pool, conn_str, backend)
-    projections = await _wire_projections(cfg, pool, handlers.app)
+    projections = await _wire_projections(cfg, pool, handlers.app, embedder=handlers.embedder)
     http = _wire_http(cfg)
 
     logger.info("All components initialized")
@@ -388,11 +398,10 @@ async def startup(
 
 
 async def run_all(services: dict[str, Any]) -> None:
-    """Run HTTP + socket servers concurrently. MCP runs separately via FastMCP.
-
-    Projections run as background tasks within the same event loop.
-    """
+    """Run the servers until stopped; projections and HTTP share one loop."""
     import uvicorn
+
+    from corpus_kb.server_port import coerce_server_port
 
     http_app = services["http_app"]
     socket_server = services["socket_server"]
@@ -403,14 +412,11 @@ async def run_all(services: dict[str, Any]) -> None:
 
     server_cfg = config.get("server", {})
     host = server_cfg.get("host", "localhost")
-    port = int(server_cfg.get("port", 8010))
+    port = coerce_server_port(server_cfg)
 
-    # Start socket server
     await socket_server.start()
 
-    # Start projection background tasks (ALL registered projections run — the
-    # pre-spike wiring started only embed_projection, leaving DocumentsProjection
-    # constructed but never running).
+    # ALL registered projections run (the pre-spike wiring started only embed_projection).
     from uuid import UUID
 
     default_tenant = UUID(DEFAULT_TENANT_ID)
@@ -418,22 +424,17 @@ async def run_all(services: dict[str, Any]) -> None:
     docs_projection_task = asyncio.create_task(docs_projection.run(default_tenant, event_reader))
 
     # Browser auto-open (UX program Wave 3): fires ONLY when the [ui]
-    # extra actually mounted and CORPUS_KB_UI_OPEN is not "0".
-    # Lazy import beside the SPA mount: the auto-open guard lives with the
-    # UI surface it depends on (corpus_kb.ui.browser_open).
+    # extra mounted and CORPUS_KB_UI_OPEN is not "0" (lazy import, beside the SPA mount).
     from corpus_kb.ui.browser_open import schedule_browser_open
 
     browser_task = schedule_browser_open(services, str(host), port)
 
-    # Queue autorun (textbook program Wave 3): ONE background drain task
-    # when queue.autorun is true; the default false starts nothing. The
-    # worker runs on the pool or the gateway (issue #330 queue twins); a
-    # typed refusal logs one line while the server continues.
+    # Queue autorun (textbook program Wave 3): ONE background drain task when
+    # queue.autorun is true; a typed refusal logs one line and the server continues.
     from corpus_kb.queue.autorun import start_queue_autorun
 
     queue_autorun = start_queue_autorun(services["pool"] or services.get("gateway"), config)
 
-    # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
         http_app,
         host=host,
@@ -455,9 +456,7 @@ async def run_all(services: dict[str, Any]) -> None:
         await socket_server.stop()
         projection_task.cancel()
         docs_projection_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await projection_task
-            await docs_projection_task
+        await _await_cancelled(projection_task, docs_projection_task)
         logger.info("All servers stopped")
 
 

@@ -143,7 +143,7 @@ async def test_wire_projections_builds_and_initializes(
     monkeypatch.setattr(llamaindex_module, "LlamaIndexPostgresBackend", _FakeLlamaBackend)
 
     projections = await _wire_projections(
-        _wiring_config(), SimpleNamespace(name="fake-pool"), fake_app
+        _wiring_config(), SimpleNamespace(name="fake-pool"), fake_app, embedder=object()
     )
 
     assert isinstance(projections, ProjectionWiring)
@@ -174,7 +174,10 @@ async def test_wire_projections_degrades_without_llamaindex_extra(
     monkeypatch.setattr(llamaindex_module, "_import_module", _missing_import)
 
     projections = await _wire_projections(
-        _wiring_config(), SimpleNamespace(name="fake-pool"), SimpleNamespace(mapper=object())
+        _wiring_config(),
+        SimpleNamespace(name="fake-pool"),
+        SimpleNamespace(mapper=object()),
+        embedder=object(),
     )
 
     assert isinstance(projections, ProjectionWiring)
@@ -224,9 +227,12 @@ async def test_startup_postgres_happy_path_assembles_services(
             command_handler=SimpleNamespace(name="command"),
             query_handler=SimpleNamespace(name="query"),
             router_handler=SimpleNamespace(name="router"),
+            embedder=SimpleNamespace(name="embedder"),
         )
 
-    async def fake_projections(cfg: dict[str, Any], pool: object, app: object) -> ProjectionWiring:
+    async def fake_projections(
+        cfg: dict[str, Any], pool: object, app: object, *, embedder: object
+    ) -> ProjectionWiring:
         wired.append("projections")
         return ProjectionWiring(
             embed_projection=SimpleNamespace(name="embed"),
@@ -378,3 +384,150 @@ async def test_run_all_starts_and_stops_every_service(monkeypatch: Any) -> None:
 
     assert socket.started and socket.stopped
     assert served["served"] is True
+
+
+@pytest.mark.asyncio
+async def test_query_stack_and_projections_share_one_embedder(
+    _singletons_restored, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exactly one embedder construction serves query stack and projections."""
+    import corpus_kb.domain.application as application_module
+    import corpus_kb.projections.embed_projection as embed_projection_module
+
+    made: list[tuple[Any, Any]] = []
+
+    def counting_embedder(cfg: Any, pool: Any) -> str:
+        made.append((cfg, pool))
+        return f"embedder-{len(made)}"
+
+    monkeypatch.setattr("corpus_kb.rag.create_embedder", counting_embedder)
+    recorded: dict[str, Any] = {}
+
+    class RecordingProjection:
+        def __init__(self, pool: Any, embedder: Any, checkpoint: Any, dlq: Any) -> None:
+            recorded["embedder"] = embedder
+
+    monkeypatch.setattr(embed_projection_module, "EmbedChunksProjection", RecordingProjection)
+
+    async def fake_graph_store(cfg: Any, pool: Any, backend: Any) -> object:
+        return SimpleNamespace()
+
+    monkeypatch.setattr(sw, "create_graph_store", fake_graph_store)
+    fake_app = SimpleNamespace(mapper=object())
+    monkeypatch.setattr(application_module, "get_app", lambda conn_str, backend: fake_app)
+    monkeypatch.setattr(application_module, "events_table_name", lambda app: "events_fake_table")
+
+    cfg = _wiring_config()
+    handlers = await _wire_handlers(cfg, None, "postgresql://offline", "postgres")
+    projections = await _wire_projections(
+        cfg, SimpleNamespace(name="fake-pool"), fake_app, embedder=handlers.embedder
+    )
+    assert len(made) == 1
+    assert isinstance(projections, ProjectionWiring)
+    assert recorded["embedder"] == handlers.embedder
+    assert made[0][0] is cfg
+
+
+def test_coerce_server_port_rejects_non_numeric():
+    from corpus_kb.server_port import coerce_server_port
+
+    with pytest.raises(ConfigError) as caught:
+        coerce_server_port({"port": "abc"})
+    assert "server.port" in str(caught.value)
+
+
+def test_coerce_server_port_range_and_defaults():
+    from corpus_kb.server_port import coerce_server_port
+
+    with pytest.raises(ConfigError):
+        coerce_server_port({"port": 0})
+    with pytest.raises(ConfigError):
+        coerce_server_port({"port": 70000})
+    assert coerce_server_port({}) == 8010
+    assert coerce_server_port({"port": 8010}) == 8010
+
+
+@pytest.mark.asyncio
+async def test_run_all_refuses_bad_port_before_binding():
+    import corpus_kb.server_wiring as sw
+
+    services = {
+        "http_app": object(),
+        "socket_server": object(),
+        "embed_projection": object(),
+        "docs_projection": object(),
+        "event_reader": object(),
+        "pool": None,
+        "config": {"server": {"port": "abc"}},
+    }
+    with pytest.raises(ConfigError):
+        await sw.run_all(services)  # must raise ConfigError, not ValueError
+
+
+@pytest.mark.asyncio
+async def test_run_all_survives_dirty_projection_cancel(monkeypatch, caplog):
+    import asyncio
+    import sys
+    import types
+
+    import corpus_kb.server_wiring as sw
+
+    stub_uvicorn = types.ModuleType("uvicorn")
+
+    class StubConfig:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class StubServer:
+        def __init__(self, config):
+            pass
+
+        async def serve(self):
+            # One loop tick, like the real serve(): the projection tasks
+            # reach their await before shutdown cancels them.
+            await asyncio.sleep(0)
+
+    stub_uvicorn.Config = StubConfig
+    stub_uvicorn.Server = StubServer
+    monkeypatch.setitem(sys.modules, "uvicorn", stub_uvicorn)
+    monkeypatch.setattr("corpus_kb.ui.browser_open.schedule_browser_open", lambda *a, **k: None)
+    monkeypatch.setattr("corpus_kb.queue.autorun.start_queue_autorun", lambda *a, **k: None)
+
+    class StubSocket:
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    class DirtyProjection:
+        async def run(self, tenant, reader):
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                raise RuntimeError("projection crashed while cancelling") from None
+
+    class CleanProjection:
+        def __init__(self):
+            self.cancel_observed = False
+
+        async def run(self, tenant, reader):
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                self.cancel_observed = True
+                raise
+
+    clean = CleanProjection()
+    services = {
+        "http_app": object(),
+        "socket_server": StubSocket(),
+        "embed_projection": DirtyProjection(),
+        "docs_projection": clean,
+        "event_reader": object(),
+        "pool": None,
+        "config": {"server": {"port": 8010}},
+    }
+    await sw.run_all(services)  # before the fix this raises RuntimeError
+    assert clean.cancel_observed
+    assert "Projection stopped with an error" in caplog.text

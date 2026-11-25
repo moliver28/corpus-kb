@@ -307,3 +307,53 @@ def test_stdio_refuses_a_newer_store_with_exit_three(
     assert run_stdio_server() == 3
     captured = capsys.readouterr().err
     assert "newer" in captured
+
+
+# ---------------------------------------------------------------------------
+# F-02: the DuckDB guard maps a lock conflict to the typed lock error
+# ---------------------------------------------------------------------------
+
+
+def test_guard_maps_duckdb_lock_conflict_to_typed_lock_error(monkeypatch, tmp_path):
+    import asyncio
+
+    import duckdb
+    import pytest
+
+    from corpus_kb._setup import version_guard as vg
+    from corpus_kb.errors import DatabaseUnavailableError
+    from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
+
+    scratch = tmp_path / "locked.duckdb"
+    scratch.write_bytes(b"")  # exists, so the guard proceeds to the connect
+
+    def locked_connect(*args, **kwargs):
+        raise duckdb.IOException("File is already open in another process")
+
+    monkeypatch.setattr(duckdb, "connect", locked_connect)
+    with pytest.raises(DatabaseUnavailableError) as caught:
+        asyncio.run(vg.read_applied_duckdb(f"duckdb:///{scratch.as_posix()}"))
+    assert is_duckdb_lock_error(caught.value)
+
+
+def test_assert_store_supported_passes_lock_error_through(monkeypatch, tmp_path):
+    import asyncio
+
+    import duckdb
+    import pytest
+
+    from corpus_kb._setup import version_guard as vg
+    from corpus_kb.errors import DatabaseUnavailableError
+    from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
+
+    scratch = tmp_path / "locked.duckdb"
+    scratch.write_bytes(b"")
+
+    def locked_connect(*args, **kwargs):
+        raise duckdb.IOException("File is already open in another process")
+
+    monkeypatch.setattr(duckdb, "connect", locked_connect)
+    with pytest.raises(DatabaseUnavailableError) as caught:
+        asyncio.run(vg.assert_store_supported(f"duckdb:///{scratch.as_posix()}", "duckdb"))
+    assert is_duckdb_lock_error(caught.value)
+    assert caught.value.remediation  # the lock remediation survives, not the generic wrap

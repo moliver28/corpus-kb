@@ -144,7 +144,12 @@ async def create_graph_store(
                 store: GraphStore = AgeGraphStore(pool)
                 await store.search_entities("")  # probe AGE availability
                 return store
-            except AgeUnavailableError as exc:
+            except (
+                AgeUnavailableError,
+                asyncpg.PostgresError,
+            ) as exc:
+                # Any probe Postgres error (permission denial, missing
+                # extension) falls back; the fallback store is the contract.
                 logger.warning(
                     "Apache AGE graph backend unavailable: %s. Falling back to PostgresGraphStore.",
                     exc,

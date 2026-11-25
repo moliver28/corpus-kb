@@ -14,6 +14,7 @@ and boots the server with the mirror disabled.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 from types import ModuleType
@@ -23,6 +24,9 @@ from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS
 from corpus_kb.errors import DependencyMissingError, InternalError, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Matches the version-guard and doctor probe budget (R2 s7 table).
+LLAMAINDEX_PROBE_TIMEOUT_S: float = 3.0
 
 _LLAMAINDEX_REMEDIATION = (
     "The LlamaIndex backend needs llama-index. "
@@ -126,8 +130,11 @@ class LlamaIndexPostgresBackend:
         # embedder's zero-vector fallback keeps the server usable, and the
         # doctor reports the degraded state. Boot must survive a model
         # that is not pulled yet (CI pulls a different default model).
+        # The probe is bounded at 3 s; a slow or hung endpoint degrades.
         try:
-            await self._ollama_embedding.aget_text_embedding("ping")
+            await asyncio.wait_for(
+                self._ollama_embedding.aget_text_embedding("ping"), LLAMAINDEX_PROBE_TIMEOUT_S
+            )
         except Exception as exc:
             logger.warning(
                 "Ollama embedding check failed (%s); continuing in degraded zero-vector mode",
