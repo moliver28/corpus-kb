@@ -124,8 +124,10 @@ async def test_ingest_upload_rejects_bad_field_duck(upload_world: dict[str, Any]
     """A wrong content type and a missing file field are typed refusals.
 
     The 415 is the route's honest answer to a non-multipart body; the
-    400 names the missing field. Neither touches the store.
+    400 names the missing field. Neither touches the store: the tenant
+    holds zero documents after both refusals.
     """
+    gateway = upload_world["gateway"]
     transport = ASGITransport(app=upload_world["app"])
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         wrong_type = await client.post("/api/ingest/upload", json={"file_path": "x"})
@@ -142,3 +144,6 @@ async def test_ingest_upload_rejects_bad_field_duck(upload_world: dict[str, Any]
         refused = missing_field.json()
         assert refused["status"] == "error"
         assert refused["error_type"] == "validation_error"
+
+    remaining = await gateway.fetchval("SELECT count(*) FROM documents")
+    assert remaining == 0

@@ -1,20 +1,15 @@
 """Op-by-op DuckDB execution matrix — the parity PR-8 live driver (U1/U2).
 
 COMMITTED, RUN OFF-PEAK ONLY: the live run needs a real migrated DuckDB
-file and the embedder (the spec's Live-verification constraint). The
-script is authored and reviewable any time; execution is off-peak. It
-drives every operation in the backend-parity list plus the HTTP-only
-upload op through the SAME shared legs the CI parity test uses, and
-prints ONE JSON LINE PER OPERATION on stdout:
-
-    {"op": "...", "status": "...", "detail": "..."}
-
-``success``: the envelope's status is a known-good outcome value.
-``honest_refusal``: a typed envelope answering a documented non-good
-outcome (unavailable, empty, partial, ...). ``fail``: an engine-shaped
-exception or a non-envelope. Exit 0 only when nothing failed. Other
-libraries also print to stdout: select records with grep '"op"'.
-Usage: ``--list`` (offline op list) or ``--duck-file PATH`` (the run).
+file and the embedder; authoring and review are peak-safe. It drives
+every op in the backend-parity list plus the HTTP-only upload op via
+the SAME shared legs the CI parity test uses, printing one JSON line
+per op: {"op", "status", "detail"}. ``success``: a known-good outcome.
+``honest_refusal``: a typed refusal envelope. ``fail``: an exception,
+a non-envelope, or a failed or errored status. Exit 0 only when
+nothing failed. Other libraries print to stdout too; grep '"op"'.
+Usage: ``--list`` (offline), or ``--duck-file PATH`` (the run). The run
+writes parity seeds; it refuses a used file without ``--allow-nonempty``.
 """
 
 from __future__ import annotations
@@ -29,12 +24,11 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from corpus_kb.errors import ConflictError
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# The drift pin (tests/test_duck_live_matrix_script.py): this list must
-# equal PARITY_OPS (tests/test_backend_operation_parity.py) plus the
-# HTTP-only upload op. Keep the CI tuple authoritative; the pin test
-# fails this script when they drift.
+# Drift pin: OPS must equal PARITY_OPS + ingest_upload; the pin test fails drift.
 OPS: tuple[str, ...] = (
     "topics_list", "labeling_list", "labeling_lfs", "classification_list",
     "analysis_select_method", "query", "statements_list", "statements_timeline",
@@ -59,8 +53,8 @@ OPS: tuple[str, ...] = (
 )
 
 GOOD_STATUSES = frozenset({"success", "completed", "compared", "skipped"})
-# The three analysis-date legs run HOT (the dormant default would mask
-# the date path behind a disabled envelope), exactly like the CI test.
+FAIL_STATUSES = frozenset({"failed", "error"})
+# The analysis-date legs run HOT; the dormant default would mask the date path.
 HOT_OPS = frozenset({"topics_trends", "analysis_backfill_dates", "analyze_run"})
 HOT_CONFIG: dict[str, object] = {"analysis": {"topics": {"over_time": {"enabled": True}}}}
 
@@ -76,24 +70,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--list", action="store_true", help="print the op list as JSON (opens no store)"
     )
-    parser.add_argument("--duck-file", help="the .duckdb file to migrate and drive")
+    parser.add_argument("--duck-file", help="file to drive (writes seeds; refuses a used file)")
+    parser.add_argument("--allow-nonempty", action="store_true", help="drive a used file")
     args = parser.parse_args(argv)
     if args.list:
         print(json.dumps({"mode": "list", "ops": list_ops()}))
         return 0
     if not args.duck_file:
         parser.error("--duck-file is required without --list")
-    return asyncio.run(_run_matrix(Path(args.duck_file).resolve()))
+    try:
+        return asyncio.run(_run_matrix(Path(args.duck_file).resolve(), args.allow_nonempty))
+    except ConflictError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
 
 
-async def _run_matrix(duck_file: Path) -> int:
+async def _run_matrix(duck_file: Path, allow_nonempty: bool) -> int:
     """Boot one migrated world, drive every op, print one record each."""
     for entry in (str(REPO_ROOT), str(REPO_ROOT / "tests")):
         if entry not in sys.path:
             sys.path.insert(0, entry)
     from test_surface_parity_deep import LEGS
 
-    ctx, gateway = await _boot_world(duck_file)
+    ctx, gateway = await _boot_world(duck_file, allow_nonempty)
     failures = 0
     try:
         for op in OPS:
@@ -126,18 +125,16 @@ async def _drive(
         return {"op": op, "status": "fail", "detail": f"{type(exc).__name__}: {exc}"}
     if isinstance(envelope, dict) and "status" in envelope:
         status = str(envelope["status"])
+        if status in FAIL_STATUSES:
+            return {"op": op, "status": "fail", "detail": status}
         bucket = "success" if status in GOOD_STATUSES else "honest_refusal"
         return {"op": op, "status": bucket, "detail": status}
     shape = type(envelope).__name__
     return {"op": op, "status": "fail", "detail": f"envelope without a status key: {shape}"}
 
 
-async def _boot_world(duck_file: Path) -> tuple[dict[str, object], object]:
-    """The parity world: migrated file, duck boot, and the leg seeds.
-
-    Mirrors tests/test_backend_operation_parity.py::parity_store plus the
-    PR-8 seeds (drop dir, transcript dir, canned fetch, release world).
-    """
+async def _boot_world(duck_file: Path, allow_nonempty: bool) -> tuple[dict[str, object], object]:
+    """Boot the parity world (mirrors parity_store); guard, then seed."""
     import yaml
     from test_surface_parity_deep import (
         _DIR_PATH,
@@ -173,8 +170,7 @@ async def _boot_world(duck_file: Path) -> tuple[dict[str, object], object]:
         "  backend: duckdb\n"
         "extraction:\n"
         "  backend: regex\n"
-        # Name the embedder this run actually pulls; dimensions travel
-        # with the model so the embedder's width validation passes.
+        # Name the embedder this run pulls; dimensions travel with the model.
         "embedding:\n"
         "  provider: ollama\n"
         f"  model: {live_embed_model()}\n"
@@ -187,6 +183,10 @@ async def _boot_world(duck_file: Path) -> tuple[dict[str, object], object]:
     cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
     services = await startup_duckdb(cfg, dsn)
     gateway = services["gateway"]
+    # Momus fix 1: guard before every write; --allow-nonempty is the opt-in.
+    stored = await gateway.fetchval("SELECT count(*) FROM documents")
+    if stored and not allow_nonempty:
+        raise ConflictError("The file already holds documents. Pass --allow-nonempty to proceed.")
 
     book = world / "queue-book.md"
     book.write_text(TEXT_BODY, encoding="utf-8")
