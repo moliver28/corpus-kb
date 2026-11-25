@@ -6,10 +6,9 @@
 #   * production is an ancestor of master - open a sync pull request
 #   * otherwise (diverged) - open an issue with a reconciliation recipe
 #
-# The pull request is created with the repository GITHUB_TOKEN. GitHub does
-# not start workflow runs for events made with that token, so the PR's
-# checks stay missing until a person re-arms them. The PR body carries the
-# exact command.
+# The pull request is created with the RELEASE_PAT token. GitHub starts
+# workflow runs for events made with that token, so the PR's checks run
+# natively. A person merges when green.
 name: Production sync
 
 on:
@@ -57,7 +56,7 @@ jobs:
       - name: Open the sync pull request
         if: steps.state.outputs.state == 'pr'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           set -e
           OPEN=$(gh pr list --base production --head master --state open --json number --jq 'length')
@@ -74,17 +73,10 @@ jobs:
           not a PR. That issue carries the recipe that resets production to
           master.
 
-          ## Checks did not run yet
+          ## Checks
 
-          GitHub does not start workflow runs for events made with the
-          `GITHUB_TOKEN`. This PR was made with that token, so its checks are
-          missing. Re-arm them by running this as yourself:
-
-          ```
-          gh pr close <NUMBER> --repo moliver28/corpus-kb && gh pr reopen <NUMBER> --repo moliver28/corpus-kb
-          ```
-
-          The reopen event starts the checks. After they finish, the PR is mergeable.
+          The checks run natively on this pull request: the release token
+          (RELEASE_PAT) created it. Review the diff, then merge when green.
           BODY
           URL=$(gh pr create --base production --head master \
             --title "Sync master into production" \
