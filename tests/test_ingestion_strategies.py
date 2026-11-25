@@ -632,7 +632,8 @@ async def test_ingest_text_rejects_unknown_source_type() -> None:
     from corpus_kb.tools import ingest_common
 
     result = await ingest_common.ingest_text("x", None, source_type="bogus")
-    assert result == {"status": "error", "message": "Invalid source_type: bogus"}
+    assert result["status"] == "error"
+    assert "Unknown source type 'bogus'" in result["message"]
 
 
 # ---------------------------------------------------------------------------
