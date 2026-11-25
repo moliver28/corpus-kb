@@ -160,8 +160,12 @@ async def test_membership_tables_carry_tenant_rls(pg_pool) -> None:
             doc_id,
         )
 
-    # A GUC-less connection: FORCEd RLS hides every row.
-    async with pg_pool.acquire() as con:
+    # A session speaking as a DIFFERENT tenant: FORCEd RLS hides every row
+    # of the owning tenant. The GUC is set explicitly so the assertion does
+    # not depend on pool-connection state left by earlier tests.
+    other_tenant = "00000000-0000-0000-0000-00000000dead"
+    async with pg_pool.acquire() as con, con.transaction():
+        await con.execute("SELECT set_config('app.current_tenant_id', $1, true)", other_tenant)
         assert await con.fetchval("SELECT count(*) FROM project_claims") == 0
 
     # The tenant's own session sees its row; policy + flags match 043/045.
