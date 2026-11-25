@@ -95,9 +95,9 @@
     "src/corpus_kb/storage/duckdb_support.py": 298,
     "src/corpus_kb/storage/graph_store.py": 580,
     "src/corpus_kb/surface_registry.py": 878,
-    "src/corpus_kb/tools/ingest_common.py": 422,
+    "src/corpus_kb/tools/ingest_common.py": 418,
     "src/corpus_kb/tools/ingest_embed.py": 315,
-    "src/corpus_kb/tools/ingest_store.py": 488,
+    "src/corpus_kb/tools/ingest_store.py": 487,
     "src/corpus_kb/tools/ingest_tools.py": 294,
     "src/corpus_kb/tools/topics_tools.py": 317,
     "src/corpus_kb/topics/engine.py": 553,
@@ -109,7 +109,7 @@
     "tests/test_search_honesty.py": 1058,
     "tests/test_surface_parity_deep.py": 1311,
     "src/corpus_kb/surface_wrappers.py": 951,
-    "tests/_parity_legs.py": 1885
+    "tests/_parity_legs.py": 1881
   },
   "persona_meter": {
     "report_path": "tests/fixtures/persona_meter/report.v1.json",

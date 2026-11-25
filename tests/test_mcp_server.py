@@ -139,7 +139,7 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # usability_severity, emotion_tag) == 103. The set under
     # the pin is the catalogue/registry UNION, so a tool added without a row
     # (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 103
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 105
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
