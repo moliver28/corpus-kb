@@ -125,10 +125,16 @@ async def _run(gateway: DuckDbGateway, text: str, source: str) -> dict[str, Any]
     )
 
 
-async def test_duckdb_reingest_serves_extraction_from_cache(
+async def test_duckdb_cross_source_reingest_skips_at_the_hash(
     duckdb_gateway: DuckDbGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Same chunk text under a new source: zero extraction passes, cache replay."""
+    """W4 hash-first dedup: the same content under a new source skips.
+
+    The document-level hash probe answers before any stage runs, so the
+    identical document never re-pays extraction. Cross-source cache
+    replay stays pinned by the changed-doc test below: the unchanged
+    chunk serves from cache while only the changed one re-extracts.
+    """
     gw = duckdb_gateway
     calls: list[list[str]] = []
     _stub_extract(monkeypatch, calls)
@@ -141,25 +147,9 @@ async def test_duckdb_reingest_serves_extraction_from_cache(
 
     calls.clear()
     second = await _run(gw, DOC_TEXT, SOURCE_B)
-    assert second["status"] == "success"
-    assert calls == [], "the second ingest re-paid extraction for cached chunks"
-    assert any(
-        "all chunks served from extraction cache" in note for note in second["extraction"]["notes"]
-    )
-    assert second["entity_count"] == 2
-    names = await gw.fetch("SELECT name FROM entities WHERE tenant_id = $1 ORDER BY name", TENANT)
-    assert len(names) == 2
-    relations = await gw.fetch(
-        "SELECT chunk_id FROM relations WHERE tenant_id = $1 AND chunk_id IS NOT NULL", TENANT
-    )
-    doc_b_chunks = await gw.fetch(
-        "SELECT c.chunk_id FROM chunks c JOIN documents d ON c.doc_id = d.doc_id "
-        "WHERE c.tenant_id = $1 AND d.source = $2",
-        TENANT,
-        SOURCE_B,
-    )
-    doc_b_ids = {str(row["chunk_id"]) for row in doc_b_chunks}
-    assert {str(row["chunk_id"]) for row in relations} <= doc_b_ids
+    assert second["status"] == "skipped"
+    assert second["reason"] == "unchanged"
+    assert calls == [], "a hash match never re-pays extraction"
 
 
 async def test_duckdb_changed_doc_misses_only_changed_chunk(
