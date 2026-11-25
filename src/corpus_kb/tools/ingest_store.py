@@ -444,7 +444,9 @@ class PostgresIngestStore:
         """Insert relations into the relations table. Returns count.
 
         model_version/prompt_version label the extractor configuration that
-        produced them; None for relations with no extractor provenance.
+        produced them (read from corpus_kb.graph.model_version and
+        corpus_kb.graph.prompt_version in config by the run_pipeline
+        caller); None for relations with no extractor provenance.
         """
         if not relations:
             return 0
