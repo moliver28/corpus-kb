@@ -205,6 +205,17 @@ async def test_round_trip_ingest_text(monkeypatch: pytest.MonkeyPatch, tmp_path:
         def __init__(self, pool: Any, tenant_id: str = "t") -> None:
             pass
 
+        async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+            return None
+
+        async def document_origin_project(self, doc_id: str) -> str | None:
+            return None
+
+        async def claim_document(
+            self, doc_id: str, project_id: str, source_project_id: str | None
+        ) -> bool:
+            return True
+
         async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
             return None
 

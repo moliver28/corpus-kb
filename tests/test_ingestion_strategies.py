@@ -446,6 +446,17 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
         async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
             return None
 
+        async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+            return None
+
+        async def document_origin_project(self, doc_id: str) -> str | None:
+            return None
+
+        async def claim_document(
+            self, doc_id: str, project_id: str, source_project_id: str | None
+        ) -> bool:
+            return True
+
         async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
             return "doc-strategy-test", "run-strategy-test"
 
