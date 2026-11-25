@@ -991,6 +991,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "project_provision",
         "project_list",
         "project_drop",
+        "project_claim",
+        "project_claim_list",  # W4: the claim rows byte-match their registry rows.
         # Issue #350: the coding + events rows byte-match their registry rows.
         "coding_embed_codebook",
         "coding_pool",
