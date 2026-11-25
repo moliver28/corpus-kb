@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from ..rag import aembed_batch, create_embedder
+from ..rag import aembed_batch, create_embedder, provider_label
 from ..rag.embedder_selection import (
     POOLED_MODE,
     IngestEmbeddingPlan,
@@ -155,20 +155,17 @@ async def _embed_with_fallback(
 
     When the primary returns zero-vectors (the embedder-failure marker), the
     ``embedding.fallback_provider`` embedder is tried; its vectors win when
-    real. Every branch assigns SOME vectors before reporting. The usage
-    section (issue #198) is attributed to the provider whose vectors were
-    kept — only a reporting embedder produces one.
+    real. Every branch assigns SOME vectors before reporting; the usage
+    section is attributed to the provider whose vectors were kept.
     """
     embedding_cfg = _nested_dict(config, "embedding")
-    provider_value = embedding_cfg.get("provider")
-    provider = provider_value if isinstance(provider_value, str) else "pgml"
+    provider = provider_label(embedding_cfg)
 
     embedder = plan.embedder if plan is not None else create_embedder(config, pool)
     vectors = await aembed_batch(embedder, texts)
 
     if vectors and _all_zero(vectors):
-        fallback_value = embedding_cfg.get("fallback_provider")
-        fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
+        fallback_provider = provider_label(embedding_cfg, "fallback_provider")
         if fallback_provider == provider:
             _assign_embeddings(chunks, vectors)
             _record_embed_usage(meta, provider, embedder)
