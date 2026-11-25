@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from test_backend_operation_parity import PARITY_OPS
 
 from corpus_kb.config import get_default_config
 from scripts.duck_live_matrix import OPS
-from test_backend_operation_parity import PARITY_OPS
 
 REPO = Path(__file__).resolve().parents[1]
 GATE_SCRIPT = REPO / "scripts" / "config_backend_parity_gate.py"
@@ -35,7 +35,9 @@ _spec.loader.exec_module(gate)
 def _gate_inputs() -> dict[str, Any]:
     """The real gate inputs: rows, both leaf sets, reader texts, tests text."""
     rows = gate._load_rows()
-    packaged = yaml.safe_load((REPO / "src" / "corpus_kb" / "config.yaml").read_text(encoding="utf-8"))
+    packaged = yaml.safe_load(
+        (REPO / "src" / "corpus_kb" / "config.yaml").read_text(encoding="utf-8")
+    )
     readers = sorted({row.reader for row in rows})
     texts = {}
     for reader in readers:
@@ -54,8 +56,11 @@ def test_every_default_leaf_declared() -> None:
     """TDD heart: the real defaults and packaged yaml are fully declared."""
     inputs = _gate_inputs()
     fails = gate.violations(
-        inputs["rows"], inputs["defaults"], inputs["packaged"],
-        inputs["reader_texts"], inputs["tests_text"],
+        inputs["rows"],
+        inputs["defaults"],
+        inputs["packaged"],
+        inputs["reader_texts"],
+        inputs["tests_text"],
     )
     assert fails == [], f"gate violations on the current tree: {fails[:5]}"
 
@@ -64,13 +69,20 @@ def test_undeclared_key_fails() -> None:
     """Both directions: a synthetic default leaf is red, a stale row is red."""
     inputs = _gate_inputs()
     fails = gate.violations(
-        inputs["rows"], inputs["defaults"] | {"fake.new.leaf"}, inputs["packaged"],
-        inputs["reader_texts"], inputs["tests_text"],
+        inputs["rows"],
+        inputs["defaults"] | {"fake.new.leaf"},
+        inputs["packaged"],
+        inputs["reader_texts"],
+        inputs["tests_text"],
     )
     assert any("fake.new.leaf" in fail and "get_default_config" in fail for fail in fails)
     stale = [type(inputs["rows"][0])(**{**inputs["rows"][0]._asdict(), "key": "gone.yesterday"})]
     fails = gate.violations(
-        stale, inputs["defaults"], inputs["packaged"], {}, inputs["tests_text"],
+        stale,
+        inputs["defaults"],
+        inputs["packaged"],
+        {},
+        inputs["tests_text"],
     )
     assert any("gone.yesterday" in fail for fail in fails)
 
@@ -80,7 +92,10 @@ def test_reader_missing_key_fails() -> None:
     inputs = _gate_inputs()
     row = type(inputs["rows"][0])(**{**inputs["rows"][0]._asdict(), "token": "not-a-real-token"})
     fails = gate.violations(
-        [row], inputs["defaults"], inputs["packaged"], inputs["reader_texts"],
+        [row],
+        inputs["defaults"],
+        inputs["packaged"],
+        inputs["reader_texts"],
         inputs["tests_text"],
     )
     assert any("not-a-real-token" in fail for fail in fails)
@@ -91,7 +106,11 @@ def test_refusal_row_binds_to_test() -> None:
     inputs = _gate_inputs()
     text = inputs["tests_text"].replace("HNSW_GATE_KEYS", "GONE_FROM_TESTS")
     fails = gate.violations(
-        inputs["rows"], inputs["defaults"], inputs["packaged"], inputs["reader_texts"], text,
+        inputs["rows"],
+        inputs["defaults"],
+        inputs["packaged"],
+        inputs["reader_texts"],
+        text,
     )
     assert any("retrieval.hnsw." in fail and "bind" in fail for fail in fails)
 
@@ -115,4 +134,4 @@ def test_ops_matrix_covers_parity_catalogue() -> None:
     expected = set(PARITY_OPS) | {"ingest_upload"}
     assert set(declared_ops()) == expected, f"op drift: {sorted(expected ^ set(declared_ops()))}"
     assert len(declared_ops()) == len(set(declared_ops())), "the op matrix lists an op twice"
-    assert set(OPS) == expected, "duck_live_matrix drift (see test_live_matrix_lists_all_parity_ops)"
+    assert set(OPS) == expected, "duck_live_matrix drift (see the live-matrix drift pin)"

@@ -391,6 +391,37 @@ jobs:
         run: poe validate-configs
 
   # ─────────────────────────────────────────────────────────────────────
+  # Config-backend parity (duckdb-parity program PR-9, zero-drift rule
+  # 10 + rule 12): every config leaf in get_default_config() plus the
+  # packaged config.yaml must be declared in config_backend_matrix with
+  # backends, behavior, and reader; undeclared keys fail both
+  # directions, declared readers must contain the key, and refusal rows
+  # must bind to backend_gates tests. Needs corpus_kb importable (the
+  # gate imports get_default_config), so this job installs the package.
+  # ─────────────────────────────────────────────────────────────────────
+  config-backend-parity:
+    name: "config-backend-parity"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project deps
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev]"
+
+      - name: Config-backend parity gate
+        run: poe config-backend-parity
+
+  # ─────────────────────────────────────────────────────────────────────
   # Toolname lockstep (issue #416, zero-drift rule 10): VALID_TOOL_NAMES
   # derives from the parity catalogue plus surface_registry, and the
   # lockstep test pins exact set equality in both directions. A new MCP

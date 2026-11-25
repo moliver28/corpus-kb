@@ -817,6 +817,17 @@ help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
 cmd = "python src/corpus_kb/_setup/validate_configs.py"
 help = "MCP config + runtime config consistency gate (ci.yml validate-configs job)"
 
+[tool.poe.tasks.config-backend-parity]
+# The config-backend parity gate (duckdb-parity program PR-9, rule 10:
+# poe target + ci.yml config-backend-parity job + enforcement-map row +
+# the AGENTS.md rule-12 line — all four artifacts in one PR). Every
+# config leaf in get_default_config() plus the packaged config.yaml must
+# be declared in config_backend_matrix with backends, behavior, reader;
+# undeclared keys fail both directions; declared readers must contain
+# the key; refusal rows must bind to backend_gates tests.
+cmd = "python scripts/config_backend_parity_gate.py"
+help = "Config-backend parity gate: every config leaf declared with backends/behavior/reader (PR-9)"
+
 [tool.poe.tasks.toolname-lockstep]
 # The MCP tool-name allowlist lockstep (issue #416, rule 10: poe target +
 # ci.yml toolname-lockstep job + CI-map row). VALID_TOOL_NAMES derives

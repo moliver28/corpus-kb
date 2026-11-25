@@ -918,3 +918,32 @@ class TestRuntimeTextbookKeys:
         config["textbook"]["window_timeout_s"] = "long"
         errors = validate_runtime_config(config)
         assert any("key 'textbook.window_timeout_s' must be float" in e for e in errors)
+
+
+class TestUnknownKeyWarnings:
+    """PR-9 residue scope: unknown keys WARN, legacy aliases stay accepted."""
+
+    def test_unknown_leaf_key_warns(self):
+        warnings = validate_configs.unknown_key_warnings({"retrieval": {"typo_knob": 3}})
+        assert warnings == ["unknown config key 'retrieval.typo_knob' is not read by this version"]
+
+    def test_known_leaf_key_is_silent(self):
+        assert validate_configs.unknown_key_warnings({"retrieval": {"mode": "hybrid_rrf"}}) == []
+
+    def test_legacy_search_aliases_not_warned(self):
+        config = {"search": {"hnsw": {"ef_search": 200}, "rrf_k": 60}}
+        assert validate_configs.unknown_key_warnings(config) == []
+
+    def test_real_project_configs_have_no_warnings(self):
+        errors, warnings = validate_configs.validate_all_detailed(ROOT)
+        assert errors == []
+        assert warnings == []
+
+    def test_validate_all_keeps_errors_only_contract(self):
+        assert validate_configs.validate_all(ROOT) == []
+
+    def test_non_default_read_key_not_warned(self):
+        # search.reranker feeds the backend_gates pgml refusal; it is never
+        # a default leaf, so the matrix cannot declare it (PR-9 exemption).
+        config = {"search": {"reranker": "none"}}
+        assert validate_configs.unknown_key_warnings(config) == []

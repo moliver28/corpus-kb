@@ -32,7 +32,7 @@
     "scripts/run_ner_promotion.py": 295,
     "src/corpus_kb/_setup/doctor_env.py": 282,
     "src/corpus_kb/_setup/doctor_research.py": 769,
-    "src/corpus_kb/_setup/install.py": 639,
+    "src/corpus_kb/_setup/install.py": 637,
     "src/corpus_kb/_setup/setup_steps.py": 364,
     "src/corpus_kb/analysis/meta_build.py": 257,
     "src/corpus_kb/analysis/method_register.py": 251,
