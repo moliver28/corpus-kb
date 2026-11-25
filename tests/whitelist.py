@@ -658,9 +658,6 @@ closed_count
 last_note
 
 # Typed source_types registry (master-db W3): SourceTypeSpec.metadata_keys is
-# declared data-surface (later waves read it); canonical_source_type and
-# is_accepted_ingest_text_type are the owned seam ingest_common wires in this
-# same PR (whitelist trims back once those call sites land).
+# declared data-surface; later typed-ingest waves read it. The resolver
+# functions left this list when ingest_common wired them (same PR).
 metadata_keys
-canonical_source_type
-is_accepted_ingest_text_type
