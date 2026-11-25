@@ -392,6 +392,7 @@
         'transport': 'POSITIONAL_OR_KEYWORD',
         'url': 'POSITIONAL_OR_KEYWORD',
         'validate': 'POSITIONAL_OR_KEYWORD',
+        'visibility': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.keyphrase_tools': dict({
