@@ -19,10 +19,10 @@ import json
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from test_surface_parity_deep import _QUEUE_ID, DOC_ID, LEGS, TENANT
+from test_surface_parity_deep import _QUEUE_ID, CV, DOC_ID, LEGS, RELEASE_ID, TENANT
 
 from tests.live_embed import live_embed_dimensions, live_embed_model
 
@@ -118,6 +118,26 @@ PARITY_OPS: ParityLegs = (
     "labeling_triage",
     "labeling_gold_check",
     "queue_cancel",
+    # Parity PR-8 (gap G25): the audited-missing DuckDB legs. This block
+    # runs LAST on purpose: these legs create REAL corpus data (the demo
+    # corpus, a transcript through the cycle's ingest stage, a web page
+    # through the REAL web pipeline behind a canned fetch, a drop
+    # directory), and the analysis legs above must keep answering their
+    # honest envelopes on the lean world this module shipped with. Other
+    # seeds: one codebook aggregate with a draft release (release_compare
+    # reads the event-store sidecar). ingest_reingest is the FULL run
+    # (dry_run=False): probes, plan, and the ledger row over whatever the
+    # earlier legs left in the store. ingest_upload stays out: it is
+    # HTTP-only by catalogue ruling, so its leg is the multipart ROUTE
+    # (tests/test_ingest_upload_duck.py).
+    "research_cycle",
+    "research_demo",
+    "demo_load",
+    "extraction_tune",
+    "ingest_url",
+    "release_compare",
+    "ingest_reingest",
+    "ingest_directory",
 )
 
 
@@ -190,6 +210,11 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     assert isinstance(gateway, DuckDbGateway)
     yield gateway
     await gateway.close()
+    # The release/cycle legs write the sqlite event-store sidecar through
+    # the cached app; close it so no handle outlives the tmp directory.
+    from corpus_kb.domain.application import reset_app
+
+    reset_app()
 
 
 async def _seed_document(gateway: Any, tenant: str, doc_id: str) -> None:
@@ -217,23 +242,38 @@ async def _seed_document(gateway: Any, tenant: str, doc_id: str) -> None:
 async def test_all_parity_operations_run_on_duckdb(
     parity_store: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Drive the 30 shared legs on one migrated file; collect every failure.
+    """Drive every shared leg on one migrated file; collect every failure.
 
     ``queue_enqueue`` books a real row (its content hash names a tmp file,
     so a second run would deduplicate), ``queue_cancel`` cancels the
-    seeded pending row under the catalogue's fixed queue id, and
-    ``delete_document`` runs LAST on the seeded document — its cascade is
-    one of the operations under proof.
+    seeded pending row under the catalogue's fixed id, and
+    ``delete_document`` really deletes the seeded document mid-run — its
+    cascade is one of the operations under proof. The PR-8 legs run LAST
+    (their world state must not leak under the analysis legs above) and
+    bring their own seeds: a drop directory, a transcript drop directory,
+    a canned fetch_page (the real web pipeline still runs on the fixture
+    HTML), and one codebook aggregate carrying a draft release.
     """
     book = tmp_path / "queue-book.md"
     book.write_text("queue book body", encoding="utf-8")
     gold = tmp_path / "parity-gold.json"
     gold.write_text(json.dumps({"chunk-1": "reports"}), encoding="utf-8")
+    drop_dir = tmp_path / "parity-drop"
+    drop_dir.mkdir()
+    (drop_dir / "parity-note.md").write_text("parity drop note\n", encoding="utf-8")
+    transcript_dir = tmp_path / "parity-transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "parity-interview.txt").write_text(
+        "Alice: The dashboard reads clearly now.\nBob: Search feels faster this week.\n",
+        encoding="utf-8",
+    )
     ctx: dict[str, Any] = {
         "pool": parity_store,
         "config": {},
         _file_path_key(): str(book),
         "gold_path": str(gold),
+        _dir_path_key(): str(drop_dir),
+        "ingest_dir": str(transcript_dir),
     }
     await _seed_document(parity_store, TENANT, DOC_ID)
     # The cancel leg needs a pending row under the catalogue's fixed id;
@@ -246,6 +286,26 @@ async def test_all_parity_operations_run_on_duckdb(
         str(book) + "-cancel-seed",
         "parity-cancel-seed-content-hash",
     )
+    # ingest_url's shared leg fetches a fixed URL; the fixture HTML keeps
+    # the leg offline while the REAL web pipeline runs on the file backend
+    # (the deep module's own canned-fetch pattern).
+    import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
+    from corpus_kb.web.fetch import FetchedPage
+
+    async def _parity_fetch_page(url: str, config: Any, transport: Any = None) -> FetchedPage:
+        return FetchedPage(
+            url=url,
+            final_url=url,
+            status_code=200,
+            html=_parity_url_html(),
+            content_type="text/html",
+            fetched_at=datetime.now(UTC).isoformat(),
+        )
+
+    monkeypatch.setattr(ingest_url_tools_module, "fetch_page", _parity_fetch_page)
+    # release_compare reads the codebook aggregate from the sqlite
+    # sidecar; seed one under the leg's fixed ids with a draft release.
+    await _seed_release_world(parity_store)
 
     failures: list[str] = []
     # The three analysis date ops run HOT here: the dormant default (every
@@ -288,6 +348,49 @@ def _file_path_key() -> str:
     """The deep module's ctx key for a file path (kept local: it is a test
     layout constant, not an API)."""
     return "file_path"
+
+
+def _dir_path_key() -> str:
+    """The deep module's ctx key for a directory path (kept local: it is a
+    test layout constant, not an API)."""
+    return "dir_path"
+
+
+def _parity_url_html() -> str:
+    """The fixture HTML the canned fetch serves to the real web pipeline."""
+    return "<html><body><p>parity page body</p></body></html>"
+
+
+async def _seed_release_world(gateway: Any) -> None:
+    """One codebook aggregate with a draft release, under the leg's ids.
+
+    The aggregate rides the sqlite event-store sidecar beside the duck
+    file (config-truth resolution); the draft release pins the fixed
+    release id the compare leg diffs against itself.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.domain.application import get_app_for_config
+    from corpus_kb.domain.codebook import CodebookVersion
+    from corpus_kb.handlers import release_handlers
+
+    app = get_app_for_config(load_config())
+    aggregate = CodebookVersion._create(
+        CodebookVersion.Created,
+        id=UUID(CV),
+        tenant_id=UUID(TENANT),
+        label="parity",
+        sha256="0" * 64,
+        paradigm="deductive",
+        notes="",
+    )
+    app.save(aggregate)
+    await release_handlers.request_release(
+        gateway,
+        UUID(TENANT),
+        UUID(CV),
+        "parity",
+        release_id=UUID(RELEASE_ID),
+    )
 
 
 def test_parity_op_list_is_exact() -> None:

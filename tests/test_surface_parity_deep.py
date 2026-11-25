@@ -1032,7 +1032,7 @@ async def _shared_notebook_overlap(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_research_cycle(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.cycle_tools import research_cycle
 
-    return await research_cycle(ctx["pool"], mode="in")
+    return await research_cycle(ctx["pool"], mode="in", ingest_dir=ctx.get("ingest_dir"))
 
 
 async def _shared_research_demo(ctx: dict[str, Any]) -> dict[str, Any]:

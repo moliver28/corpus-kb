@@ -766,10 +766,10 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test steps:
-  #   - ubuntu timeout-minutes: 40 (rule 20 floor is 20; the covered suite
+  #   - ubuntu timeout-minutes: 60 (rule 20 floor is 20; the covered suite
   #     measured 19:57 of pytest alone and hit the old 20-min cap after
   #     every test had passed; the locked-env leg outgrew 30 later) —
-  #     cross-OS legs carry the same 40
+  #     cross-OS legs carry the same 60 (PR-8 grew the armed suite)
   # ─────────────────────────────────────────────────────────────────────
   # ─────────────────────────────────────────────────────────────────────
   # ui-e2e: the SPA Playwright smoke + axe scan against a REAL corpus-kb
@@ -1077,14 +1077,16 @@ jobs:
           done
 
       - name: Run tests
-        # timeout-minutes: 40 — rule 20 requires >= 20 min on the ubuntu
+        # timeout-minutes: 60 — rule 20 requires >= 20 min on the ubuntu
         # leg, and this is now the same budget the cross-OS legs carry.
         # History: the covered suite ran 19:57 of pytest and hit the old
         # 20-min cap after every test had passed (run 40471314193; PR
         # #189 raised it to 30). The locked-env leg outgrew 30 again
         # (run 43530817482: the step timed out — install plus the
-        # 3-model pull plus the covered suite no longer fit 30).
-        timeout-minutes: 40
+        # 3-model pull plus the covered suite no longer fit 30). PR-8
+        # added the parity legs; the armed suite now needs about 55
+        # minutes (run 45573731187 clipped at 70 percent).
+        timeout-minutes: 60
         env:
           # Gate closed: deselect the ollama-marked modules — they need a
           # pulled model, and their zero-vector fallback runs are not the
@@ -1317,13 +1319,14 @@ jobs:
       - name: Run tests
         # timeout-minutes prevents hung Ollama connection attempts from
         # blocking CI indefinitely (Windows TCP timeout can be 21s+ per
-        # attempt × multiple embed calls). 40 min: the hardening round's
+        # attempt × multiple embed calls). 60 min: the hardening round's
         # suite outgrew the old 15-minute line on windows (ubuntu needs
         # 24 min with the same tests), and PYTHONUNBUFFERED keeps the
         # per-test progress visible instead of trapped in the pipe buffer
         # until the process dies — without it a slow leg looks identical
-        # to a hang.
-        timeout-minutes: 40
+        # to a hang. PR-8 added the parity legs; the armed suite now
+        # needs about 55 minutes (run 45573731187 clipped at 70 percent).
+        timeout-minutes: 60
         env:
           PYTHONUNBUFFERED: "1"
           # Gate closed: deselect the ollama-marked modules (same contract
