@@ -661,3 +661,11 @@ last_note
 # declared data-surface; later typed-ingest waves read it. The resolver
 # functions left this list when ingest_common wired them (same PR).
 metadata_keys
+
+# Validator refusal-text mirror bank (_setup/validate_configs_keys.py): the
+# three PR-6 explicit-set texts are byte-for-byte mirrors of the
+# corpus_kb.backend_gates texts; tests/test_backend_config_truth.py pins the
+# equality, and vulture scans src/ only so it cannot see that pin.
+HNSW_ON_DUCKDB_ERROR
+DUCKDB_GRAPH_BACKEND_ON_POSTGRES_ERROR
+GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR

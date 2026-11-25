@@ -115,6 +115,38 @@ def test_refusal_row_binds_to_test() -> None:
     assert any("retrieval.hnsw." in fail and "bind" in fail for fail in fails)
 
 
+def test_refusal_behavior_conflicting_backends_fails() -> None:
+    """A refusal claim may not honor the key on the refused engine too."""
+    inputs = _gate_inputs()
+    make = type(inputs["rows"][0])
+    row = make(
+        **{
+            **inputs["rows"][0]._asdict(),
+            "key": "demo.refused.key",
+            "backends": ("postgres", "duckdb"),
+            "behavior": "refused-under-duckdb-when-set",
+        }
+    )
+    fails = gate.violations([row], set(), set(), {}, "")
+    assert any("demo.refused.key" in fail and "refuses duckdb" in fail for fail in fails)
+
+
+def test_engine_only_behavior_conflicting_backends_fails() -> None:
+    """An engine-only claim may not list the other engine."""
+    inputs = _gate_inputs()
+    make = type(inputs["rows"][0])
+    row = make(
+        **{
+            **inputs["rows"][0]._asdict(),
+            "key": "demo.only.key",
+            "backends": ("postgres", "duckdb"),
+            "behavior": "duckdb-only",
+        }
+    )
+    fails = gate.violations([row], set(), set(), {}, "")
+    assert any("demo.only.key" in fail and "duckdb-only" in fail for fail in fails)
+
+
 def test_gate_green_on_current_tree() -> None:
     """The script itself exits 0 on the current tree."""
     result = subprocess.run(

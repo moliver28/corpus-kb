@@ -296,7 +296,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_DATABASE_URL` | `database.connection_string` | `load_config`, `server_wiring`, `domain.application`, `_setup.migrate`, `_setup.install`, `_setup.validate_migration` |
 | `CORPUS_KB_DATABASE_BACKEND` | `database.backend` | `load_config` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` | `load_config` |
-| `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` | `load_config` |
+| `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` | `load_config`, `_setup.store_width` (migrate-time DDL and the boot guard, both engines) |
 | `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` (the Ollama endpoint, for example `http://ollama:11434` in a compose network) | `load_config` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
 | `CORPUS_KB_HOST` | `server.host` (HTTP bind address; the compose entrypoint passes it to `corpus-kb start`) | `load_config`, `docker/app/entrypoint.sh` |
@@ -318,30 +318,43 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 
 ### Embedding dimensions and the vector schema
 
-The vector column `chunks_vectors.embedding` is a FIXED `halfvec(2560)` typmod (migration 025). pgvector enforces the exact width — verified on pgvector 0.8.x / Postgres 16:
+The vector column type is `halfvec(W)`, where W is the configured
+embedding width. The migration DDL carries the width as a placeholder
+(`__EMBEDDING_DIMS__`). Both migration runners substitute it from
+`embedding.dimensions` before they apply a file. Each run records the
+applied width in the store meta table. `CORPUS_KB_EMBEDDING_DIMENSIONS`
+overrides the config key, so the env var drives the migrate-time DDL on
+both engines.
 
-| Model | Dimensions | Can ingest into the shipped schema? |
-|-------|------------|-------------------------------------|
+The shipped store is built at W = 2560 for `qwen3-embedding:4b`. pgvector
+enforces the exact width — verified on pgvector 0.8.x / Postgres 16:
+
+| Model | Dimensions | Fits the shipped 2560 store? |
+|-------|------------|------------------------------|
 | `qwen3-embedding:4b` (shipped default) | 2560 | YES — matches the column |
-| `nomic-embed-text` | 768 | NO — every vector insert fails with SQLSTATE 22000 |
-| `qwen3-embedding:8b-q8_0` | 4096 | NO — needs a schema migration first |
+| `nomic-embed-text` | 768 | NO. Set `embedding.dimensions` to 768 and migrate a fresh store first |
+| `qwen3-embedding:8b-q8_0` | 4096 | NO. Set `embedding.dimensions` to 4096 and migrate a fresh store first |
 
-halfvec is required at this width: pgvector HNSW caps `vector` at 2000
+halfvec is required at 2560: pgvector HNSW caps `vector` at 2000
 dimensions and `halfvec` at 4000. The 2560-dim column carries a real HNSW
 index (`halfvec_cosine_ops`, m = 16, `ef_construction` = 128). The doctor
 warns when `retrieval.hnsw.m`/`ef_construction` drift from the live index
 options.
 
-Vectors are never padded and never truncated. Three guards make this honest:
+Vectors are never padded and never truncated. Five guards make this honest:
 
-1. **At ingest**: the write path probes the column width first. A mismatch raises a typed `config_error`.
-2. **At the embedder**: the first embed response is width-checked. A wrong-width model raises a `config_error` with the native-width fix.
-3. **In doctor**: the dimension check compares the config with the column typmod. It reports the stored per-row histogram. FAIL on mismatch.
+1. **At migrate**: the runner substitutes the configured width into the DDL on both engines and records the applied width.
+2. **At boot**: the store-width boot guard compares the configured width with the recorded width. A mismatch raises one typed message, the same on both engines.
+3. **At ingest**: the write path probes the column width first. A mismatch raises a typed `config_error`.
+4. **At the embedder**: the first embed response is width-checked. A wrong-width model raises a `config_error` with the native-width fix.
+5. **In doctor**: the dimension check compares the config with the column type. It reports the stored per-row histogram. FAIL on mismatch.
 
-The fix for a mismatch: point `embedding.model` at a model that emits 2560 dimensions. Set `embedding.dimensions` to 2560. Then re-ingest.
+The fix for a width mismatch has two shapes. Set `embedding.dimensions`
+back to the recorded store width. Or re-migrate the store with the new
+width.
 
-A model switch invalidates all stored embeddings. Migration 025 retypes the
-column; old rows become stale (`embedding IS NULL`). `corpus-kb
+A width change retypes the column, so stored embeddings for the old
+width become stale (`embedding IS NULL`). `corpus-kb
 ingest-reembed` rebuilds stale rows, not only degraded-flagged rows.
 
 ---

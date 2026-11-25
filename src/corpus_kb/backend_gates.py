@@ -6,8 +6,8 @@ Postgres engine. ``config.load_config`` calls :func:`backend_key_errors`
 AT LOAD with the raw user file tree, so a mismatched key fails at startup
 with a plain-English remediation — never a silent downgrade.
 ``storage.graph_factory`` re-checks the same function for hand-built
-config dicts, which carry no raw file tree, so there only the always-on
-rules (age, pgml) can fire.
+config dicts, which carry no raw file tree, so only the always-on
+rules (age, pgml) can fire there.
 
 The explicit-set rules read the RAW user file config (``file_config``),
 never the merged config: the merged config always carries the shipped
@@ -26,11 +26,11 @@ from corpus_kb.research.search_settings import HNSW_CONFIG_DEFAULTS
 from corpus_kb.utils.config_sections import mapping_section
 
 # Backend-mix refusals (storage-portability program §11 rule 15 string
-# bank — the texts are binding and used verbatim; validate_configs mirrors
-# them because the CI validate-configs job installs only PyYAML and cannot
-# import this package. tests/test_backend_config_truth.py pins the
-# equality between the two renderings). The three gate-completion texts
-# below follow the same bank rules: one line, a named remediation.
+# bank). The texts are binding and used verbatim. validate_configs mirrors
+# them: the CI validate-configs job installs only PyYAML and cannot import
+# this package. tests/test_backend_config_truth.py pins the equality of
+# the two renderings. The gate-completion texts below follow the same
+# bank rules: one sentence, one named remediation.
 AGE_ON_DUCKDB_ERROR = "Set database.backend to postgres, or remove the graph.backend setting."
 PGML_EMBEDDER_ON_DUCKDB_ERROR = (
     "PostgresML runs only on Postgres. The Ollama embedder will be used instead."
