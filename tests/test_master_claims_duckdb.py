@@ -281,3 +281,44 @@ def _stub_embed_extract(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed)
     monkeypatch.setattr(ingest_common, "extract_with_fallback", fake_extract)
+
+
+# -- W5-3: the master topology migration (slug + meta index view) ------------
+
+
+async def test_master_index_view_exists(tmp_path: Path) -> None:
+    """A SELECT from the view answers zero rows on a fresh store."""
+    path = await _migrated(tmp_path, "index-view.duckdb")
+    con = duckdb.connect(str(path))
+    try:
+        rows = con.execute("SELECT * FROM master_project_index").fetchall()
+        assert rows == []
+    finally:
+        con.close()
+    _cleanup(path)
+
+
+async def test_slug_unique_per_tenant(tmp_path: Path) -> None:
+    """The slug is unique per tenant: cross-tenant reuse succeeds, reuse fails."""
+    path = await _migrated(tmp_path, "slug-unique.duckdb")
+    con = duckdb.connect(str(path))
+    try:
+        con.execute(
+            "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+            " VALUES ('11111111-1111-1111-1111-111111111111', ?, 'Alpha', 'alpha')",
+            [TENANT],
+        )
+        con.execute(
+            "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+            " VALUES ('22222222-2222-2222-2222-222222222222', ?, 'Beta', 'alpha')",
+            ["tenant-2"],
+        )
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+                " VALUES ('33333333-3333-3333-3333-333333333333', ?, 'Gamma', 'alpha')",
+                [TENANT],
+            )
+    finally:
+        con.close()
+    _cleanup(path)
