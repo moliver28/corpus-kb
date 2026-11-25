@@ -65,6 +65,30 @@ def _refusal_row(row: ConfigBackendRow) -> bool:
     return "refused" in row.behavior or row.reader == BACKEND_GATES_READER
 
 
+def _consistency_fails(row: ConfigBackendRow) -> list[str]:
+    """Behavior/backends agreement, read straight off the behavior string.
+
+    A refusal or removal claim may not honor the key on the refused
+    engine, and an engine-only claim may not list the other engine.
+    Independent of the prefix parser, so a derivation edit cannot
+    silently contradict a behavior.
+    """
+    fails: list[str] = []
+    for backend in _CONFLICTS.findall(row.behavior):
+        if backend in row.backends:
+            fails.append(
+                f"FAIL: {row.key} behavior '{row.behavior}' refuses {backend} "
+                "but declares the key honored there"
+            )
+    only = _ENGINE_ONLY.search(row.behavior)
+    if only and set(row.backends) != {only.group(1)}:
+        fails.append(
+            f"FAIL: {row.key} behavior '{row.behavior}' pins {only.group(1)}-only "
+            f"but declares backends {sorted(row.backends)}"
+        )
+    return fails
+
+
 def violations(
     rows: list[ConfigBackendRow],
     defaults_leaves: set[str],
@@ -93,18 +117,7 @@ def violations(
     for row in rows:
         if set(row.backends) - KNOWN_BACKENDS:
             fails.append(f"FAIL: {row.key} names an unknown backend in {row.backends}")
-        for backend in _CONFLICTS.findall(row.behavior):
-            if backend in row.backends:
-                fails.append(
-                    f"FAIL: {row.key} behavior '{row.behavior}' refuses {backend} "
-                    "but declares the key honored there"
-                )
-        only = _ENGINE_ONLY.search(row.behavior)
-        if only and set(row.backends) != {only.group(1)}:
-            fails.append(
-                f"FAIL: {row.key} behavior '{row.behavior}' pins {only.group(1)}-only "
-                f"but declares backends {sorted(row.backends)}"
-            )
+        fails.extend(_consistency_fails(row))
         text = reader_texts.get(row.reader)
         if text is None:
             fails.append(f"FAIL: {row.key} names reader {row.reader} but that file does not exist")
