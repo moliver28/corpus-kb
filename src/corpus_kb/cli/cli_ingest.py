@@ -47,6 +47,11 @@ INGEST_EXIT_PARTIAL = 1
 INGEST_EXIT_FAILED = 2
 INGEST_EXIT_CONFIG = 3
 
+WATCH_LEDGER_WARNING = (
+    "WARNING: ingest_runs table absent (migration 022 not applied) - "
+    "watch bookkeeping is IN-MEMORY ONLY (run corpus-kb setup)"
+)
+
 
 def register(app: typer.Typer) -> None:
     """Attach the five top-level ingest commands to the main Typer app."""
@@ -337,10 +342,8 @@ def ingest_url_command(
 ) -> int:
     """Fetch a website and ingest its HTML pages (web_structure strategy).
 
-    Exit codes: 0 every page ok, 1 partial success (some pages failed),
-    2 total failure (fetch blocked or every page failed), 3 configuration
-    error (unknown --source-type). Typer rejects an unknown --validate
-    value with exit 2.
+    Exit codes: 0 ok, 1 partial, 2 total failure, 3 config error. Typer
+    rejects an unknown --validate value with exit 2.
     """
     return _run_sync(
         lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output, validate)
@@ -364,10 +367,7 @@ async def _watch_flow(
     try:
         persistent = await ledger_available(pool, TENANT_DEFAULT)
         if not persistent:
-            print(
-                "WARNING: ingest_runs table absent (migration 022 not applied) — "
-                "watch bookkeeping is IN-MEMORY ONLY (run corpus-kb setup)"
-            )
+            print(WATCH_LEDGER_WARNING)
         ledger = WatchLedger(persistent=persistent)
         interval = _watch_interval(cfg)
 

@@ -974,3 +974,11 @@ def test_cli_ingest_help_documents_the_validate_choices() -> None:
     flat = _flat_help(result.output)
     assert "--validate" in flat
     assert "off|advisory|enforce|calibrate" in flat
+
+
+def test_watch_ledger_warning_is_ascii_safe():
+    from corpus_kb.cli.cli_ingest import WATCH_LEDGER_WARNING
+
+    WATCH_LEDGER_WARNING.encode("cp932")  # raises UnicodeEncodeError before the fix
+    assert "\u2014" not in WATCH_LEDGER_WARNING
+    assert "corpus-kb setup" in WATCH_LEDGER_WARNING
