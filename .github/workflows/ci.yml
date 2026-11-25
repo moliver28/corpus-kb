@@ -339,6 +339,25 @@ jobs:
       - name: Persona meter gate
         run: poe persona-meter
 
+  bench-latency:
+    name: "bench-latency (P1-P4 p50 ceilings)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install poethepoet and project deps
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev,duckdb]"
+      - name: Latency ceiling gate
+        run: poe bench-latency
+
   # ─────────────────────────────────────────────────────────────────────
   # Validate-configs: checks MCP config JSON files for format correctness
   # and cross-config consistency. Fast, no deps needed beyond stdlib.
