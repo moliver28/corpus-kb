@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -40,6 +41,10 @@ COLD_START_DEFAULT_ITERATIONS = 5
 OTHER_DEFAULT_ITERATIONS = 30
 BENCH_BASE_PORT = 8901
 MS_PER_S = 1000.0
+# The reference runner has Ollama down (the _readme sentence). The dead
+# host pins that condition on every machine; an operator overrides the
+# variable for live-model runs, which the gate never consumes.
+DEAD_OLLAMA_HOST = "http://127.0.0.1:9"
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -129,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip the P1 boot drivers for a fast local loop.",
     )
     args = parser.parse_args(argv)
+    os.environ.setdefault("CORPUS_KB_OLLAMA_HOST", DEAD_OLLAMA_HOST)
     cold = COLD_START_DEFAULT_ITERATIONS
     other = OTHER_DEFAULT_ITERATIONS
     if args.iterations is not None:
