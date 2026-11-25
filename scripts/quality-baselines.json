@@ -1,7 +1,7 @@
 {
   "_readme": "Checked-in ratchet baselines (zero-drift rule 10, PR-F). Each number is a CEILING, not a target: poe size-ratchet fails when the live count is ABOVE the baseline, and passes when the code shrinks. Ratchet-down procedure: after a PR removes duplication or splits long files, measure the new counts (poe size-ratchet prints them), lower the numbers here in that same PR, and commit. Never raise a number to make a failing PR pass. coverage_floor is a FLOOR for overall line coverage (measured by poe test-cov, read from coverage.xml); it was set 0.5 points under the value measured at adoption so normal drift does not flake. Raise it in the same PR that adds tests. routing_phrase_accuracy is a FLOOR for the golden routing bench (tests/test_routing_bench.py, embedder=None); it holds the honest measured value and moves up only when the bench improves. routing_regret_mean is a CEILING for the same bench on the embedding path (live embedder; the test skips when Ollama is down). 0.0 is perfect routing: every chosen id ranks first in its expected list. max_file_lines is a per-file CEILING map: one entry for each file over the 250-line soft limit, recorded at the file's exact size when the entry was written (momus F11). The size-ratchet gate fails when a capped file grows past its ceiling, when a capped file is gone, when a capped file has dropped to or under the limit (remove the entry in that PR), or when an over-limit file has no entry (record its current size in that PR). Never raise a ceiling; shrink the file instead.",
   "plr0915": 16,
-  "files_over_250": 78,
+  "files_over_250": 77,
   "coverage_floor": 87.5,
   "pytest_warnings": 0,
   "routing_phrase_accuracy": 1.0,
@@ -30,7 +30,6 @@
     "src/corpus_kb/_setup/install.py": 639,
     "src/corpus_kb/_setup/setup_steps.py": 364,
     "src/corpus_kb/analysis/meta_build.py": 257,
-    "src/corpus_kb/analysis/method_register.py": 251,
     "src/corpus_kb/analysis/settings.py": 412,
     "src/corpus_kb/api/_socket_rows.py": 264,
     "src/corpus_kb/api/http.py": 315,
@@ -89,12 +88,11 @@
     "src/corpus_kb/storage/duckdb_search.py": 308,
     "src/corpus_kb/storage/duckdb_store.py": 541,
     "src/corpus_kb/storage/duckdb_support.py": 298,
-    "src/corpus_kb/storage/duckpgq.py": 251,
     "src/corpus_kb/storage/graph_store.py": 580,
-    "src/corpus_kb/surface_registry.py": 1793,
+    "src/corpus_kb/surface_registry.py": 878,
     "src/corpus_kb/tools/ingest_common.py": 422,
     "src/corpus_kb/tools/ingest_embed.py": 315,
-    "src/corpus_kb/tools/ingest_store.py": 660,
+    "src/corpus_kb/tools/ingest_store.py": 488,
     "src/corpus_kb/tools/ingest_tools.py": 294,
     "src/corpus_kb/tools/topics_tools.py": 317,
     "src/corpus_kb/topics/engine.py": 553,
@@ -104,7 +102,9 @@
     "tests/test_error_taxonomy.py": 1052,
     "tests/test_method_register.py": 1132,
     "tests/test_search_honesty.py": 1058,
-    "tests/test_surface_parity_deep.py": 3124
+    "tests/test_surface_parity_deep.py": 1311,
+    "src/corpus_kb/surface_wrappers.py": 951,
+    "tests/_parity_legs.py": 1885
   },
   "persona_meter": {
     "report_path": "tests/fixtures/persona_meter/report.v1.json",

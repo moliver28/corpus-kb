@@ -40,40 +40,24 @@ from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 from ..analysis.dates import parse_date_value
-from ..errors import ConfigError
 from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
 from . import ingest_batch
 from .ingest_batch import entity_persisted_metadata
-from .ingest_sql import (
-    duckdb_vector_width_probe,
-    ingest_sql_for,
-    pg_vector_type_mod_probe,
-    vector_width_config_error,
-    vector_write_params,
+from .ingest_sql import ingest_sql_for, pg_vector_type_mod_probe
+from .ingest_store_chunks import (
+    _CHUNK_TOMBSTONE_SQL,
+    store_chunks_duckdb,
+    vector_row,
+)
+from .ingest_store_chunks import (
+    store_vectors as _store_vector_rows,
 )
 
 logger = logging.getLogger(__name__)
 
-_CHUNK_TOMBSTONE_SQL = (
-    "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
-    "AND chunk_index >= $3 AND tombstoned_at IS NULL"
-)
-_CHUNK_DEGRADED_SQL = "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2"
 _CHUNK_COUNT_SQL = (
     "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2 AND tombstoned_at IS NULL"
-)
-
-# DuckDB: a chunks row referenced by ANY child row (vectors, relations,
-# topics, labels, predictions) cannot be rewritten (an UPDATE rewrites the
-# row), so a changed or tombstoned chunk's dependents go first. Every one of
-# these child rows is derived/replaceable per the migrations that add them.
-_DUCKDB_DEPENDENT_TABLES = (
-    "chunks_vectors",
-    "relations",
-    "chunk_topics",
-    "chunk_labels",
-    "chunk_predictions",
 )
 
 
@@ -347,7 +331,7 @@ class PostgresIngestStore:
         if not chunks:
             return set()
         if self._sql.is_duckdb:
-            return await self._store_chunks_duckdb(chunks)
+            return await store_chunks_duckdb(self._gateway, self._tenant_id, chunks)
         return await self._store_chunks_pg(chunks)
 
     async def _store_chunks_pg(self, chunks: list[Chunk]) -> set[str]:
@@ -381,105 +365,6 @@ class PostgresIngestStore:
             await tx.execute(_CHUNK_TOMBSTONE_SQL, self._tenant_id, doc_id, len(chunks))
         return needs_embedding
 
-    async def _store_chunks_duckdb(self, chunks: list[Chunk]) -> set[str]:
-        """Per-row chunk write path (DuckDB): FK commit-visibility pre-pass."""
-        needs_embedding: set[str] = set()
-        doc_id = chunks[0].document_id
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                row = await tx.fetchrow(
-                    "SELECT chunk_id, chunk_hash FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                )
-                if row is not None and row["chunk_hash"] != chunk.chunk_hash:
-                    await self._delete_chunk_dependents(tx, "WHERE chunk_id = $1", row["chunk_id"])
-            await self._delete_chunk_dependents(
-                tx,
-                "WHERE tenant_id = $1 AND chunk_id IN (SELECT chunk_id FROM chunks "
-                "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index >= $3)",
-                self._tenant_id,
-                doc_id,
-                len(chunks),
-            )
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                existing = await tx.fetchrow(
-                    "SELECT chunk_id, chunk_hash FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                )
-                if existing is None:
-                    row = await tx.fetchrow(
-                        """
-                        INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
-                            text, source_type, entity_name, heading_path, file_path,
-                            start_line, end_line, metadata, chunk_hash, source_timestamp,
-                            context_blurb)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                        ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
-                        RETURNING chunk_id
-                        """,
-                        chunk.chunk_id,
-                        self._tenant_id,
-                        chunk.document_id,
-                        chunk_index,
-                        chunk.text,
-                        chunk.source_type,
-                        chunk.entity_name,
-                        json.dumps(chunk.heading_path) if chunk.heading_path else None,
-                        chunk.metadata.get("file_path") if chunk.metadata else None,
-                        chunk.start_line,
-                        chunk.end_line,
-                        json.dumps(chunk.metadata),
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                    )
-                    if row is not None:
-                        needs_embedding.add(str(row["chunk_id"]))
-                elif existing["chunk_hash"] != chunk.chunk_hash:
-                    await tx.execute(
-                        """
-                        UPDATE chunks SET text = $1, chunk_hash = $2, source_timestamp = $3,
-                            context_blurb = $4, metadata = $5, superseded_at = NULL,
-                            tombstoned_at = NULL
-                        WHERE chunk_id = $6
-                        """,
-                        chunk.text,
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                        json.dumps(chunk.metadata),
-                        existing["chunk_id"],
-                    )
-                    chunk.chunk_id = str(existing["chunk_id"])
-                    needs_embedding.add(str(existing["chunk_id"]))
-                else:
-                    # Hash unchanged, no-op. DuckDB: relations built later in
-                    # this run carry the in-memory chunk_id, so it is
-                    # re-pointed at the stored row (extractors key
-                    # relations on chunk.chunk_id).
-                    chunk.chunk_id = str(existing["chunk_id"])
-            await tx.execute(
-                _CHUNK_TOMBSTONE_SQL,
-                self._tenant_id,
-                chunks[0].document_id if chunks else None,
-                len(chunks),
-            )
-        return needs_embedding
-
-    async def _delete_chunk_dependents(self, tx: SqlGateway, where: str, *args: Any) -> None:
-        """Drop a chunk's derived child rows (DuckDB pre-rewrite step)."""
-        for table in _DUCKDB_DEPENDENT_TABLES:
-            await tx.execute(f"DELETE FROM {table} {where}", *args)
-
     async def store_vectors(
         self,
         chunks: list[Chunk],
@@ -487,80 +372,23 @@ class PostgresIngestStore:
         dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
-        """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str).
+        """Insert chunk vectors; the write contract lives in the chunk module.
 
-        Re-embed OVERWRITES: ``vector_1024`` is replaced, never COALESCEd with
-        the stored slice, so a re-embed cannot leave a stale matryoshka slice
-        next to a fresh vector. Each write also states the row's ``degraded``
-        flag honestly (all-zero vectors are the embedder-failure marker) and
-        mirrors it onto the owning chunks row.
-
-        Width guard: the embedding column is probed ONCE up front (Postgres
-        catalog typmod, DuckDB ``PRAGMA table_info``) and any width error
-        inside the loop is re-raised as the same typed ConfigError — a
-        model/dimension mismatch is a config problem, not a write failure.
+        Re-embed OVERWRITES: vector_1024 is replaced, never COALESCEd
+        with the stored slice, and each write states its degraded flag
+        honestly (all-zero vectors are the embedder-failure marker). The
+        full width-guard contract sits on
+        ingest_store_chunks.store_vectors.
         """
         if not chunks:
             return 0
-        active = [chunk for chunk in chunks if chunk.embedding is not None]
-        params, degraded_flags = [], []
-        for chunk in active:
-            row, degraded = self._vector_row(chunk, embedding_model, dimensions, vectors_1024 or {})
-            params.append(row)
-            degraded_flags.append(degraded)
-        async with self._gateway.transaction(self._tenant_id) as tx:
-            await self._probe_vector_width(tx, dimensions, embedding_model)
-            try:
-                if active:
-                    await tx.executemany(self._sql.vector_insert_sql, params)
-                    if self._sql.is_duckdb:
-                        await tx.executemany(
-                            _CHUNK_DEGRADED_SQL,
-                            [
-                                (chunk.chunk_id, self._tenant_id, degraded)
-                                for chunk, degraded in zip(active, degraded_flags, strict=False)
-                            ],
-                        )
-                    else:
-                        await ingest_batch.mirror_degraded(
-                            tx, [chunk.chunk_id for chunk in active], degraded_flags
-                        )
-            except ConfigError:
-                raise
-            except Exception as exc:
-                raise vector_width_config_error(exc, embedding_model) from exc
-        return len(active)
-
-    async def _probe_vector_width(
-        self, tx: SqlGateway, dimensions: int, embedding_model: str
-    ) -> None:
-        if self._sql.is_duckdb:
-            await duckdb_vector_width_probe(tx, dimensions, embedding_model)
-        else:
-            await pg_vector_type_mod_probe(tx, dimensions, embedding_model)
-
-    def _vector_row(
-        self,
-        chunk: Chunk,
-        embedding_model: str,
-        dimensions: int,
-        vectors_1024: dict[str, list[float]],
-    ) -> tuple[tuple[object, ...], bool]:
-        """One chunk's vector bind row: (params, degraded flag)."""
-        v1024 = vectors_1024.get(str(chunk.chunk_id))
-        degraded = all(v == 0.0 for v in chunk.embedding) if chunk.embedding else True
-        assert chunk.embedding is not None
-        embedding_param, v1024_param = vector_write_params(chunk.embedding, v1024)
-        params = (
-            chunk.chunk_id,
-            self._tenant_id,
-            embedding_param,
-            v1024_param,
-            embedding_model,
-            dimensions,
-            degraded,
-        )
-        return params, degraded
+        v1024 = vectors_1024 or {}
+        rows = [
+            vector_row(self._tenant_id, chunk, embedding_model, dimensions, v1024)
+            for chunk in chunks
+            if chunk.embedding is not None
+        ]
+        return await _store_vector_rows(self._gateway, self._tenant_id, rows)
 
     async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
         """Insert entities into the entities table.
