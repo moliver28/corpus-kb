@@ -121,11 +121,10 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
     samples: list[tuple[float, float]] = []
     for offset in range(iterations):
         port = base_port + offset
-        with tempfile.TemporaryDirectory(prefix="bench-cold-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="bench-cold-", ignore_cleanup_errors=True) as tmp:
             dsn = duckdb_path_to_conn_string(Path(tmp) / "bench.duckdb")
             run_duckdb_migrations(dsn)
-            # database.backend keys the DuckDB arm; the tracked config ships
-            # graph.backend: age, so the scratch boot overrides all three keys.
+            # database.backend keys the DuckDB arm; the tracked config ships graph.backend: age.
             env = {
                 **os.environ,
                 "CORPUS_KB_DATABASE_URL": dsn,
@@ -142,6 +141,7 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
                 first_query = await _poll_boot(port, True, QUERY_DEADLINE_S)
             finally:
                 _terminate_tree(proc)
+                time.sleep(1.0)  # Windows releases the store file locks after the kill
         samples.append((ready, first_query))
     return samples
 
