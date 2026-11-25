@@ -3,11 +3,15 @@
 ``validate_runtime_config`` checks every dotted key in
 ``RUNTIME_CONFIG_KEYS`` for presence and type, then applies the
 cross-field enum/range/backend-mix rules through the per-block helpers
-in ``validate_configs_rules.py``.
+in ``validate_configs_rules.py``. ``unknown_key_warnings`` reports leaf
+keys no runtime reader declares (PR-9 residue scope): warn only, exit
+stays 0, and the legacy alias namespaces stay accepted.
 """
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
 from typing import Any
 
 try:
@@ -45,6 +49,70 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     _return_top_k_errors = _rules._return_top_k_errors
     _textbook_block_errors = _rules._textbook_block_errors
     _topics_block_errors = _rules._topics_block_errors
+
+
+def _load_data_module(rel_path: str, name: str) -> Any:
+    """Load a data-only corpus_kb module in both import contexts.
+
+    Package context imports it; the PyYAML-only CI validate job (no
+    ``corpus_kb``) loads it straight from the source file — both modules
+    import nothing beyond the stdlib, so either path works.
+    """
+    try:
+        return importlib.import_module(f"corpus_kb.{name}")
+    except ImportError:  # pragma: no cover - script context (CI validate job)
+        path = Path(__file__).resolve().parents[1] / rel_path
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load {name} from {path}") from None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+
+def _matrix_module() -> Any:
+    return _load_data_module("config_backend_matrix.py", "config_backend_matrix_warn_src")
+
+
+def _aliases_module() -> Any:
+    return _load_data_module("config_aliases.py", "config_aliases_warn_src")
+
+
+# Keys a runtime reader consumes that are NOT default leaves, so the
+# declaration matrix cannot list them: ``search.reranker`` feeds the pgml
+# reranker refusal in ``backend_gates`` (the canonical key is
+# ``reranking.backend``). Extend only with a named consumer.
+NON_DEFAULT_READ_KEYS: frozenset[str] = frozenset({"search.reranker"})
+
+
+def unknown_key_warnings(config: dict[str, Any]) -> list[str]:
+    """Leaf keys in ``config`` that no runtime reader declares (warn only).
+
+    The known set is the declaration matrix (``config_backend_matrix``),
+    the same table the parity gate enforces against the defaults, plus
+    ``NON_DEFAULT_READ_KEYS``. Legacy alias keys stay accepted without a
+    warning (``config_aliases``): anything ``used_legacy_keys`` reports —
+    including a present block rename such as ``search.hnsw`` — is exempt
+    subtree-wide. Warn, never error: the exit code must stay 0.
+    """
+    known = frozenset(_matrix_module().declared_leaf_keys()) | NON_DEFAULT_READ_KEYS
+    present_legacy = _aliases_module().used_legacy_keys(config)
+    warnings: list[str] = []
+
+    def walk(node: dict[str, Any], prefix: str) -> None:
+        for key, value in node.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict) and value:
+                walk(value, f"{path}.")
+                continue
+            if path in known:
+                continue
+            if any(path == leg or path.startswith(f"{leg}.") for leg in present_legacy):
+                continue
+            warnings.append(f"unknown config key '{path}' is not read by this version")
+
+    walk(config, "")
+    return sorted(warnings)
 
 
 def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:

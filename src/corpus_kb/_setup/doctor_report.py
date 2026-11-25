@@ -58,15 +58,22 @@ def _print_doctor_system_lines(info: dict[str, Any]) -> str:
 
 
 def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
-    """The configuration block: env check, config file, and overlay paths."""
-    if env_check is None:
+    """The configuration block: env + config-key checks, file, overlays.
+
+    ``env_check`` is one check or a list of checks (the env row and the
+    PR-9 config-keys row); ``None`` entries are skipped.
+    """
+    checks = env_check if isinstance(env_check, list) else [env_check]
+    checks = [check for check in checks if check is not None]
+    if not checks:
         return
     print("\nConfiguration:")
-    print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
-    if env_check.fix:
-        print(f"    fix: {env_check.fix}")
-    if env_check.doc:
-        print(f"    docs: {env_check.doc}")
+    for check in checks:
+        print(f"  {check.name}: {check.status.upper()} - {check.detail}")
+        if check.fix:
+            print(f"    fix: {check.fix}")
+        if check.doc:
+            print(f"    docs: {check.doc}")
     # Issue #348: report the config file and the overlay paths, so a
     # client never has to parse config.yaml to know what is in force.
     print(f"  Config file: {info.get('config_file', 'packaged default')}")
@@ -231,7 +238,9 @@ def doctor_json_report(
     if not info["ollama_ok"]:
         checks[-1]["fix"] = "install Ollama, then run: ollama serve"
     if env_check is not None:
-        checks.append(_check_entry(env_check))
+        # One check or a list (the env row + the PR-9 config-keys row).
+        env_area = env_check if isinstance(env_check, list) else [env_check]
+        checks.extend(_check_entry(check) for check in env_area if check is not None)
     for group in (research, storage, journey):
         for check in group or []:
             checks.append(_check_entry(check))

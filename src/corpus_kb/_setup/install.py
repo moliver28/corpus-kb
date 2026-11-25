@@ -113,9 +113,8 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     """Read-only diagnostic command.
 
     Issue #348 exit rule: 3 when the configured database is unreachable
-    (the same meaning exit 3 has for ``ask``), 0 when the database
-    answered — even when warnings fired. ``--json`` prints one
-    machine-readable report and keeps the same exit code.
+    (the same meaning exit 3 has for ``ask``), 0 when the database answered
+    — even when warnings fired. ``--json`` prints one machine-readable report.
     """
     info = detect_profile()
     profiles = load_installer_profiles(config)
@@ -128,16 +127,17 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     info["config_file"] = str(config_file) if config_file else "packaged default"
     info["overlay_paths"] = [str(overlay) for overlay in config_overlay_paths()]
 
-    # Offline configuration-truth check (runs even without Postgres): warns
-    # about CORPUS_KB_* variables this version does not read.
+    # Offline config-truth checks (no Postgres needed): the env check warns
+    # about unread CORPUS_KB_* variables; the config check about config.yaml.
+    from corpus_kb._setup.doctor_config_keys import config_key_check
     from corpus_kb._setup.doctor_env import env_var_check
 
-    env_check = env_var_check()
+    env_check = [env_var_check(), config_key_check()]
 
     db_cfg = config.get("database", {})
     # Runtime precedence (review F-1): env wins over config so doctor probes
-    # the SAME deployment research commands do. install_cmd/setup_cmd below
-    # deliberately keep config-first (the installer targets the docker stack).
+    # the SAME deployment research commands do. install_cmd/setup_cmd keeps
+    # config-first (the installer targets the docker stack).
     conn_str = os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
         db_cfg.get("connection_string", "")
     )
@@ -158,8 +158,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     info["ollama_ok"], info["ollama_msg"] = await check_ollama(ollama_url)
 
     # Research subsystem checks (todo-19 (a)): read-only, all guarded on
-    # postgres_ok, never affecting the doctor exit code. ollama_ok gates the
-    # zero-vector canary (it only embeds when Ollama is confirmed reachable).
+    # postgres_ok; ollama_ok gates the zero-vector canary. Never flips exit.
     research = None
     if info["postgres_ok"]:
         from corpus_kb._setup.doctor_research import research_checks
@@ -178,8 +177,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     reachable = database_reachable(backend, bool(info["postgres_ok"]), storage)
 
     # Novice journey section (novice-UX program W3): the same probe the SPA
-    # snapshot composes, so the CLI and the UI cannot disagree. Read-only;
-    # never flips the exit code.
+    # snapshot composes, so the CLI and the UI cannot disagree. Read-only.
     from corpus_kb._setup.doctor_journey import journey_checks
 
     journey = await journey_checks(config, conn_str, reachable, bool(info["ollama_ok"]))

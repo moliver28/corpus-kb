@@ -44,6 +44,7 @@ try:
         load_json,
         main,
         validate_all,
+        validate_all_detailed,
     )
     from corpus_kb._setup.validate_configs_consistency import (
         _description_mismatches,
@@ -95,6 +96,7 @@ try:
     )
     from corpus_kb._setup.validate_configs_runtime import (
         _validate_cross_field_rules,
+        unknown_key_warnings,
         validate_runtime_config,
     )
     from corpus_kb._setup.validate_configs_toolnames import (
@@ -133,6 +135,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     load_json = _cli.load_json
     main = _cli.main
     validate_all = _cli.validate_all
+    validate_all_detailed = _cli.validate_all_detailed
     _consistency = _modules["validate_configs_consistency"]
     _description_mismatches = _consistency._description_mismatches
     _extract_tool_set = _consistency._extract_tool_set
@@ -179,6 +182,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     _topics_block_errors = _rules._topics_block_errors
     _runtime = _modules["validate_configs_runtime"]
     _validate_cross_field_rules = _runtime._validate_cross_field_rules
+    unknown_key_warnings = _runtime.unknown_key_warnings
     validate_runtime_config = _runtime.validate_runtime_config
     _toolnames = _modules["validate_configs_toolnames"]
     VALID_TOOL_NAMES = _toolnames.VALID_TOOL_NAMES
@@ -209,7 +213,9 @@ __all__ = [
     "load_yaml",
     "main",
     "return_top_k_error",
+    "unknown_key_warnings",
     "validate_all",
+    "validate_all_detailed",
     "validate_claude_config",
     "validate_cursor_config",
     "validate_extraction_gliner",
