@@ -116,6 +116,34 @@ The resolution is printed at ingest, for example
 recorded in the pipeline result. See
 [Ingestion strategies](#ingestion-strategies) for the extension guide.
 
+### Typed source registry
+
+Typed sources give ingest a stable vocabulary. The registry lives in
+`src/corpus_kb/ingestion/source_types.py`; it maps every accepted name to a
+canonical name, a strategy, and metadata keys.
+
+| Canonical name | Strategy | Aliases | Text ingest |
+|---|---|---|---|
+| `participant-session` | `transcript` | `transcript` | yes |
+| `internal-meeting` | `markdown_sections` | (none) | yes |
+| `external-site` | `web_structure` | `web` | no |
+
+`ingest-text` accepts `code`, `markdown`, `text`, `participant-session`,
+`internal-meeting`, and the `transcript` alias. `ingest-url` types pages as
+`external-site`; `web` stays an ingest-url concern. Unknown names return an
+error envelope that lists the accepted names.
+
+The registry stores the canonical name on each new document. Documents stored
+before this change keep their legacy values; pass those values to filters
+unchanged. Generic names (`text`, `code`, `markdown`) and strategy overrides
+(such as `pptx_structure`) also store verbatim.
+
+The `ingest_url` tool takes `visibility`: `public` or `internal`. The value
+stamps into each page's document metadata; callers can filter on it later.
+
+A future type joins with no migration: one `corpus_kb.source_types`
+entry-point entry, plus one alias entry in its `SourceTypeSpec`.
+
 ### Stage 1: Partition
 
 The input file is partitioned into semantic elements (paragraphs, headings,
