@@ -163,10 +163,33 @@ async def test_membership_tables_carry_tenant_rls(pg_pool) -> None:
     # A session speaking as a DIFFERENT tenant: FORCEd RLS hides every row
     # of the owning tenant. The GUC is set explicitly so the assertion does
     # not depend on pool-connection state left by earlier tests.
-    other_tenant = "00000000-0000-0000-0000-00000000dead"
+    # The behavioral probe must speak as a role FORCE RLS can bind: RLS
+    # never applies to superusers or BYPASSRLS roles, and the CI service
+    # image makes the bootstrap user a superuser. When the connected user
+    # is privileged the probe SET ROLEs to a dedicated NOBYPASSRLS role
+    # (created idempotently; RESET ROLE keeps the pooled connection clean).
+    # When it is a normal role (the local corpus_user) the probe runs as-is.
+    # Either way the GUC names a DIFFERENT tenant, so the assertion does
+    # not depend on pool-connection state left by earlier tests.
+    probe_tenant = "00000000-0000-0000-0000-00000000dead"
     async with pg_pool.acquire() as con, con.transaction():
-        await con.execute("SELECT set_config('app.current_tenant_id', $1, true)", other_tenant)
-        assert await con.fetchval("SELECT count(*) FROM project_claims") == 0
+        privileged = await con.fetchval(
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
+        )
+        if privileged:
+            await con.execute(
+                "DO $$ BEGIN"
+                " IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'corpus_rls_probe') THEN"
+                " CREATE ROLE corpus_rls_probe NOLOGIN NOSUPERUSER NOBYPASSRLS;"
+                " END IF; END $$;"
+            )
+            await con.execute("GRANT SELECT ON project_claims TO corpus_rls_probe")
+            await con.execute("SET ROLE corpus_rls_probe")
+        await con.execute("SELECT set_config('app.current_tenant_id', $1, true)", probe_tenant)
+        count = await con.fetchval("SELECT count(*) FROM project_claims")
+        if privileged:
+            await con.execute("RESET ROLE")
+        assert count == 0
 
     # The tenant's own session sees its row; policy + flags match 043/045.
     async with pg_pool.acquire() as con, con.transaction():
