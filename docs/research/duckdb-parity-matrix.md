@@ -56,8 +56,10 @@ engines are different by design is a "designed delta".
 269 leaves, in declaration order. Classes:
 
 - **honored** — the key behaves the same on both backends.
-- **refused-typed** — a backend refuses the key at load with a typed
-  `ConfigError` and a named fix.
+- **refused-typed** — a backend refuses the key with a named fix. The
+  load raises `ValueError` (`config.py:283`). The graph factory and the
+  boot guard raise `ConfigError` (`storage/graph_factory.py:123`,
+  `_setup/version_guard.py:232`).
 - **pinned-designed-delta** — both backends honor the key; one backend
   applies it in a narrower, documented way (section 4).
 - **removed** — the key is gone from the shipped defaults (section 1.1);
@@ -241,7 +243,7 @@ plan's R8 ruling:
 
 - **G10-G12** (`retrieval.matryoshka_enabled`, `retrieval.matryoshka_dim`,
   `retrieval.candidate_multiplier`): the DuckDB query arm exact-scans the
-  full-width column (`storage/duckdb_search.py:15-24`), which is the
+  full-width column (`storage/duckdb_search.py:11-13`), which is the
   exact stage of the matryoshka two-tier without the approximate probe.
   Postgres runs the sliced probe plus exact re-rank. Results are at
   least as accurate on DuckDB; only latency differs. The research layer
@@ -435,9 +437,9 @@ client can see it.
 
 | # | Delta | Postgres | DuckDB | Why it stays | Evidence |
 |---|---|---|---|---|---|
-| 1 | Search index modes | pgvector HNSW approximate probe; `tsvector` + GIN lexical | `exact_scan` vector arm; `fts_bm25` lexical arm | DuckDB ships no HNSW in this regime; the exact scan is engine-honest | `storage/duckdb_search.py:15-19`; `vector_index_mode` / `lexical_index_mode` envelope keys |
-| 2 | Lexical arm shape | `tsquery` with idempotent sanitization | Disjunctive-only `match_bm25` 1.4 scalar macro, param-bound | Conjunctive plus stopword zeroes out (duckdb-fts #15, present in 1.4.5) | `storage/duckdb_search.py:20-24` |
-| 3 | Zero-vector sentinel ordering | Zero norms order last via the degraded filter | A `-2.0` similarity sentinel, deterministic id order | `array_cosine_distance` returns a finite 2.0 for zero vectors, not NaN | `storage/duckdb_search.py:16-19`; tests pin both orders |
+| 1 | Search index modes | pgvector HNSW approximate probe; `tsvector` + GIN lexical | `exact_scan` vector arm; `fts_bm25` lexical arm | DuckDB ships no HNSW in this regime; the exact scan is engine-honest | `storage/duckdb_search.py:11-13`; `vector_index_mode` / `lexical_index_mode` envelope keys |
+| 2 | Lexical arm shape | `tsquery` with idempotent sanitization | Disjunctive-only `match_bm25` 1.4 scalar macro, param-bound | Conjunctive plus stopword zeroes out (duckdb-fts #15, present in 1.4.5) | `storage/duckdb_search.py:19-24` |
+| 3 | Zero-vector sentinel ordering | Zero norms order last via the degraded filter | A `-2.0` similarity sentinel, deterministic id order | `array_cosine_distance` returns a finite 2.0 for zero vectors, not NaN | `storage/duckdb_search.py:11-16`; tests pin both orders |
 | 4 | Row-level security | RLS policies on every tenanted table | No RLS; single-writer single-user file | DuckDB has no policy engine; tenant predicates still apply | `storage/tenant_conn.py`; section 2 graph rows |
 | 5 | Doctor duck-probe typing | Probes return typed check results | Same: typed status/detail/fix, never engine-shaped exceptions | A probe failure must print a named fix, not a stack trace | `_setup/doctor_duckdb.py:159-201` (the PR-4-dropped item, documented here) |
 | 6 | Matryoshka arm | Two-tier approximate probe + exact re-rank | Full-width exact scan (the exact stage only) | Results at least as accurate; latency differs (section 1.7) | `storage/dialect.py:102-110`; `handlers/query_search_pg.py` |
