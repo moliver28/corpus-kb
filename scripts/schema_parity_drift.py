@@ -98,6 +98,7 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     ("fk", "document_tags", "tag_id"): _DUCK_FK_ACTIONS,
     ("fk", "metadata", "doc_id"): _DUCK_FK_ACTIONS,
     ("fk", "nodes", "source_id"): _DUCK_FK_ACTIONS,
+    ("fk", "project_claims", "doc_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "chunk_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "source_entity_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "target_entity_id"): _DUCK_FK_ACTIONS,

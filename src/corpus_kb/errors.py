@@ -1,38 +1,17 @@
 """The Corpus-KB error taxonomy (zero-drift Wave 2A).
 
 One failure class maps to ONE HTTP status, ONE JSON-RPC socket code, and
-ONE CLI exit code (program standard 4). Raise a ``CorpusError`` subclass at
-the failure site; every surface adapter reads the same triple — HTTP via
-``api._body.error_response``, socket via ``socket_code``, CLI via
-``cli_exit``.
+ONE CLI exit code (program standard 4); every surface adapter reads it.
 
-Socket codes follow JSON-RPC 2.0:
+Socket codes follow JSON-RPC 2.0: -32602 invalid params, -32603 internal,
+plus server-defined -32001 not found, -32002 conflict, -32003 database
+unavailable, -32004 migration missing, -32005 dependency missing, -32006
+unknown name. CLI exits keep the scripted codes: 1 bad input, 3
+environment problem. Do not renumber: scripts depend on these values.
 
-  -32602  invalid params — the caller's input is wrong (validation, config)
-  -32603  internal error — the server failed
-  -32001..-32005  server-defined errors (JSON-RPC reserves -32000..-32099):
-          -32001 not found, -32002 conflict, -32003 database unavailable,
-          -32004 migration missing, -32005 dependency missing.
-
-CLI exit codes KEEP the codes this repo already scripts against:
-
-  1  bad input or crash — ``cli._cli_error_exit`` maps ValueError (unknown
-     gate, malformed UUID) to 1; an uncaught traceback also exits 1.
-  3  environment problem — ``cli_ingest`` documents INGEST_EXIT_CONFIG=3 for
-     "bad path, unknown --source-type, unreachable database, migration
-     missing"; promote exits 3 on ``duplicate_blocked`` (the conflict case).
-
-The suggested 2/4 split would collide with live codes (2 =
-INGEST_EXIT_FAILED total ingest failure and cycle EXIT_UNAVAILABLE), so
-the existing convention stands. Do not renumber: scripts depend on these
-values.
-
-``ERROR_MAP`` also carries the plain exception class names the legacy HTTP
-envelopes used as ``error_type`` strings, so old string payloads get honest
-statuses with no change at the raise site.
-
-All user-facing strings follow ASD-STE100: short active sentences, 20 words
-or fewer.
+``ERROR_MAP`` also carries the plain exception class names the legacy
+HTTP envelopes used as ``error_type`` strings, so old payloads get
+honest statuses. All user-facing strings follow ASD-STE100.
 """
 
 from __future__ import annotations
@@ -55,6 +34,8 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     # W5-a: store_newer = conflict triple; package_not_published = dependency triple.
     "store_newer": (409, -32002, 3),
     "package_not_published": (503, -32005, 3),
+    "project_not_found": (404, -32001, 1),
+    "source_type_unknown": (400, -32006, 1),
     "internal_error": (500, -32603, 1),
     # Legacy ``type(exc).__name__`` strings seen in HTTP envelopes.
     "ValueError": (400, -32602, 1),
@@ -240,6 +221,25 @@ class PackageNotPublishedError(CorpusError):
     error_type = "package_not_published"
     http_status, socket_code, cli_exit = ERROR_MAP["package_not_published"]
     remediation = "Install from the git checkout instead. Or wait for the PyPI release."
+
+
+class ProjectNotFoundError(CorpusError):
+    """No project matches the given slug or id."""
+
+    error_type = "project_not_found"
+    http_status, socket_code, cli_exit = ERROR_MAP["project_not_found"]
+    remediation = "Check the slug. List the projects to find a valid one."
+
+
+class SourceTypeUnknownError(CorpusError):
+    """No source type matches the given name."""
+
+    error_type = "source_type_unknown"
+    http_status, socket_code, cli_exit = ERROR_MAP["source_type_unknown"]
+    remediation = (
+        "Use a registered source type. Run corpus-kb master source-types"
+        " to list the registered names."
+    )
 
 
 class InternalError(CorpusError):

@@ -446,6 +446,17 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
         async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
             return None
 
+        async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+            return None
+
+        async def document_origin_project(self, doc_id: str) -> str | None:
+            return None
+
+        async def claim_document(
+            self, doc_id: str, project_id: str, source_project_id: str | None
+        ) -> bool:
+            return True
+
         async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
             return "doc-strategy-test", "run-strategy-test"
 
@@ -629,11 +640,17 @@ async def test_ingest_text_accepts_transcript_source_type(
 
 
 async def test_ingest_text_rejects_unknown_source_type() -> None:
+    from corpus_kb.errors import SourceTypeUnknownError
     from corpus_kb.tools import ingest_common
 
-    result = await ingest_common.ingest_text("x", None, source_type="bogus")
-    assert result["status"] == "error"
-    assert "Unknown source type 'bogus'" in result["message"]
+    # W4-3: the refusal is the typed taxonomy error (status 400, -32006, 1).
+    with pytest.raises(SourceTypeUnknownError) as excinfo:
+        await ingest_common.ingest_text("x", None, source_type="bogus")
+    assert "Unknown source type 'bogus'" in str(excinfo.value)
+    assert excinfo.value.error_type == "source_type_unknown"
+    assert excinfo.value.http_status == 400
+    assert excinfo.value.socket_code == -32006
+    assert excinfo.value.cli_exit == 1
 
 
 # ---------------------------------------------------------------------------

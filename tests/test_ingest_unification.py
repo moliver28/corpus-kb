@@ -93,6 +93,17 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         _StubStore.last = self
 
+    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+        return None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        return None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        return True
+
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         return None
 
@@ -343,13 +354,9 @@ async def test_socket_ingest_text_whitelist_matches_tool_message(
             }
         )
     )
-    assert response["result"] == {
-        "status": "error",
-        "message": (
-            f"Unknown source type {source_type!r}. "
-            "Use code, markdown, text, participant-session, internal-meeting, or transcript."
-        ),
-    }
+    # W4-3: the refusal rides the taxonomy (-32006 socket code).
+    assert response["error"]["code"] == -32006
+    assert f"Unknown source type {source_type!r}." in response["error"]["message"]
 
 
 @pytest.mark.parametrize("source_type", ["web", "bogus"])
@@ -362,13 +369,13 @@ def test_http_ingest_text_whitelist_matches_tool_message(
         "/api/ingest/text",
         json={"text": "hello", "source_type": source_type},
     )
-    assert response.status_code == 200
-    assert response.json() == {
+    # W4-3: the refusal answers 400 through the taxonomy envelope.
+    assert response.status_code == 400
+    body = response.json()
+    assert body == {
         "status": "error",
-        "message": (
-            f"Unknown source type {source_type!r}. "
-            "Use code, markdown, text, participant-session, internal-meeting, or transcript."
-        ),
+        "error": f"Unknown source type {source_type!r}.",
+        "error_type": "source_type_unknown",
     }
 
 

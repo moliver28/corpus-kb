@@ -177,11 +177,12 @@ def test_mutation_hand_edited_wrapper_fails_check(tmp_path: Path) -> None:
     (project / REGISTRY_PATH.relative_to(ROOT)).write_text(
         REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    # The registry loads its stdlib-only companion by path; the copy needs it.
-    cards = ROOT / "src" / "corpus_kb" / "amr_cards.py"
-    (project / "src" / "corpus_kb" / "amr_cards.py").write_text(
-        cards.read_text(encoding="utf-8"), encoding="utf-8"
-    )
+    # The registry loads its stdlib-only companions by path; the copy needs them.
+    for companion in ("amr_cards.py", "surface_wrappers.py"):
+        cards = ROOT / "src" / "corpus_kb" / companion
+        (project / "src" / "corpus_kb" / companion).write_text(
+            cards.read_text(encoding="utf-8"), encoding="utf-8"
+        )
     (project / GEN_PATH.relative_to(ROOT)).write_text(
         GEN_PATH.read_text(encoding="utf-8"), encoding="utf-8"
     )

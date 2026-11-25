@@ -561,6 +561,7 @@ async def test_pre043_scratch_applies_037_to_044_once() -> None:
             "045_entity_id_aliases.sql",
             "046_embedding_cache.sql",
             "047_store_meta.sql",
+            "048_master_membership.sql",
         ]
         assert first.applied_now == first.pending
         second = await run_migrations(app_dsn)

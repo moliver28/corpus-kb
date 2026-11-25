@@ -36,14 +36,15 @@ def _build_degraded_config() -> dict[str, object]:
 async def _delete_document(pg_pool, source: str) -> None:
     """See identical helper + rationale in tests/test_ingest_e2e.py: this
     test's fixed file-path source must start clean on every run since
-    corpus_kb_test persists across test sessions and content-hash dedup
-    (migration 007) would otherwise return "skipped" on any run after the
-    first."""
+    corpus_kb_test persists across test sessions. W4 hash-first dedup
+    widened the probe to CONTENT: every row carrying the sample's hash
+    goes too, or a row stored under another source answers the skip."""
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         await conn.execute(
-            "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+            "DELETE FROM documents WHERE tenant_id = $1 AND (source = $2 OR source LIKE $3)",
             str(DEFAULT_TENANT_ID),
             source,
+            "%ontology_sample.md",
         )
 
 

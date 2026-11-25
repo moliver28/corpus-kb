@@ -33,8 +33,8 @@ from ...storage.gateway import SqlGateway
 from ...storage.rag_backend import RagBackend
 from ._facade import _ic
 from .document import IngestDocument
-from .produce import StageArtifacts, _commit_document, _mirror_rag_backend, _produce_artifacts
-from .result import _stage_result_dict
+from .envelope import _claimed_envelope, _envelope_from, _ledger_stages, _skipped_envelope
+from .produce import _commit_document, _mirror_rag_backend, _produce_artifacts
 from .sinks import ChunkSink, IngestSink
 
 logger = logging.getLogger(__name__)
@@ -63,87 +63,6 @@ def _book_title(config: dict[str, Any]) -> str | None:
         return None
     title = raw.strip()
     return title or None
-
-
-def _skipped_envelope(doc: IngestDocument, unchanged_doc: str) -> dict[str, Any]:
-    """The unchanged-content skip envelope (no ledger row is opened)."""
-    return {
-        "status": "skipped",
-        "document_id": unchanged_doc,
-        "path": doc.path,
-        "source_type": doc.source_type,
-        "reason": "unchanged",
-        "errors": [],
-    }
-
-
-def _ledger_stages(
-    artifacts: StageArtifacts,
-    errors: list[str],
-    validation_report: dict[str, Any] | None,
-    validation_mode: str,
-    calibration_summary: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """The ledger stages JSONB: stage counts plus additive payloads.
-
-    The shadow keys appear only when the hierarchy flag is on. Wave 4
-    calibrate mode: the validation report rides the ledger stages JSONB
-    (the Wave 7 calibration feed) without blocking and without touching
-    the envelope. Wave 7: the calibration sweep summary rides it the same
-    way; a refused sweep writes nothing (its reason went to the log).
-    """
-    stages: dict[str, Any] = {
-        "chunks": artifacts.pg_chunk_count,
-        "vectors": artifacts.pg_vector_count,
-        "entities": len(artifacts.entities),
-        "relations": len(artifacts.relations),
-        "degraded": artifacts.degraded,
-        "extractor_id": artifacts.extractor_id,
-        "errors": errors,
-    }
-    if artifacts.hierarchy_settings.enabled:
-        stages["shadow_chunk_count"] = artifacts.shadow_chunk_count
-        stages["shadow_vector_count"] = artifacts.shadow_vector_count
-    if validation_mode == "calibrate" and validation_report is not None:
-        stages["validation"] = validation_report
-    if calibration_summary:
-        stages["calibration"] = calibration_summary
-    return stages
-
-
-def _envelope_from(
-    doc: IngestDocument,
-    artifacts: StageArtifacts,
-    errors: list[str],
-    run_id: str,
-    title: str | None,
-) -> dict[str, Any]:
-    """The run result envelope, built from the canonical document."""
-    return _stage_result_dict(
-        document=doc.document,
-        chunks=doc.chunks,
-        source_type=doc.source_type,
-        path=doc.path,
-        degraded=artifacts.degraded,
-        embed_note=artifacts.embed_note,
-        embed_meta=artifacts.embed_meta,
-        empty_reason=doc.empty_reason,
-        hierarchy_settings=artifacts.hierarchy_settings,
-        shadow_chunk_count=artifacts.shadow_chunk_count,
-        shadow_vector_count=artifacts.shadow_vector_count,
-        shadow_note=artifacts.shadow_note,
-        entities=artifacts.entities,
-        relations=artifacts.relations,
-        extractor_id=artifacts.extractor_id,
-        stats=artifacts.stats,
-        pg_chunk_count=artifacts.pg_chunk_count,
-        pg_chunk_total=artifacts.pg_chunk_total,
-        pg_vector_count=artifacts.pg_vector_count,
-        errors=errors,
-        run_id=run_id,
-        statements=artifacts.statements,
-        title=title,
-    )
 
 
 async def _run_document_stages(
@@ -182,8 +101,19 @@ async def _run_document_stages(
     if declared is not None:
         doc.document.metadata["visibility"] = declared
 
-    unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
+    # Hash-first dedupe (W4, F-06): the hash probe answers across path
+    # spellings; the path probe stays as the fallback (subsumed, harmless).
+    unchanged_doc = await ingest_sink.unchanged_hash_doc_id(doc.file_hash)
+    if unchanged_doc is None:
+        unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
     if unchanged_doc is not None:
+        origin = await ingest_store.document_origin_project(unchanged_doc)
+        if project_id and origin != project_id:
+            # The claim write happens BEFORE any chunk/embed/extract work:
+            # reuse before re-ingest (spec s3). The origin document never
+            # moves; membership rides the project_claims row.
+            await ingest_store.claim_document(unchanged_doc, project_id, origin)
+            return _claimed_envelope(doc, unchanged_doc, origin)
         return _skipped_envelope(doc, unchanged_doc)
 
     document_id, run_id = await ingest_sink.begin_run(doc.document, doc.file_hash)

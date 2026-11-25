@@ -35,7 +35,7 @@ import asyncpg
 from corpus_kb.ingestion.source_types import canonical_source_type, is_accepted_ingest_text_type
 
 from ..config import load_config
-from ..errors import ConfigError
+from ..errors import ConfigError, SourceTypeUnknownError
 from ..ontology import Ontology, load_ontology
 from ..rag.embedder_selection import POOLED_MODE
 from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
@@ -404,11 +404,7 @@ async def ingest_text(
     falls back to the profile value, then ``off``.
     """
     if not is_accepted_ingest_text_type(source_type):
-        return {
-            "status": "error",
-            "message": f"Unknown source type {source_type!r}. "
-            "Use code, markdown, text, participant-session, internal-meeting, or transcript.",
-        }
+        raise SourceTypeUnknownError(f"Unknown source type {source_type!r}.")
     config = load_config_or_pass(config)
     return await run_pipeline(
         text,

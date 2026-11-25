@@ -42,6 +42,8 @@ from .ingest_sql_text import (
     DOCUMENT_FETCH_DUCKDB_SQL,
     DOCUMENT_INSERT_DUCKDB_SQL,
     DOCUMENT_UPSERT_SQL,
+    HASH_DOC_DUCKDB_SQL,
+    HASH_DOC_PG_SQL,
     PG_VECTOR_TYPEMOD_SQL,
     REPAIR_SQL_DUCKDB,
     REPAIR_SQL_PG,
@@ -85,6 +87,7 @@ class IngestSql:
 
     backend: str
     unchanged_doc_sql: str
+    unchanged_hash_sql: str
     document_insert_sql: str
     document_fetch_sql: str
     run_insert_sql: str
@@ -107,6 +110,7 @@ def ingest_sql_for(backend: str) -> IngestSql:
         return IngestSql(
             backend=backend,
             unchanged_doc_sql=UNCHANGED_DOC_DUCKDB_SQL,
+            unchanged_hash_sql=HASH_DOC_DUCKDB_SQL,
             document_insert_sql=DOCUMENT_INSERT_DUCKDB_SQL,
             document_fetch_sql=DOCUMENT_FETCH_DUCKDB_SQL,
             run_insert_sql=RUN_INSERT_DUCKDB_SQL,
@@ -129,6 +133,7 @@ def ingest_sql_for(backend: str) -> IngestSql:
     return IngestSql(
         backend=backend,
         unchanged_doc_sql=("SELECT d.doc_id::text AS doc_id" + _UNCHANGED_TAIL_PG),
+        unchanged_hash_sql=HASH_DOC_PG_SQL,
         document_insert_sql=DOCUMENT_UPSERT_SQL,
         document_fetch_sql=DOCUMENT_FETCH_DUCKDB_SQL,  # unused on Postgres
         run_insert_sql=RUN_INSERT_SQL,
