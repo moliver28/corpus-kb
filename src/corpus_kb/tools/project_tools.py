@@ -182,20 +182,24 @@ async def project_claim_list(
     if doc_id:
         args.append(doc_id)
         clauses.append(f"c.doc_id = ${len(args)}")
-    if slug:
-        clean_slug = _clean_slug(slug)
-        gateway = as_gateway(pg_pool)
-        async with gateway.transaction(tenant_id) as tx:
+    # One gateway transaction carries the slug resolution AND the read:
+    # the tenant GUC it sets first is what the FORCEd RLS on project_claims
+    # answers to, so a direct pool read would silently return zero rows.
+    gateway = as_gateway(pg_pool)
+    async with gateway.transaction(tenant_id) as tx:
+        if slug:
+            clean_slug = _clean_slug(slug)
             resolved = await _resolve_project_id_tx(tx, tenant_id, clean_slug)
-        args.append(resolved)
-        clauses.append(f"c.project_id = ${len(args)}")
-    sql = (
-        "SELECT c.project_id::text AS project_id, c.doc_id::text AS doc_id,"
-        " c.source_project_id::text AS source_project_id, c.claimed_at AS claimed_at"
-        " FROM project_claims c WHERE " + " AND ".join(clauses) + " ORDER BY c.project_id, c.doc_id"
-    )
-    async with pg_pool.acquire() as con:
-        rows = await con.fetch(sql, *args)
+            args.append(resolved)
+            clauses.append(f"c.project_id = ${len(args)}")
+        sql = (
+            "SELECT c.project_id::text AS project_id, c.doc_id::text AS doc_id,"
+            " c.source_project_id::text AS source_project_id, c.claimed_at AS claimed_at"
+            " FROM project_claims c WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY c.project_id, c.doc_id"
+        )
+        rows = await tx.fetch(sql, *args)
     entries = [
         {
             "project_id": row["project_id"],

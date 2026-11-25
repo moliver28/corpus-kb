@@ -109,3 +109,80 @@ async def test_claim_flow_pg(pg_pool, monkeypatch: pytest.MonkeyPatch) -> None:
     assert claim_keys <= set(second) <= claim_keys | provenance
     assert second["status"] == "claimed"
     assert second["source_project_id"] == P1
+
+
+async def test_membership_tables_carry_tenant_rls(pg_pool) -> None:
+    """RVW4-01: the three membership tables FORCE tenant RLS (048).
+
+    The policy set matches the 043/045 convention (one
+    ``<table>_tenant_isolation`` policy keyed on the
+    ``app.current_tenant_id`` GUC), and a GUC-less session sees zero rows
+    even for a tenant that owns claims — isolation holds regardless of
+    who owns the table (migration 011 threat model).
+    """
+    import os
+
+    from corpus_kb._setup.migrate import run_migrations
+
+    dsn = os.environ.get(
+        "CORPUS_KB_DATABASE_URL",
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+    )
+    # Re-arm 048: the runner records applied filenames, and this database
+    # applied the pre-RLS version of the file (047-test convention).
+    import asyncpg
+
+    arm = await asyncpg.connect(dsn)
+    try:
+        async with arm.transaction():
+            await arm.execute(
+                "DELETE FROM corpus.schema_migrations WHERE filename = '048_master_membership.sql'"
+            )
+    finally:
+        await arm.close()
+    await run_migrations(dsn)
+
+    doc_id = "00000000-0000-0000-0000-0000000000a1"
+    async with pg_pool.acquire() as con, con.transaction():
+        await con.execute("SELECT set_config('app.current_tenant_id', $1, true)", TENANT)
+        await con.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source) VALUES ($1, $2, $3)"
+            " ON CONFLICT DO NOTHING",
+            doc_id,
+            TENANT,
+            "rls-probe-doc",
+        )
+        await con.execute(
+            "INSERT INTO project_claims (tenant_id, project_id, doc_id, source_project_id)"
+            " VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING",
+            TENANT,
+            P1,
+            doc_id,
+        )
+
+    # A GUC-less connection: FORCEd RLS hides every row.
+    async with pg_pool.acquire() as con:
+        assert await con.fetchval("SELECT count(*) FROM project_claims") == 0
+
+    # The tenant's own session sees its row; policy + flags match 043/045.
+    async with pg_pool.acquire() as con, con.transaction():
+        await con.execute("SELECT set_config('app.current_tenant_id', $1, true)", TENANT)
+        assert await con.fetchval("SELECT count(*) FROM project_claims") >= 1
+        for table in ("project_claims", "project_activity", "master_state"):
+            policies = await con.fetch(
+                "SELECT polname FROM pg_policy WHERE polrelid = $1::regclass ORDER BY polname",
+                f"public.{table}",
+            )
+            assert [p["polname"] for p in policies] == [f"{table}_tenant_isolation"]
+            qual = await con.fetchval(
+                "SELECT pg_get_expr(polqual, polrelid) FROM pg_policy"
+                " WHERE polrelid = $1::regclass LIMIT 1",
+                f"public.{table}",
+            )
+            assert "app.current_tenant_id" in qual
+            flags = await con.fetchrow(
+                "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = $1::regclass",
+                f"public.{table}",
+            )
+            assert flags["relrowsecurity"] is True
+            assert flags["relforcerowsecurity"] is True
