@@ -51,7 +51,6 @@ def _postgres_env(conn_str: str) -> dict[str, str]:
         "POSTGRES_USER": parsed.username or "corpus_user",
         "POSTGRES_PASSWORD": parsed.password or "",
         "POSTGRES_SCHEMA": "public",
-        "CREATE_TABLE": "y",
     }
 
 
@@ -69,7 +68,6 @@ def _sqlite_env(conn_str: str) -> dict[str, str]:
     return {
         "PERSISTENCE_MODULE": "eventsourcing.sqlite",
         "SQLITE_DBNAME": events_sidecar_path(conn_str),
-        "CREATE_TABLE": "y",
     }
 
 
@@ -101,6 +99,11 @@ class CorpusApplication(Application):
         # a later get_app(different_dsn) silently reuse this construction's
         # POSTGRES_* values and ignore its own argument.
         env = _eventsourcing_env(backend, connection_string)
+        # F-10: the flag is probed, not static — the library's DDL runs
+        # only when a probed event table is actually missing.
+        from corpus_kb.domain.events_tables import events_create_table_flag
+
+        env["CREATE_TABLE"] = events_create_table_flag(connection_string, backend)
         # Auto-snapshot the Document aggregate (todo-11 STEP 0, item (h)).
         # The interval is read from env AT CONSTRUCTION and bound to THIS
         # INSTANCE. snapshotting_intervals is a ClassVar in eventsourcing

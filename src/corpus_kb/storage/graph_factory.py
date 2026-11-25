@@ -155,11 +155,6 @@ async def create_graph_store(
                     exc,
                 )
                 return PostgresGraphStore(pool)
-                logger.warning(
-                    "Apache AGE graph backend unavailable: %s. Falling back to PostgresGraphStore.",
-                    exc,
-                )
-                return PostgresGraphStore(pool)
         if graph_backend == "postgres":
             return PostgresGraphStore(pool)
         raise ConfigError(f"Unknown graph backend: {graph_backend!r}. Use 'age' or 'postgres'.")
