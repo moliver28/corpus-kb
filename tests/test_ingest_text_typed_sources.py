@@ -29,8 +29,8 @@ def test_registry_text_names_resolve_and_unknown_refuses():
     from corpus_kb.errors import SourceTypeUnknownError
     from corpus_kb.ingestion.registry import resolve_strategy
     from corpus_kb.ingestion.source_types import (
-        GENERIC_SOURCE_TYPES,
         BUILTIN_SOURCE_TYPES,
+        GENERIC_SOURCE_TYPES,
         is_accepted_ingest_text_type,
     )
     from corpus_kb.tools.ingest_common import ingest_text

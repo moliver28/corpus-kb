@@ -1,20 +1,16 @@
 """The ingest SQL texts (pure move out of ``ingest_sql.py``, 250-line rule).
 
 Every statement here is byte-identical to its pre-split text; the backend
-selection stays in :func:`ingest_sql.ingest_sql_for`. The Postgres
-statements are byte-identical to the pre-port SQL text; the DuckDB
-statements differ ONLY where the engines differ (the rationale per
-difference lives with the ingest_sql module docstring).
+selection stays in :func:`ingest_sql.ingest_sql_for`. The DuckDB statements
+differ ONLY where the engines differ (the rationale per difference lives
+with the ingest_sql module docstring).
 """
 
 from __future__ import annotations
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 
-# The metadata merge follows the title COALESCE precedent: keys the new run
-# declares win, keys it does not declare persist. Without the merge a
-# declared visibility would never land on a re-ingest (the conflict branch
-# kept the first insert's JSON).
+# Metadata merge (the title-COALESCE precedent): declared keys win, undeclared persist.
 DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
         chunk_count, file_size, file_hash, metadata, document_date, title)
@@ -59,9 +55,8 @@ RUN_INSERT_DUCKDB_SQL = """
     RETURNING run_id::text
 """
 
-# The project link on the document row (migration 016). Postgres casts the
-# uuid text; DuckDB stores the uuid text in VARCHAR. Best-effort writes only:
-# the callers treat a mismatch as a warning, never an ingest failure.
+# The project link on the document row (migration 016): Postgres casts the
+# uuid text; DuckDB stores it in VARCHAR. Best-effort: the callers warn, never fail.
 SET_DOCUMENT_PROJECT_PG_SQL = (
     "UPDATE documents SET project_id = $2::uuid WHERE doc_id = $1::uuid AND tenant_id = $3"
 )
@@ -97,13 +92,11 @@ _ENTITY_FETCH_DUCKDB_SQL = (
 
 PG_VECTOR_TYPEMOD_SQL = (
     "SELECT a.atttypmod AS width, format_type(a.atttypid, a.atttypmod) AS typ "
-    "FROM pg_attribute a "
-    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'embedding'"
+    "FROM pg_attribute a WHERE a.attrelid = 'public.chunks_vectors'::regclass"
+    " AND a.attname = 'embedding'"
 )
 
-# The $4 clause folds the declared visibility into the probe against the
-# document row's stamp; the DOCUMENT_UPSERT_SQL metadata merge keeps that
-# stamp on the latest declared value. NULL keeps the legacy behavior.
+# The $4 clause folds the declared visibility into the probe (NULL = legacy).
 _UNCHANGED_TAIL_PG = """
     FROM documents d
     WHERE d.tenant_id = $1 AND d.source = $2 AND d.file_hash = $3
@@ -117,15 +110,9 @@ _UNCHANGED_TAIL_PG = """
       )
 """
 
-# DuckDB: the documents row is immutable once referenced, so "this content
-# is current" means the NEWEST run for this source started with this hash
-# and completed clean (migration 030 adds ingest_runs.source). The $4
-# clause folds the declared visibility into the probe THROUGH THE LEDGER
-# (the pipeline records the run's declared visibility in stages): a changed
-# declaration re-ingests (the old skip would hide it), a match still skips,
-# and NULL keeps the legacy content-only behavior. The document row's own
-# metadata cannot refresh here (the row is immutable), so the ledger is
-# this backend's freshness record.
+# DuckDB: "current" = the NEWEST run for this source started with this hash
+# and completed clean (migration 030 adds ingest_runs.source). The $4 clause
+# folds the declared visibility into the probe through the ledger.
 UNCHANGED_DOC_DUCKDB_SQL = """
     SELECT d.doc_id::text AS doc_id
     FROM documents d
@@ -151,10 +138,8 @@ UNCHANGED_DOC_DUCKDB_SQL = """
 # source path, so the same content under another path still matches. The
 # clean-run tail is copied VERBATIM from the path probes above. DuckDB
 # keeps the path probe's per-source ledger currency (documents.file_hash
-# is frozen at first insert there), so changed-then-re-offered content
-# heals. ORDER BY + LIMIT 1 keep the answer deterministic (rule 9). The $3
-# clause folds the declared visibility in exactly like the path probes:
-# the document stamp on Postgres, the ledger stages record on DuckDB.
+# is frozen at first insert), so changed-then-re-offered content heals.
+# ORDER BY + LIMIT 1 stay deterministic; $3 folds visibility in.
 HASH_DOC_PG_SQL = (
     "SELECT d.doc_id::text AS doc_id FROM documents d"
     " WHERE d.tenant_id = $1 AND d.file_hash = $2"
@@ -203,20 +188,16 @@ _VECTOR_INSERT = """
 # --- Reembed repair (the Stage-3 degraded/stale scan + write) ---
 COLUMNS_PROBE_PG = (
     "SELECT count(*) FROM information_schema.columns "
-    "WHERE table_schema = 'public' AND table_name = ANY($1::text[]) "
-    "AND column_name = 'degraded'"
+    "WHERE table_schema = 'public' AND table_name = ANY($1::text[]) AND column_name = 'degraded'"
 )
 COLUMNS_PROBE_DUCKDB = (
     "SELECT count(*) FROM duckdb_columns() WHERE table_name IN "
     "('chunks', 'chunks_vectors') AND column_name = 'degraded'"
 )
 
-# Both scan arms carry the same deterministic order (zero-drift rule 9, the
-# sp-suite-hardening declared change 2026-10-20): embedded_at with NULLS LAST
-# (a stale row with no timestamp sorts last, not first), then the chunk-id
-# tiebreaker so same-timestamp batches cannot permute between runs. The PG
-# arm previously ordered by embedded_at alone; the DuckDB arm always had the
-# tiebreaker. Declared in storage-portability-program.md §16.
+# Both scan arms share one deterministic order (zero-drift rule 9, change
+# 2026-10-20): embedded_at with NULLS LAST (a stale row sorts last), then
+# the chunk-id tiebreaker so batches cannot permute. Declared in §16.
 SCAN_SQL_PG = """
     SELECT cv.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id,
            c.text, c.context_blurb,
@@ -250,8 +231,7 @@ REPAIR_SQL_PG = """
         embedded_at = NOW(), degraded = FALSE
     WHERE chunk_id = $1::uuid AND tenant_id = $6
 """
-# Width interpolations (corpus_kb.dimensions); the SQL text itself stays
-# byte-identical to its pre-split form.
+# Width interpolations (corpus_kb.dimensions); the SQL text stays byte-identical.
 _W_EMBED = str(EMBEDDING_DIMENSIONS)
 _W_V1024 = str(RESEARCH_EMBEDDING_DIMENSIONS)
 

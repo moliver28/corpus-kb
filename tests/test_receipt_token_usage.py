@@ -105,7 +105,9 @@ class _InsertingStore:
     ) -> str | None:
         return None
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:

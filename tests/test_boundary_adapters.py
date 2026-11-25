@@ -387,7 +387,9 @@ class _FakeStore:
     ) -> None:
         return None
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def document_origin_project(self, doc_id: str) -> str | None:

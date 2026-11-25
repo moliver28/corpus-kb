@@ -141,35 +141,25 @@ class PostgresIngestStore:
     ) -> str | None:
         """Return the doc_id when this exact content was already ingested cleanly.
 
-        Three conditions hold together: the file_hash matches, a completed run
-        for that hash recorded no errors, and a declared visibility equals the
-        stored stamp (None keeps legacy). A failed past run heals, never skips.
+        The file_hash must match, a completed run for it must have no errors,
+        and a declared visibility must equal the stored stamp (None = legacy).
+        A failed past run heals, never skips.
         """
         async with self._gateway.transaction(self._tenant_id) as tx:
-            row = await tx.fetchrow(
-                self._sql.unchanged_doc_sql,
-                self._tenant_id,
-                source,
-                file_hash,
-                declared_visibility,
-            )
+            args = (self._tenant_id, source, file_hash, declared_visibility)
+            row = await tx.fetchrow(self._sql.unchanged_doc_sql, *args)
             return row["doc_id"] if row is not None else None
 
     async def unchanged_hash_doc_id(
         self, file_hash: str, declared_visibility: str | None = None
     ) -> str | None:
         """The hash-first dedupe probe (F-06): same clean-run requirement as
-        ``unchanged_doc_id``, but the bind is the hash alone, so a match
-        answers across path spellings. A declared visibility folds in like
-        the path probe, so a changed stamp re-ingests here too.
+        ``unchanged_doc_id`` (bind: hash alone, answers across path spellings;
+        a declared visibility folds in like the path probe).
         """
         async with self._gateway.transaction(self._tenant_id) as tx:
-            row = await tx.fetchrow(
-                self._sql.unchanged_hash_sql,
-                self._tenant_id,
-                file_hash,
-                declared_visibility,
-            )
+            args = (self._tenant_id, file_hash, declared_visibility)
+            row = await tx.fetchrow(self._sql.unchanged_hash_sql, *args)
             return row["doc_id"] if row is not None else None
 
     async def claim_document(
