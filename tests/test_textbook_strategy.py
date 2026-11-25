@@ -1200,6 +1200,9 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
         async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
             return None
 
+        async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+            return None
+
         async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
             return "doc-envelope-test", "run-envelope-test"
 

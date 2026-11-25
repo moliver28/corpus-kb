@@ -103,6 +103,9 @@ class _InsertingStore:
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         return None
 
+    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+        return None
+
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
         return "doc-1", "run-1"
 
