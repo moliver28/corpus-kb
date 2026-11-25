@@ -159,14 +159,14 @@ Every schema change ships twice:
 - the Postgres migration in `src/corpus_kb/migrations/`
 - the DuckDB mirror in `src/corpus_kb/migrations_duckdb/`, same number up to 029
 
-Numbers 030 to 042 run one above the Postgres twin. For example, pg `030_extraction_cache.sql` is duckdb `031_extraction_cache.sql`. The cause is the DuckDB-only file `030_ingest_runs_source.sql`; it has no Postgres twin and no rollback. From 043 on, twin files share the number again. Applied databases record their numbers, so the numbers stay as they are. Always pair files by name, never by number. The schema-parity gate checks both name sets (`scripts/schema_parity_nameset.py`, issue #230).
+Numbers 030 to 042 run one above the Postgres twin. For example, pg `030_extraction_cache.sql` is duckdb `031_extraction_cache.sql`. The cause is the DuckDB-only file `030_ingest_runs_source.sql`; it has no Postgres twin and no rollback. Numbers 043 to 046 share the number again. Two later files diverge: duckdb `047_meta_embeddings_checks.sql` mirrors the Postgres `034` CHECK constraints, and pg `047_store_meta.sql` pairs with duckdb `048_store_meta.sql`. Applied databases record their numbers, so the numbers stay as they are. Always pair files by name, never by number. The schema-parity gate checks both name sets (`scripts/schema_parity_nameset.py`, issue #230).
 
-Some Postgres constructs have no DuckDB shape. The mirror reshapes them:
+Some Postgres constructs have no DuckDB shape. The mirror reshapes them (the width placeholder is substituted from `embedding.dimensions` at migrate time, on both engines — see [ADMIN.md](ADMIN.md), "Embedding dimensions"):
 
 | Postgres | DuckDB mirror |
 |---|---|
 | `SERIAL` / `IDENTITY` key | `SEQUENCE` default `gen_random_uuid()` |
-| `halfvec(2560)` | `FLOAT[2560]` |
+| `halfvec(__EMBEDDING_DIMS__)` | `FLOAT[__EMBEDDING_DIMS__]` |
 | `JSONB` | `JSON` |
 | `UUID` | `VARCHAR` |
 | `FORCE ROW LEVEL SECURITY` and policies | Left out; RLS is Postgres-only |
@@ -177,16 +177,24 @@ The schema-parity gate (Wave G) parses both migration sets and diffs the column 
 
 ## Declared differences between the engines
 
-Same UX everywhere. Where the engines physically differ, the difference is documented and pinned by tests. The full decision log lives in [the storage-portability program, section 16](research/storage-portability-program.md). The top entries:
+Same UX everywhere. Where the engines physically differ, the difference is documented and pinned by tests. The authoritative parity record is [the DuckDB parity matrix](research/duckdb-parity-matrix.md); the historical decision log lives in [the storage-portability program, section 16](research/storage-portability-program.md). The top entries:
 
 | Difference | Postgres | DuckDB |
 |---|---|---|
-| Vector search | pgvector HNSW approximate index | Exact cosine scan; optional experimental `vss` index |
-| Full-text search | `tsvector` + GIN, current at read | `fts` extension, debounced rebuild; recent chunks can lag |
+| Vector search | pgvector HNSW approximate index | Exact cosine scan by design; no ANN index |
+| Full-text search | `tsvector` + GIN, current at read | `fts` extension; the index rebuilds when a row-count watermark says it is stale |
 | Zero-vector sentinel | Zero norms order last | A `-2.0` similarity sentinel in deterministic id order |
 | Numeric copy precision | `numeric` | `migrate-data` copies it as `DOUBLE` |
 | Append-only tables | Database triggers | Gateway-level checks; DuckDB has no triggers |
 | Event store | `eventsourcing.postgres` tables | `eventsourcing.sqlite` sidecar file |
+
+What refuses? A key that only one backend can honor fails at load on
+the other backend. The refusal carries a typed error and a named fix.
+The `retrieval.hnsw.*` block and the two graph-backend keys behave this
+way. See [the parity matrix](research/duckdb-parity-matrix.md), sections
+1.3-1.4, for the exact texts. A width mismatch against the store raises
+one typed message on both engines at startup. Everything else — every
+operation, every envelope — behaves the same on both backends.
 
 Search responses carry honesty keys, so a client can see the mode in use: `vector_index_mode`, `lexical_index_mode`, and `embedding_mode`. Ingest-time read windows on DuckDB are listed in [ADMIN.md, "DuckDB engine notes"](ADMIN.md).
 

@@ -18,7 +18,8 @@ from typing import cast
 import pytest
 import yaml
 
-from corpus_kb._setup import validate_configs
+from corpus_kb import backend_gates
+from corpus_kb._setup import validate_configs, validate_configs_keys
 from corpus_kb._setup.doctor_env import env_var_check, unknown_env_vars
 from corpus_kb._setup.doctor_research import STATUS_OK
 from corpus_kb.config import (
@@ -371,6 +372,33 @@ class TestValidateConfigsMix:
             expected = backend_mix_errors(scenario)
             surfaced = [e for e in validate_configs.validate_runtime_config(scenario) if e in bank]
             assert expected == surfaced, scenario
+
+
+# ---------------------------------------------------------------------------
+# the PyYAML-only mirror bank stays in lockstep with backend_gates
+# ---------------------------------------------------------------------------
+
+
+class TestMirrorBankLockstep:
+    def test_bank_texts_match_backend_gates_verbatim(self):
+        """Every bank text equals its runtime twin, byte for byte.
+
+        The bank mirrors all seven refusal texts so a reword upstream
+        cannot drift the validator's strings; the mix gate renders the
+        four always-on rules, and the three explicit-set texts fire at
+        load in corpus_kb.backend_gates.
+        """
+        names = (
+            "AGE_ON_DUCKDB_ERROR",
+            "PGML_EMBEDDER_ON_DUCKDB_ERROR",
+            "PGML_RERANKER_ON_DUCKDB_ERROR",
+            "PGML_EXTRACTION_ON_DUCKDB_ERROR",
+            "HNSW_ON_DUCKDB_ERROR",
+            "DUCKDB_GRAPH_BACKEND_ON_POSTGRES_ERROR",
+            "GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR",
+        )
+        for name in names:
+            assert getattr(validate_configs_keys, name) == getattr(backend_gates, name), name
 
 
 # ---------------------------------------------------------------------------

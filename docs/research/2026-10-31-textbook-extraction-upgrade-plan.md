@@ -104,7 +104,8 @@ Owns: `textbook_assemble.py` + tests. Pre-check: quality-session issue #231 scop
 
 ### W2-B — Citation channel (default-off), enrichment deleted
 
-Pre-check: #246 merge state. Trace `search.qa_context_in_fts` first; citations ride chunk
+Pre-check: #246 merge state. Trace the qa-context FTS flag state first (that flag
+later shipped and was removed — DuckDB parity matrix section 1.1); citations ride chunk
 metadata built from the W2-A page map + heading (e.g. "pp. 34-36 — Section 2.1"), exposed
 through the existing metadata channel. Per-chunk embedding-input enrichment is architecturally
 impossible in late mode (spans_provider embeds document spans) and is NOT attempted.
