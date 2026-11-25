@@ -35,3 +35,34 @@
 - prompt evaluation research (prompt versioning/regression as a studied problem) for D14 evidence beyond tool docs.
 
 **Process notes:** The founding run used interim homes. This docs PR moved both files to their canonical homes: registry = docs/research/nlp-methodology-sources.md; this journal = docs/research/nlp-methodology-journal.md. Two citation-grade entries flagged for pre-quote verification (Rissanen 1978, Heaps 1978). All seed links verified live on 2026-11-25 except the one dead replacement (documented).
+
+---
+
+## 2026-11-25 — Ops review (run 2; briefs/A6-athena-ops-review.md, dispatch 2)
+
+**Scope:** Operations audit (catalogue verdicts CUT/ADD/ENRICH/KEEP), seam + generalizability of W6B/W6C (templates, translate stage, D13 ops), accuracy/reliability/latency improvements. Advisory review; verdict CHANGES REQUIRED scoped to two P1 seam findings (AM-01, AM-02). Deliverable: dossiers/ops-review.md. Registry gained pillar P5 (E1-E10).
+
+**Tool families:** built-in WebSearch · firecrawl research paper search · brave-search · tavily. Four search families — requirement met.
+
+**Beliefs formed:**
+1. **[Fact]** The live catalogue: 85 surface rows, ~90 catalogue ops in 24 catalogue files, 33-method register, 25+ strategy files; producing chain pinned in produce.py's docstring (prepare -> store+embed -> shadow -> extract -> atomize). Verified by direct reads this run.
+2. **[Fact]** `analysis_route`'s handler deletes `pg_pool`/`tenant_id` and reads no database — it cannot know a document's project. W6B-3's hook ("the document's project names a template -> template routes become the default order") is unimplementable at :134 as written, and template routes validate against catalogue OP names while the router ranks register METHOD ids. This changed my belief about the plan's readiness: W6B is generally strong but this one seam is under-pinned.
+3. **[Strong inference]** Appending extraction_eval/extraction_saturation to every template route table risks the D11 interactive tiers if route resolution can select them by default; "additive tail" mitigates priority but not fall-through. NN/g's 0.1 s / 1 s / 10 s perceptual classes (registry E6) independently match D11's classes — external validity for the tier law.
+4. **[Fact]** `coding_saturation` (ISR stop rule, threshold 0.05, min 50) and the planned `extraction_saturation` (coverage curve, Chao2, plateau 0.001 + C-hat >= 0.90) measure different constructs; the vocabulary must be pinned apart (AM-05).
+5. **[Strong inference]** No catalogue op is a provable CUT: every family serves a register method, a template route, D13 math, or D15 SOP; release_* has the weakest use evidence (no template, no register row) but telemetry does not exist, so CUT would be speculation. Zero CUT verdicts issued, deliberately.
+6. **[Fact]** demo_load and research_demo are distinct (sample-corpus loader vs narrated walkthrough; different handlers/envelopes) — not a rule-1 redundancy; naming nit only.
+7. **[Speculation]** langdetect head-chars detection will misfire at a meaningful rate on code-switched UX transcripts — UNKNOWN until measured on real corpora; the R6 confidence-threshold recommendation assumes the short-text weakness generalizes to our slice length.
+
+**Open questions:**
+- Which consumer should own template-default routes: analysis_route with an explicit optional project param (catalogue row change) or a project-aware suggestions/doctor surface? Metis's call; I lean toward the explicit param + op-to-method crosswalk.
+- Would per-op invocation receipts (contracts/receipts.py lineage) make the "evidence of use?" audit criterion answerable for a future CUT pass? Proposed as AM-06/R7-adjacent; owner decides.
+- Relaxed-tier choice when W6C-1 lands: overlap >= 50% (S10 practice, deterministic, cheap) vs embedding >= 0.95 per triple (B2, model-dependent)? Lean overlap.
+- Does B=200 bootstrap give stable coverage-slope estimates at demo-scale T (12-15 docs)? The boundary tests pin synthetic values; real variance is unmeasured (R4's CI disclosure addresses the reporting side).
+
+**Next-sweep seeds:**
+- Power/MDE math for span-F1 bootstrap at n_docs <= 20: what delta is detectable at 95%? Feeds R2's pinned underpowered bound with our own numbers.
+- Krippendorff's alpha vs kappa for multi-label relation gold sets (unit-of-analysis choice) — E1 gives the machinery; our label structure picks the coefficient.
+- Op-telemetry design sketch (deterministic counters, no LLM) if the owner takes AM-06.
+- COMET-class QE for the translate stage stays deferred until target languages are named (E10; posture-compatible but a real model dependency).
+
+**Process notes:** Interim homes unchanged (canonical docs/research/ copies come with the later docs PR). Registry updated with P5 (E1-E10, all verified live this run except E9 BLEU, marked citation-grade). First run-2 verdict issued (advisory CHANGES REQUIRED, scoped); re-issued BINDING only at W6C-6's gate if the findings survive to that wave.

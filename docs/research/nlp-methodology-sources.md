@@ -113,6 +113,25 @@
 
 **Recommendation: (1) promptfoo-style, self-hosted.** Prompt files live in-repo with semver front-matter + changelog; each eval run pins prompt version + corpus hash + scores into an append-only results file (mirrors the quality-baselines ratchet); wired as `poe prompt-eval` with a CI job + enforcement-map row per rule 10. Fallback to (2) only if the Node dep is blocked. Measured improvement claims then cite the pinned eval corpus, satisfying "evidence-based prompt changes only" (D14).
 
+## P5 — OPERATIONS & EVAL METHODOLOGY (athena dispatch 2, ops review; verified live 2026-11-25)
+
+Tool families used this sweep: built-in WebSearch · firecrawl research paper search · brave-search · tavily. Four search families — requirement met.
+
+| # | Source | Link | Grade | Tags | Use for |
+|---|--------|------|-------|------|---------|
+| E1 | Artstein & Poesio, "Inter-Coder Agreement for Computational Linguistics" (Computational Linguistics 34(4):555-596, 2008) | aclanthology.org/J08-4004.pdf · doi.org/10.1162/coli.08-034-R2 | A | irr, kappa, krippendorff-alpha, annotation | The canonical agreement-coefficient survey (Cohen/Fleiss kappa, Krippendorff's alpha, bias corrections); use for gold-set IRR reporting in the D13 benchmark layer. Closes the journal run-1 IRR gap. |
+| E2 | Baldwin & Lui, "Language Identification: The Long and the Short of the Matter" (NAACL HLT 2010) | via ACL Anthology citations (Q14-1003, W14-1303) | A | lid, short-text | Long-vs-short text LID accuracy; grounds the translate-stage detection caveat (head-chars slice). |
+| E3 | Jauhiainen et al., "Automatic language identification in texts: a survey" (JAIR 2019) | dl.acm.org/doi/10.1613/jair.1.11675 | A | lid, survey | Independent second source for LID method limits; pairs with E2. |
+| E4 | Rei et al., "COMET: A Neural Framework for MT Evaluation" (EMNLP 2020, arXiv 2009.09025) | arxiv.org/abs/2009.09025 | A | mt-eval, comet | Reference-based MT quality metric; the deferred translation-quality-eval note. |
+| E5 | Zouhar et al., "Pitfalls and Outlooks in Using COMET" (arXiv 2408.15366, 2024) | arxiv.org/abs/2408.15366 | B (preprint) | mt-eval, caveat | Documented COMET failure modes (language mismatch, translationese, version/precision) — the mandatory caveat for any future COMET use. |
+| E6 | Nielsen, "Response Time Limits: The 3 Important Limits" (NN/g; grounds Miller 1968 + Card et al. 1991) | nngroup.com/articles/response-times-3-important-limits/ | B | hci, latency, perception | 0.1 s / 1 s / 10 s perceptual classes — the independent HCI anchor for D11's instant/interactive tiers; use wherever a route or op risks blocking the interactive path. |
+| E7 | promptfoo, "Caching Configuration" (official docs, live 2026-11-25) | promptfoo.dev/docs/configuration/caching | B | eval-cache, implementation | Cache on by default, content-keyed, TTL 14 d, --no-cache for fresh runs; precedent for an extraction_eval predictions cache + the W6C-4 cache caveat. |
+| E8 | Lui & Baldwin, "Automatic Detection and Language Identification of Multilingual Documents" (TACL 2014, Q14-1003) | aclanthology.org/Q14-1003.pdf | A | lid, multilingual | Mixed/multilingual-document LID; third source for the translate-stage detection caveat. |
+| E9 | Papineni et al., "BLEU: a Method for Automatic Evaluation of Machine Translation" (ACL 2002, P02-1040) | aclanthology.org/P02-1040/ | A (citation-grade; not fetched this run) | mt-eval, canonical | The classical reference-based MT metric; cite alongside E4 for any future translation eval. |
+| E10 | Rei et al., "CometKiwi: IST-Unbabel 2022 Submission for the Quality Estimation Shared Task" (arXiv 2209.06243) | arxiv.org/abs/2209.06243 | B (preprint, WMT shared-task submission) | mt-qe, reference-free | Reference-free quality estimation — the shape a future translation-quality check would take without gold references; deferred, owner decision; adds a learned model dependency (~0.5-1b class) inside the ≤8b posture. |
+
+**Pillar caveat:** E4/E9 are reference-based; the translate stage stores originals with no references, so translation-quality eval is a deferred design question. E10 is reference-free but adds a learned neural dependency — a posture-compatible but real cost. UNKNOWN until the owner names target languages and a corpus.
+
 ## Honest gaps / UNKNOWN
 - No canonical NLP source exists for the Chao/iNEXT + Heaps saturation adaptation; the piece citations above are the strongest defensible base. Owner assumption statement required in any spec that cites it.
 - No paper pins a downstream delta-F1 compression gate; R3's pinned value is our convention with stated rationale.
