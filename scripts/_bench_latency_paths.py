@@ -98,18 +98,21 @@ async def _poll_boot(port: int, query: bool, deadline_s: float) -> float:
     raise TimeoutError(f"Port {port} never met the {deadline_s:g} s boot deadline.")
 
 
+class OfflineSkipError(Exception):
+    """The fts pre-install cannot download; the P1 path skips honestly (RVW2-06)."""
+
+
 async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[float, float]]:
     """P1: boot one server per iteration; return (ready, first-query) seconds."""
     from corpus_kb._setup.setup_duckdb import preinstall_extensions
 
     # The RAG mirror needs fts; a fresh runner has none, so pre-install like `setup`.
+    # The download is a network dependency; offline machines skip P1 honestly (RVW2-06).
     if preinstall_extensions() != 0:
-        raise RuntimeError("The fts extension is required; see the setup output above.")
+        raise OfflineSkipError("fts cannot download offline; the P1 cold-start path needs it.")
     exe = shutil.which("corpus-kb")
     if exe is None:
-        raise RuntimeError(
-            "The corpus-kb console script is not on PATH. Install the package first."
-        )
+        raise RuntimeError("The corpus-kb console script is not on PATH. Install the package.")
     base_port = _pick_base_port(base_port, iterations)
     samples: list[tuple[float, float]] = []
     for offset in range(iterations):

@@ -28,11 +28,7 @@ if TYPE_CHECKING:
     import asyncpg
 
 
-def _record_embed_usage(
-    meta: dict[str, object] | None,
-    provider: str,
-    embedder: object,
-) -> None:
+def _record_embed_usage(meta: dict[str, object] | None, provider: str, embedder: object) -> None:
     """Write the serving embedder's usage snapshot into ``meta`` (issue #198).
 
     Only an embedder that publishes a snapshot (today: OllamaEmbedder)
