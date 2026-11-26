@@ -237,8 +237,7 @@ class SourceTypeUnknownError(CorpusError):
     error_type = "source_type_unknown"
     http_status, socket_code, cli_exit = ERROR_MAP["source_type_unknown"]
     remediation = (
-        "Use a registered source type. Run corpus-kb master source-types"
-        " to list the registered names."
+        "Use a registered source type. See the typed source registry table in docs/INGESTION.md."
     )
 
 

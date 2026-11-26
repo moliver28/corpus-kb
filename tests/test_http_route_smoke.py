@@ -594,8 +594,9 @@ def test_ingest_url_route_supplies_pool(monkeypatch: Any) -> None:
     kwargs = cast("dict[str, object]", captured.get("kwargs", {}))
     # Wave 6: the route hands validate=None when the body omits it. None
     # lets the active profile's validate value decide (no profile means off).
-    assert set(kwargs) <= {"tenant_id", "crawl", "source_type", "validate"}
+    assert set(kwargs) <= {"tenant_id", "crawl", "source_type", "validate", "visibility"}
     assert kwargs.get("validate") is None
+    assert kwargs.get("visibility") is None
     assert kwargs.get("tenant_id") == DEFAULT_TENANT
 
 

@@ -57,6 +57,7 @@ def _ledger_stages(
     validation_report: dict[str, Any] | None,
     validation_mode: str,
     calibration_summary: dict[str, Any] | None,
+    declared_visibility: str | None = None,
 ) -> dict[str, Any]:
     """The ledger stages JSONB: stage counts plus additive payloads.
 
@@ -64,7 +65,10 @@ def _ledger_stages(
     calibrate mode: the validation report rides the ledger stages JSONB
     (the Wave 7 calibration feed) without blocking and without touching
     the envelope. Wave 7: the calibration sweep summary rides it the same
-    way; a refused sweep writes nothing (its reason went to the log).
+    way; a refused sweep writes nothing (its reason went to the log). The
+    declared visibility rides it too (only when declared): the DuckDB
+    unchanged probes read it from the ledger, because the DuckDB documents
+    row cannot refresh its metadata stamp.
     """
     stages: dict[str, Any] = {
         "chunks": artifacts.pg_chunk_count,
@@ -75,6 +79,8 @@ def _ledger_stages(
         "extractor_id": artifacts.extractor_id,
         "errors": errors,
     }
+    if declared_visibility is not None:
+        stages["visibility"] = declared_visibility
     if artifacts.hierarchy_settings.enabled:
         stages["shadow_chunk_count"] = artifacts.shadow_chunk_count
         stages["shadow_vector_count"] = artifacts.shadow_vector_count

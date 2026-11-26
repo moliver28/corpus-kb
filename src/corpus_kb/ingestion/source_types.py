@@ -59,6 +59,10 @@ BUILTIN_SOURCE_TYPES: tuple[SourceTypeSpec, ...] = (
 # Generic types stay valid and stored verbatim; they name no canonical target.
 GENERIC_SOURCE_TYPES: frozenset[str] = frozenset({"code", "markdown", "text"})
 
+# The one visibility vocabulary: callers declare public or internal on typed
+# ingests, and the value stamps into document metadata for later filtering.
+VISIBILITY_VALUES: frozenset[str] = frozenset({"public", "internal"})
+
 _DISCOVERED: tuple[SourceTypeSpec, ...] | None = None
 
 

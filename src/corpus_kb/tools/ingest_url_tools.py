@@ -17,6 +17,7 @@ import httpx
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 from ..ingestion.registry import strategy_names
+from ..ingestion.source_types import VISIBILITY_VALUES
 from ..web.fetch import WebFetchError, fetch_page
 from ..web.fetch import crawl as crawl_pages
 from ..web.settings import config_from_mapping as web_config_from_mapping
@@ -74,7 +75,7 @@ async def ingest_url(
         error = _validate_strategy_override(source_type)
         if error is not None:
             return {"status": "error", "message": error}
-    if visibility is not None and visibility not in {"public", "internal"}:
+    if visibility is not None and visibility not in VISIBILITY_VALUES:
         return {
             "status": "error",
             "message": "Visibility must be public or internal.",
@@ -123,4 +124,13 @@ async def ingest_url(
     # surface as per-page error dicts — the skip is never silent in the result.
     results.extend({"status": "error", **entry} for entry in fetch_errors)
     total_documents = sum(1 for result in results if result.get("status") == "success")
-    return {"status": "success", "pages": results, "total_documents": total_documents}
+    envelope: dict[str, object] = {
+        "status": "success",
+        "pages": results,
+        "total_documents": total_documents,
+    }
+    if visibility is not None:
+        # The declared stamp rides the aggregate envelope, so every surface
+        # answers what the pages carry (the parity gate compares it).
+        envelope["visibility"] = visibility
+    return envelope

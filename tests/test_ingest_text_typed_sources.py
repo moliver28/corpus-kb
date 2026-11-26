@@ -20,6 +20,49 @@ def test_ingest_text_rejects_unknown_type_with_registry_message():
     assert len(message.split(". ")[0].split()) <= 20  # STE100 shape
 
 
+def test_registry_text_names_resolve_and_unknown_refuses():
+    """Every accepted registry name resolves its declared strategy; unknown raises."""
+    import asyncio
+
+    import pytest
+
+    from corpus_kb.errors import SourceTypeUnknownError
+    from corpus_kb.ingestion.registry import resolve_strategy
+    from corpus_kb.ingestion.source_types import (
+        BUILTIN_SOURCE_TYPES,
+        GENERIC_SOURCE_TYPES,
+        is_accepted_ingest_text_type,
+    )
+    from corpus_kb.tools.ingest_common import ingest_text
+
+    names = sorted(
+        GENERIC_SOURCE_TYPES
+        | {
+            name
+            for spec in BUILTIN_SOURCE_TYPES
+            if spec.text_ingest
+            for name in (spec.name, *spec.aliases)
+        }
+    )
+    assert len(names) == 6
+    prose = "Plain prose, no headings and no speaker turns."
+    declared = {
+        "participant-session": "transcript",
+        "internal-meeting": "markdown_sections",
+        "transcript": "transcript",
+    }
+    for name in names:
+        assert is_accepted_ingest_text_type(name), name
+        if name in declared:
+            resolution = resolve_strategy(name, "x.txt", prose, {})
+            assert resolution.basis == "registry", name
+            assert resolution.strategy.name == declared[name], name
+
+    # W4-3: the refusal raises the typed taxonomy error (no envelope).
+    with pytest.raises(SourceTypeUnknownError):
+        asyncio.run(ingest_text("body", pg_pool=None, source_type="nonsense"))
+
+
 def test_ingest_text_accepts_registry_names_and_aliases():
     import asyncio
 
