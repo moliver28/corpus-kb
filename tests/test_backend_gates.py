@@ -133,6 +133,21 @@ def test_duckdb_graph_backend_refused_under_postgres() -> None:
     assert backend_key_errors(config, shipped, "postgres") == []
 
 
+def test_explicit_null_reads_back_as_the_default() -> None:
+    """An explicit null is present but never a tuned-off-default choice.
+
+    Both gated readers normalize null to the default (graph_factory's
+    ``or "cte"``; the hnsw loader's ``_coerce_positive_int(None)``), so
+    presence+difference must not fire on a null value (issue #592 item 3).
+    """
+    config = _backend_config("postgres")
+    file_config: dict[str, object] = {"graph": {"duckdb_graph_backend": None}}
+    assert backend_key_errors(config, file_config, "postgres") == []
+    duck = _duck_config()
+    hnsw_null: dict[str, object] = {"retrieval": {"hnsw": {"ef_search": None}}}
+    assert backend_key_errors(duck, hnsw_null, "duckdb") == []
+
+
 def test_graph_backend_postgres_refused_under_duckdb() -> None:
     """G09: an explicit postgres graph backend under the duckdb engine."""
     config = _duck_config()

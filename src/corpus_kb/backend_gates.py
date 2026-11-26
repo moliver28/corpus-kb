@@ -98,10 +98,15 @@ def _tuned_off_default(file_config: dict[str, object] | None, dotted: str, defau
 
     Shipped YAMLs and setup write-backs render the defaults into user
     files, so presence alone would refuse untouched installs. Only a
-    value the operator actually chose counts.
+    value the operator actually chose counts. An explicit ``null`` is
+    present but reads back as the default at runtime (both gated readers
+    normalize null to the default), so null never counts as a choice
+    (issue #592 item 3).
     """
     value = _file_value(file_config, dotted)
-    return value is not _ABSENT and value != default
+    if value is _ABSENT or value is None:
+        return False
+    return value != default
 
 
 def _effective_extraction_backend(config: dict[str, object]) -> str | None:
