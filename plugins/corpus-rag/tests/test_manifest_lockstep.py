@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 PLUGIN = Path(__file__).resolve().parents[1]
 REPO = PLUGIN.parent.parent
@@ -18,7 +21,14 @@ def _read(path: Path) -> dict[str, object]:
 def test_plugin_json_is_valid() -> None:
     meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
     assert meta["name"] == "corpus-rag"
-    assert meta["version"] == "0.11.0"
+    author = meta["author"]
+    assert isinstance(author, dict) and author.get("name")
+    config = meta["userConfig"]
+    for key, spec in config.items():
+        for field in ("type", "title", "description"):
+            assert isinstance(spec.get(field), str) and spec[field], f"{key}.{field}"
+    version = meta["version"]
+    assert isinstance(version, str)
 
 
 def test_uxr_report_tool_user_config_key_is_declared() -> None:
@@ -57,6 +67,25 @@ def test_manifest_gate_passes() -> None:
         capture_output=True,
         text=True,
         timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_claude_plugin_validate_passes_when_claude_is_present() -> None:
+    """Claude Code's own validator must exit 0 (issue #507).
+
+    Skipped where the ``claude`` CLI is not installed; the manifest gate
+    covers the same fields with the stdlib checks.
+    """
+    claude = shutil.which("claude")
+    if claude is None:
+        pytest.skip("claude CLI not on PATH")
+    result = subprocess.run(
+        [claude, "plugin", "validate", str(PLUGIN)],
+        capture_output=True,
+        text=True,
+        timeout=120,
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

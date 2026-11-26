@@ -140,6 +140,37 @@ def resolved_plugin_json(entry: object) -> Path | None:
     return REPO / source[2:] / ".claude-plugin" / "plugin.json"
 
 
+def check_plugin_fields(messages: list[str], plugin_json: Path, plugin: dict[str, object]) -> None:
+    """The Claude Code manifest fields a string typo would break (issue 507).
+
+    ``author`` must be an object with a ``name`` string. Every
+    ``userConfig`` entry must carry ``type``, ``title``, and
+    ``description`` strings; Claude Code rejects the plugin otherwise.
+    """
+    author = plugin.get("author")
+    if (
+        not isinstance(author, dict)
+        or not isinstance(author.get("name"), str)
+        or not author.get("name")
+    ):
+        fail(messages, f"{plugin_json} author must be an object with a name string")
+    user_config = plugin.get("userConfig")
+    if user_config is None:
+        return
+    if not isinstance(user_config, dict):
+        fail(messages, f"{plugin_json} userConfig must be an object")
+        return
+    for key, spec in user_config.items():
+        where = f"{plugin_json} userConfig.{key}"
+        if not isinstance(spec, dict):
+            fail(messages, f"{where} must be an object")
+            continue
+        for field in ("type", "title", "description"):
+            value = spec.get(field)
+            if not isinstance(value, str) or not value:
+                fail(messages, f"{where}.{field} is missing or empty")
+
+
 def cross_check_plugin(messages: list[str], manifest: dict[str, object]) -> bool:
     """Check every entry against its resolved plugin.json.
 
@@ -165,6 +196,7 @@ def cross_check_plugin(messages: list[str], manifest: dict[str, object]) -> bool
         if not isinstance(plugin, dict):
             fail(messages, f"{plugin_json} is not an object")
             continue
+        check_plugin_fields(messages, plugin_json, plugin)
         plugin_name = plugin.get("name")
         entry_name = entry.get("name")
         if plugin_name != entry_name:
