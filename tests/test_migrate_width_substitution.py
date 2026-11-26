@@ -61,6 +61,9 @@ async def test_duck_migrate_substitutes_width(tmp_path, monkeypatch) -> None:
         for table, column in (
             ("chunks_vectors", "embedding"),
             ("code_registry", "definition_vector"),
+            ("code_registry", "probe_vector"),
+            ("chunk_codes", "rationale_vector"),
+            ("answer_ctx_vectors", "vector"),
             ("meta_embeddings", "embedding"),
         ):
             row = con.execute(
