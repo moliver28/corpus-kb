@@ -22,6 +22,7 @@ import os
 import asyncpg
 import typer
 
+from corpus_kb._setup.backend_flag_gates import refuse_pg_only_flags
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb.errors import ConfigError, CorpusError
 from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
@@ -119,19 +120,18 @@ def register(app: typer.Typer) -> None:
                 )
             if conn_str.startswith(DUCKDB_DSN_PREFIX):
                 # Issue #527 (G07): every Postgres-only flag is typed-refused
-                # on a DuckDB target; none of them is a silent no-op.
-                pg_only_flags = (
-                    ("--maintenance-work-mem", maintenance_work_mem),
-                    ("--superuser-dsn", superuser_dsn),
-                    ("--work-mem", work_mem),
-                    ("--reset-embeddings", reset_embeddings),
+                # on a DuckDB target; none of them is a silent no-op. The
+                # shared gate owns the loop (issue #592 item 2).
+                refuse_pg_only_flags(
+                    "duckdb",
+                    (
+                        ("--maintenance-work-mem", maintenance_work_mem),
+                        ("--superuser-dsn", superuser_dsn),
+                        ("--work-mem", work_mem),
+                        ("--reset-embeddings", reset_embeddings),
+                    ),
+                    remediation="Drop the flag. Or point the migrate target at Postgres.",
                 )
-                for flag, value in pg_only_flags:
-                    if value:
-                        raise ConfigError(
-                            f"{flag} is a Postgres option. The target is DuckDB.",
-                            remediation="Drop the flag. Or point the migrate target at Postgres.",
-                        )
             su_dsn = superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN", "") or None
             report = asyncio.run(
                 run_migrations(
