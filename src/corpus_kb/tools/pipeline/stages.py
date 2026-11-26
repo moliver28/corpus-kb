@@ -25,6 +25,7 @@ orchestrator (the legacy keyword seam was removed — PR 280 F2).
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -101,6 +102,21 @@ async def _run_document_stages(
     if declared is not None:
         doc.document.metadata["visibility"] = declared
 
+    # Workspace attribution (W5-4, spec s3): a path under master.workspace_root
+    # names its project; an unknown slug auto-registers the row. Storage never
+    # moves and the link can never fail the ingest — same best-effort posture
+    # as the project_id link below. The keys ride every envelope branch.
+    from corpus_kb.master.attribution import slug_from_path
+    from corpus_kb.master.state_store import note_activity, project_id_for_slug
+
+    now = datetime.now(UTC)
+    slug = slug_from_path(doc.path, str((config.get("master") or {}).get("workspace_root", "")))
+    if slug and not project_id:
+        project_id = await project_id_for_slug(pg_pool, tenant_id, slug)
+    if project_id:
+        await note_activity(pg_pool, tenant_id, project_id, "ingest", now)
+    scope = "project" if slug else "none"
+
     # Hash-first dedupe (W4, F-06): the hash probe answers across path
     # spellings; the path probe stays as the fallback (subsumed, harmless).
     unchanged_doc = await ingest_sink.unchanged_hash_doc_id(doc.file_hash)
@@ -113,8 +129,10 @@ async def _run_document_stages(
             # reuse before re-ingest (spec s3). The origin document never
             # moves; membership rides the project_claims row.
             await ingest_store.claim_document(unchanged_doc, project_id, origin)
-            return _claimed_envelope(doc, unchanged_doc, origin)
-        return _skipped_envelope(doc, unchanged_doc)
+            return _claimed_envelope(
+                doc, unchanged_doc, origin, project_slug=slug, project_scope=scope
+            )
+        return _skipped_envelope(doc, unchanged_doc, project_slug=slug, project_scope=scope)
 
     document_id, run_id = await ingest_sink.begin_run(doc.document, doc.file_hash)
     if project_id:
@@ -140,7 +158,9 @@ async def _run_document_stages(
         # error; failed with the error text otherwise.
         await ingest_sink.finish_run(run_id, doc.file_hash, stages, errors)
 
-        envelope = _envelope_from(doc, artifacts, errors, run_id, title)
+        envelope = _envelope_from(
+            doc, artifacts, errors, run_id, title, project_slug=slug, project_scope=scope
+        )
         if project_id and envelope.get("status") in ("success", "partial"):
             # Track C3: raw content-addressed storage into the project's
             # raw table, with honest envelope keys.

@@ -199,6 +199,8 @@ async def test_claimed_envelope_keys(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "source_type",
             "reason",
             "source_project_id",
+            "project_slug",
+            "project_scope",
             "errors",
         }
         provenance = {
@@ -238,6 +240,8 @@ def test_claimed_envelope_keys_exact() -> None:
         "source_type",
         "reason",
         "source_project_id",
+        "project_slug",
+        "project_scope",
         "errors",
     }
     assert envelope["status"] == "claimed"
@@ -316,9 +320,75 @@ async def test_slug_unique_per_tenant(tmp_path: Path) -> None:
         with pytest.raises(duckdb.ConstraintException):
             con.execute(
                 "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
-                " VALUES ('33333333-3333-3333-3333-333333333333', ?, 'Gamma', 'alpha')",
-                [TENANT],
+                " VALUES (?, ?, ?, ?)",
+                ["33333333-3333-3333-3333-333333333333", TENANT, "Gamma", "alpha"],
             )
     finally:
         con.close()
     _cleanup(path)
+
+
+# -- W5-4: ingest attribution and the two envelope keys ----------------------
+
+
+async def test_ingest_envelope_names_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file under the workspace root names its project on the envelope."""
+    from corpus_kb.tools.pipeline.plan import run_pipeline
+
+    _stub_embed_extract(monkeypatch)
+    root = tmp_path / "ws"
+    slug = "uxr-alpha"
+    path = await _migrated(tmp_path, "attrib-on.duckdb")
+    doc_path = f"{root.as_posix()}/{slug}/x.md"
+    config: dict[str, Any] = {
+        "database": {"backend": "duckdb"},
+        "embedding": {"model": "stub-embed", "dimensions": 2560},
+        "graph": {"extract_entities": True},
+        "ingest": {"contextualize": {"enabled": False}},
+        "master": {"workspace_root": root.as_posix()},
+    }
+    gateway = await DuckDbGateway.connect(str(path))
+    try:
+        envelope = await run_pipeline(
+            DOC_TEXT, "text", doc_path, config, gateway, TENANT, project_id=None
+        )
+        assert envelope["status"] == "success"
+        assert envelope["project_slug"] == slug
+        assert envelope["project_scope"] == "project"
+        async with gateway.transaction(TENANT) as tx:
+            row = await tx.fetchrow(
+                "SELECT project_id, name, slug FROM research_projects WHERE slug = $1", slug
+            )
+        assert row is not None and row["name"] == slug
+    finally:
+        await gateway.close()
+        _cleanup(path)
+
+
+async def test_ingest_envelope_off_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No workspace root: the envelope says none, the slug is absent."""
+    from corpus_kb.tools.pipeline.plan import run_pipeline
+
+    _stub_embed_extract(monkeypatch)
+    path = await _migrated(tmp_path, "attrib-off.duckdb")
+    config: dict[str, Any] = {
+        "database": {"backend": "duckdb"},
+        "embedding": {"model": "stub-embed", "dimensions": 2560},
+        "graph": {"extract_entities": True},
+        "ingest": {"contextualize": {"enabled": False}},
+    }
+    gateway = await DuckDbGateway.connect(str(path))
+    try:
+        envelope = await run_pipeline(
+            DOC_TEXT, "text", DOC_PATH, config, gateway, TENANT, project_id=None
+        )
+        assert envelope["status"] == "success"
+        assert envelope["project_slug"] is None
+        assert envelope["project_scope"] == "none"
+    finally:
+        await gateway.close()
+        _cleanup(path)
