@@ -14,10 +14,10 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from duck_store_migrations import migrated_duck_store
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb._setup.store_width import EMBEDDING_DIMS_PLACEHOLDER
-from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 
 MIGRATION_DIRS = (
     "src/corpus_kb/migrations",
@@ -55,8 +55,7 @@ PINNED_2560_LINES = frozenset(
 async def test_duck_migrate_substitutes_width(tmp_path, monkeypatch) -> None:
     """Env width 1024 migrates a real duck file to FLOAT[1024] columns."""
     monkeypatch.setenv("CORPUS_KB_EMBEDDING_DIMENSIONS", "1024")
-    path = tmp_path / "width1024.duckdb"
-    await run_migrations(duckdb_path_to_conn_string(path))
+    path, _ = await migrated_duck_store(tmp_path, "width1024.duckdb")
     con = duckdb.connect(str(path), read_only=True)
     try:
         for table, column in (
@@ -77,8 +76,7 @@ async def test_duck_migrate_substitutes_width(tmp_path, monkeypatch) -> None:
 async def test_duck_migrate_default_2560(tmp_path, monkeypatch) -> None:
     """Without the env override the DDL substitutes the shipped 2560."""
     monkeypatch.delenv("CORPUS_KB_EMBEDDING_DIMENSIONS", raising=False)
-    path = tmp_path / "default.duckdb"
-    await run_migrations(duckdb_path_to_conn_string(path))
+    path, _ = await migrated_duck_store(tmp_path, "default.duckdb")
     con = duckdb.connect(str(path), read_only=True)
     try:
         row = con.execute(
@@ -93,9 +91,7 @@ async def test_duck_migrate_default_2560(tmp_path, monkeypatch) -> None:
 async def test_store_meta_records_width_duck(tmp_path, monkeypatch) -> None:
     """The runner records the substituted width; a no-op rerun keeps it."""
     monkeypatch.setenv("CORPUS_KB_EMBEDDING_DIMENSIONS", "1024")
-    path = tmp_path / "meta.duckdb"
-    dsn = duckdb_path_to_conn_string(path)
-    await run_migrations(dsn)
+    path, dsn = await migrated_duck_store(tmp_path, "meta.duckdb")
     con = duckdb.connect(str(path), read_only=True)
     try:
         row = con.execute("SELECT value FROM meta WHERE key = 'embedding_width'").fetchone()

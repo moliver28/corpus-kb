@@ -31,12 +31,6 @@ DEFAULT_TELEMETRY_LOG_DIR = "telemetry_logs"
 # inline below because storage-side modules must not import _setup.
 DEFAULT_INSTALLER_DATA_DIR = "~/.corpus-kb"
 
-TELEMETRY_CONFIG_DEFAULTS: dict[str, object] = {
-    "enabled": DEFAULT_TELEMETRY_ENABLED,
-    "log_dir": DEFAULT_TELEMETRY_LOG_DIR,
-}
-
-
 @dataclass(frozen=True)
 class TelemetrySettings:
     """Typed ``telemetry.*`` reads (issue #442)."""
