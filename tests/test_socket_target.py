@@ -24,7 +24,7 @@ import pytest
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.api.socket_target import resolve_socket_target
 from corpus_kb.config import apply_env_overrides, get_default_config
-from corpus_kb.errors import ConflictError
+from corpus_kb.errors import ConfigError, ConflictError
 
 IS_WIN = sys.platform == "win32"
 
@@ -77,6 +77,11 @@ class TestResolveSocketTarget:
 
     def test_missing_server_block_still_derives(self) -> None:
         assert resolve_socket_target({}, platform="linux") == "/tmp/corpus-kb.sock"
+
+    def test_bad_port_refuses_through_the_socket_path(self) -> None:
+        """A bad server.port refuses with the typed error (RVW-04, F-11)."""
+        with pytest.raises(ConfigError):
+            resolve_socket_target(_cfg(port="not-a-port"), platform="linux")
 
 
 def test_socket_path_env_override(monkeypatch: Any) -> None:

@@ -41,3 +41,13 @@ def test_events_table_names_match_application_prefix():
         "corpusapplication_events",
         "corpusapplication_snapshots",
     )
+
+
+def test_events_table_names_refuse_non_identifier_names(monkeypatch):
+    """The probe f-string never carries a name outside ``[a-z_]+`` (RVW-03)."""
+    from corpus_kb.domain import events_tables as et
+    from corpus_kb.domain.application import CorpusApplication
+
+    monkeypatch.setattr(CorpusApplication, "name", "corpus kb!")
+    with pytest.raises(ValueError, match="Unsafe events table name"):
+        et.events_table_names()
