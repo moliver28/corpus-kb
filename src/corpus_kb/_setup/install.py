@@ -127,8 +127,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     info["config_file"] = str(config_file) if config_file else "packaged default"
     info["overlay_paths"] = [str(overlay) for overlay in config_overlay_paths()]
 
-    # Offline config-truth checks (no Postgres needed): the env check warns
-    # about unread CORPUS_KB_* variables; the config check about config.yaml.
+    # Offline config-truth checks (no Postgres needed).
     from corpus_kb._setup.doctor_config_keys import config_key_check
     from corpus_kb._setup.doctor_env import env_var_check
 
@@ -157,8 +156,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     ollama_url = str(emb_cfg.get("base_url", DEFAULT_OLLAMA_URL))
     info["ollama_ok"], info["ollama_msg"] = await check_ollama(ollama_url)
 
-    # Research subsystem checks (todo-19 (a)): read-only, all guarded on
-    # postgres_ok; ollama_ok gates the zero-vector canary. Never flips exit.
+    # Research checks: read-only, guarded on postgres_ok; never flips exit.
     research = None
     if info["postgres_ok"]:
         from corpus_kb._setup.doctor_research import research_checks
@@ -167,26 +165,28 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
             conn_str, config, info.get("extensions"), ollama_ok=info["ollama_ok"]
         )
 
-    # Storage-portability section (program §9): the engine line plus the
-    # DuckDB health checks. Read-only; never flips the exit code.
+    # Storage-portability (program §9): engine line + DuckDB health checks.
+    # Novice journey (W3): the same probe the SPA composes, so CLI and UI
+    # cannot disagree. Both read-only; neither flips the exit code.
     from corpus_kb._setup.doctor_engine import database_reachable
+    from corpus_kb._setup.doctor_journey import journey_checks
+    from corpus_kb._setup.doctor_master import master_section
     from corpus_kb._setup.doctor_storage import storage_checks
 
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
-
     reachable = database_reachable(backend, bool(info["postgres_ok"]), storage)
-
-    # Novice journey section (novice-UX program W3): the same probe the SPA
-    # snapshot composes, so the CLI and the UI cannot disagree. Read-only.
-    from corpus_kb._setup.doctor_journey import journey_checks
-
     journey = await journey_checks(config, conn_str, reachable, bool(info["ollama_ok"]))
+    master = await master_section(config, conn_str)
 
     if json_output:
-        report = doctor_json_report(info, env_check, research, storage, config, conn_str, journey)
+        report = doctor_json_report(
+            info, env_check, research, storage, config, conn_str, journey, master
+        )
         print(json.dumps(report, indent=2))
     else:
-        print_doctor_report(info, research, env_check=env_check, storage=storage, journey=journey)
+        print_doctor_report(
+            info, research, env_check=env_check, storage=storage, journey=journey, master=master
+        )
     return 0 if reachable else 3
 
 
