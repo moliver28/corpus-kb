@@ -10,7 +10,6 @@ script end-to-end and demands exit 0.
 
 from __future__ import annotations
 
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -20,16 +19,12 @@ import yaml
 from test_backend_operation_parity import PARITY_OPS
 
 from corpus_kb.config import get_default_config
+from scripts import config_backend_parity_gate as gate
 from scripts.duck_live_matrix import OPS
 
 REPO = Path(__file__).resolve().parents[1]
 GATE_SCRIPT = REPO / "scripts" / "config_backend_parity_gate.py"
 TESTS_GATES = REPO / "tests" / "test_backend_gates.py"
-
-_spec = importlib.util.spec_from_file_location("config_backend_parity_gate", GATE_SCRIPT)
-assert _spec is not None and _spec.loader is not None
-gate = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gate)
 
 
 def _gate_inputs() -> dict[str, Any]:

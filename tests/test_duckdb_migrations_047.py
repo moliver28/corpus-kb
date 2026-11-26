@@ -13,6 +13,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from duck_store_migrations import migrated_duck_store
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
@@ -20,12 +21,6 @@ from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 TENANT = "tenant-1"
 _DIMS = 2560
 _VEC = [0.125] * _DIMS
-
-
-async def _migrated(tmp_path: Path, name: str) -> Path:
-    path = tmp_path / name
-    await run_migrations(duckdb_path_to_conn_string(path))
-    return path
 
 
 def _insert_meta(
@@ -43,7 +38,7 @@ def _insert_meta(
 
 async def test_meta_embeddings_kind_check_enforced(tmp_path: Path) -> None:
     """A kind outside the closed vocabulary is rejected; a real one writes."""
-    path = await _migrated(tmp_path, "checks-kind.duckdb")
+    path, _ = await migrated_duck_store(tmp_path, "checks-kind.duckdb")
     con = duckdb.connect(str(path))
     try:
         with pytest.raises(duckdb.ConstraintException):
@@ -56,7 +51,7 @@ async def test_meta_embeddings_kind_check_enforced(tmp_path: Path) -> None:
 
 async def test_meta_embeddings_source_count_check_enforced(tmp_path: Path) -> None:
     """A negative source_count is rejected."""
-    path = await _migrated(tmp_path, "checks-count.duckdb")
+    path, _ = await migrated_duck_store(tmp_path, "checks-count.duckdb")
     con = duckdb.connect(str(path))
     try:
         with pytest.raises(duckdb.ConstraintException):
@@ -67,7 +62,7 @@ async def test_meta_embeddings_source_count_check_enforced(tmp_path: Path) -> No
 
 async def test_existing_rows_preserved(tmp_path: Path) -> None:
     """The 047 rebuild carries every row through, values identical."""
-    path = await _migrated(tmp_path, "checks-preserve.duckdb")
+    path, _ = await migrated_duck_store(tmp_path, "checks-preserve.duckdb")
     con = duckdb.connect(str(path))
     try:
         _insert_meta(con, "k-a", meta_kind="topic", source_count=3)

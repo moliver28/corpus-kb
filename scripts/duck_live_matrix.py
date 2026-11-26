@@ -25,32 +25,14 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from corpus_kb.errors import ConflictError
+from corpus_kb.ops_backend_matrix import declared_ops
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Drift pin: OPS must equal PARITY_OPS + ingest_upload; the pin test fails drift.
-OPS: tuple[str, ...] = (
-    "topics_list", "labeling_list", "labeling_lfs", "classification_list",
-    "analysis_select_method", "query", "statements_list", "statements_timeline",
-    "conflicts_list", "beliefs_current", "queue_enqueue", "queue_status",
-    "ingest_status", "list_documents", "get_document_tags", "get_metadata",
-    "add_entity", "add_relation", "search_graph", "get_entity_relations",
-    "graph_neighbors", "graph_traverse", "release_assess", "notebook_evidence",
-    "notebook_uncoded", "notebook_overlap", "delete_document",
-    "project_provision", "project_list", "project_drop", "coding_status",
-    "coding_export", "events_summary", "keyphrases_extract",
-    "lexical_classify", "neighbors_classify", "centroids_classify",
-    "clusters_inspect", "duplicates_screen", "outliers_rank",
-    "sentiment_screen", "active_learn_next", "nli_classify",
-    "contradictions_screen", "survey_openend_codes", "usability_severity",
-    "emotion_tag", "labeling_build", "classification_build", "topics_build",
-    "topics_trends", "analysis_backfill_dates", "analysis_embed_meta",
-    "analyze_run", "search_context", "verify_answer", "notebook_ask",
-    "conflicts_scan", "labeling_triage", "labeling_gold_check",
-    "queue_cancel",
-    "research_cycle", "research_demo", "demo_load", "extraction_tune",
-    "ingest_url", "release_compare", "ingest_reingest", "ingest_directory", "ingest_upload",
-)
+# Drift pin: OPS must equal PARITY_OPS + ingest_upload; the pin test fails
+# drift. Derived from the declared op matrix, so one universe serves both:
+# the declared order is stable, and only set equality is pinned.
+OPS: tuple[str, ...] = declared_ops()
 
 GOOD_STATUSES = frozenset({"success", "completed", "compared", "skipped"})
 FAIL_STATUSES = frozenset({"failed", "error"})
@@ -205,17 +187,27 @@ async def _boot_world(duck_file: Path, allow_nonempty: bool) -> tuple[dict[str, 
     await gateway.execute(
         "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
         " VALUES ($1::uuid, $2, $3, $4)",
-        DOC_ID, TENANT, "parity-seed", "text",
+        DOC_ID,
+        TENANT,
+        "parity-seed",
+        "text",
     )
     await gateway.execute(
         "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text, source_type)"
         " VALUES ($1::uuid, $2, $3::uuid, 0, $4, $5)",
-        str(uuid4()), TENANT, DOC_ID, "parity seed text", "text",
+        str(uuid4()),
+        TENANT,
+        DOC_ID,
+        "parity seed text",
+        "text",
     )
     await gateway.execute(
         "INSERT INTO ingest_queue (id, tenant_id, path, content_hash)"
         " VALUES ($1::uuid, $2, $3, $4)",
-        _QUEUE_ID, TENANT, str(book) + "-cancel-seed", "parity-cancel-seed-content-hash",
+        _QUEUE_ID,
+        TENANT,
+        str(book) + "-cancel-seed",
+        "parity-cancel-seed-content-hash",
     )
 
     page_html = "<html><body><p>parity page body</p></body></html>"
@@ -227,8 +219,13 @@ async def _boot_world(duck_file: Path, allow_nonempty: bool) -> tuple[dict[str, 
 
     app = get_app_for_config(load_config())
     aggregate = CodebookVersion._create(
-        CodebookVersion.Created, id=UUID(CV), tenant_id=UUID(TENANT),
-        label="parity", sha256="0" * 64, paradigm="deductive", notes="",
+        CodebookVersion.Created,
+        id=UUID(CV),
+        tenant_id=UUID(TENANT),
+        label="parity",
+        sha256="0" * 64,
+        paradigm="deductive",
+        notes="",
     )
     app.save(aggregate)
     await release_handlers.request_release(
