@@ -2,20 +2,15 @@
 
 ONE declarative row per config leaf in ``get_default_config()`` and the
 packaged ``config.yaml``. ``scripts/config_backend_parity_gate.py`` fails
-when either default source and this table disagree in either direction,
-when a reader file lacks its row's grep token (the dead-key check), or
-when a refusal row lost its test binding. The five PR-7-removed keys are
-absent BY CONSTRUCTION. Fields: ``key``, ``backends``, ``behavior``
-(refusal rows start ``refused``), ``reader`` (module under
-``src/corpus_kb/``; the gate greps ``token``, default the key), ``note``
-(PR-10 doc line), ``bind`` (must appear in the backend_gates tests).
+when either source and this table disagree, when a reader file lacks its
+grep token (the dead-key check), or when a refusal row lost its binding
+test (record fields: keys, behavior, reader, note, token, bind — see the
+gate script). The five PR-7-removed keys are absent BY CONSTRUCTION.
 
-STRICTLY DATA + STDLIB: the PyYAML-only CI job and doctor load this file
-by path and reuse ``declared_leaf_keys()`` as the unknown-key inventory.
-The op half lives in ``ops_backend_matrix.py`` (pre-authorized split,
-both under the 250-line ceiling). ``_RAW`` records are
-``keys|behavior|reader|note|token|bind``; ``keys`` is a whitespace group of leaves;
-``_parse_rows()`` yields one row per leaf.
+STRICTLY DATA + STDLIB: the PyYAML-only CI job and doctor load this file by
+path; ``declared_leaf_keys()`` is the unknown-key inventory. The op half
+lives in ``ops_backend_matrix.py``. ``_RAW`` records are
+``keys|behavior|reader|note|token|bind`` (``keys``: whitespace group of leaves).
 """
 
 from __future__ import annotations
@@ -59,7 +54,7 @@ _RAW: list[str] = [
     "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
     "coding.model llm.base_url llm.model|honored|coding/coder_client.py||base_url|",
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
-    "coding.require_structured_enforcement|honored|config.py||require_structured_enforcement|",
+    "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",
     "database.backend database.connection_string routing.enabled retrieval.self_query.enabled "
     "retrieval.self_query.model retrieval.self_query.base_url retrieval.self_query.timeout_seconds "
     "server.host|honored|server_wiring.py|Engine, DSN, router, self-query, host|self_query|",
@@ -183,8 +178,8 @@ _RAW: list[str] = [
     "topics.enabled topics.method topics.min_topic_size topics.llm topics.llm_base_url "
     "topics.llm_reduction topics.fixture_dir topics.live_fallback topics.zeroshot_min_similarity|"
     "honored|topics/settings.py||min_topic_size|",
-    "ui.spa.max_upload_mb ui.spa.poll_ms ui.spa.request_timeout_s|honored|ui/spa.py||max_upload_mb|"
-    "",
+    "ui.spa.max_upload_mb ui.spa.poll_ms ui.spa.request_timeout_s|honored|ui/spa.py||"
+    "max_upload_mb|",
     "web.user_agent web.timeout_seconds web.max_bytes web.respect_robots web.max_pages "
     "web.max_depth web.delay_seconds web.allow_private_addresses|honored|web/settings.py||"
     "respect_robots|",
@@ -221,6 +216,11 @@ _RAW: list[str] = [
     "research.release.profiles.team-codebook.prompt_stability_alpha "
     "research.release.profiles.team-codebook.required_gates|honored|research/release/profiles.py||"
     "alpha_reliable|",
+    "master.idle_window_s master.switch_window_s|honored|master/state_store.py|Windows||",
+    "master.workspace_root|honored|tools/pipeline/stages.py|Ingest attribution root||",
+    "master.adopt_on_start master.adopt_skip master.backup.enabled master.backup.schedule "
+    "master.backup.time_local master.backup.target_dir master.scan_interval_s|honored|"
+    "_setup/doctor_master.py|Doctor reports; W7 and W8 read later|adopt_skip|",
 ]
 
 

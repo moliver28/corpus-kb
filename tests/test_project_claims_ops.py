@@ -8,6 +8,8 @@ guard, R3 s1 step 3).
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from corpus_kb.contracts.catalogue_project import (
@@ -67,28 +69,38 @@ async def test_claim_list_unknown_slug_raises_project_not_found(pg_pool) -> None
 async def test_claim_unknown_doc_raises_not_found(pg_pool) -> None:
     from corpus_kb.tools.project_tools import project_claim
 
-    # One known project row, whatever the shared dev database holds today.
-    # The GUC rides inside ONE transaction: a LOCAL set_config on an
-    # autocommit connection evaporates with its statement (the store
-    # documents this trap), and research_projects is RLS-guarded.
+    # Own seeded row: the shared dev database keeps rows from earlier
+    # runs, so "LIMIT 1" is not a lookup, and a W5 slug lookup dies on
+    # the project before the doc does. The GUC rides inside ONE
+    # transaction: a LOCAL set_config on an autocommit connection
+    # evaporates with its statement, and research_projects is
+    # RLS-guarded.
+    slug = f"claim-doc-{uuid.uuid4().hex[:8]}"
+    pid = str(uuid.uuid4())
+    tenant = "00000000-0000-0000-0000-000000000001"
     async with pg_pool.acquire() as con, con.transaction():
         await con.execute(
             "SELECT set_config('app.current_tenant_id', $1, true)",
-            "00000000-0000-0000-0000-000000000001",
+            tenant,
         )
-        row = await con.fetchrow("SELECT name FROM research_projects LIMIT 1")
-        if row is None:
+        await con.execute(
+            "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+            " VALUES ($1, $2, $3, $4)",
+            pid,
+            tenant,
+            slug,
+            slug,
+        )
+    try:
+        with pytest.raises(NotFoundError):
+            await project_claim(pg_pool, "00000000-0000-0000-0000-0000000000ff", slug)
+    finally:
+        async with pg_pool.acquire() as con, con.transaction():
             await con.execute(
-                "INSERT INTO research_projects (project_id, tenant_id, name) VALUES ($1, $2, $3)",
-                "44444444-4444-4444-4444-444444444444",
-                "00000000-0000-0000-0000-000000000001",
-                "parity-notes",
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                tenant,
             )
-            name = "parity-notes"
-        else:
-            name = str(row["name"])
-    with pytest.raises(NotFoundError):
-        await project_claim(pg_pool, "00000000-0000-0000-0000-0000000000ff", name)
+            await con.execute("DELETE FROM research_projects WHERE project_id = $1", pid)
 
 
 def test_mcp_server_builds_with_claim_tools() -> None:

@@ -670,3 +670,25 @@ ingest:
 telemetry:
   enabled: false
   log_dir: telemetry_logs
+
+# Master topology (W5): one pool, workspace attribution, and the
+# one-active-project rule. W8 (P3) reads the adopt and backup keys.
+master:
+  # Root folder whose <slug>/ subfolders name projects; "" is off.
+  workspace_root: ""
+  # Adopt every plugin-era per-study database on first start.
+  adopt_on_start: true
+  # Named databases the adoption step leaves alone.
+  adopt_skip: []
+  # Folder mtime sampling cadence for the active-state rule (s).
+  scan_interval_s: 900
+  # A challenger project takes over within this activity window.
+  switch_window_s: 1800
+  # The incumbent keeps the role while its activity is this fresh.
+  idle_window_s: 7200
+  # The one retained backup (W7 owns the scheduler).
+  backup:
+    enabled: true
+    schedule: daily
+    time_local: "03:00"
+    target_dir: backups

@@ -115,6 +115,7 @@ def print_doctor_report(
     env_check: Any | None = None,
     storage: list[Any] | None = None,
     journey: list[Any] | None = None,
+    master: list[Any] | None = None,
 ) -> None:
     """Print read-only diagnostic report."""
     backend = _print_doctor_system_lines(info)
@@ -136,6 +137,10 @@ def print_doctor_report(
         from corpus_kb._setup.doctor_journey import print_journey_checks
 
         print_journey_checks(journey)
+    if master:
+        print("\nMaster topology:")
+        for check in master:
+            print(f"  [{check.status.upper():<7}] {check.name}: {check.detail}")
     print("\nRecommended commands (drop --dry-run to execute setup):")
     for index, command in enumerate(_recommended_setup_commands(info), start=1):
         print(f"  {index}. {command}")
@@ -201,6 +206,7 @@ def doctor_json_report(
     config: dict[str, Any],
     conn_str: str,
     journey: list[Any] | None = None,
+    master: list[Any] | None = None,
 ) -> dict[str, Any]:
     """The machine-readable doctor report (issue #348).
 
@@ -241,7 +247,7 @@ def doctor_json_report(
         # One check or a list (the env row + the PR-9 config-keys row).
         env_area = env_check if isinstance(env_check, list) else [env_check]
         checks.extend(_check_entry(check) for check in env_area if check is not None)
-    for group in (research, storage, journey):
+    for group in (research, storage, journey, master):
         for check in group or []:
             checks.append(_check_entry(check))
     return {

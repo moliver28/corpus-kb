@@ -104,6 +104,9 @@ class SearchQuery(BaseModel):
     k: int | None = None
     source_type: str | None = None
     self_query: bool | None = None  # None -> use config default
+    # W5-5 project lens: None rides the active project; "all" is pool-wide;
+    # a slug pins that project. Internal target "project" stays parser-hidden.
+    scope: str | None = None
 
 
 class SQLQuery(BaseModel):

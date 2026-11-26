@@ -146,11 +146,14 @@ def final_envelope(
     results: list[SearchResult],
     run: ArmRun,
     query_rewrites: list[str] | None = None,
+    project_scope: str = "all",
+    active_project: str | None = None,
 ) -> SearchEnvelope:
     """Attach the degraded-honesty accounting to the final results.
 
     ``query_rewrites`` (issue #136) rides only when multi-query fusion
     ran; None keeps the envelope byte-identical to the single-query path.
+    The W5-5 lens keys are guaranteed payload keys (contracts SEARCH_ENVELOPE).
     """
     return finalize_envelope(
         results,
@@ -162,4 +165,6 @@ def final_envelope(
         lexical_index_note=outcome.lexical_index_note,
         meta_hits=[dict(row) for row in outcome.meta_rows],
         query_rewrites=query_rewrites,
+        project_scope=project_scope,
+        active_project=active_project,
     )

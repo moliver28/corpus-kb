@@ -249,6 +249,8 @@ FLAG_OFF_KEYS = {
     "status",
     "result",
     "degraded_excluded",
+    "project_scope",
+    "active_project",
     "vector_index_mode",
     "lexical_index_mode",
     "meta_hits",

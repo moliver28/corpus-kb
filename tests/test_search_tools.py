@@ -81,6 +81,7 @@ def test_search_signature_is_stable() -> None:
         "k",
         "source_type",
         "self_query",
+        "scope",
     ]
 
 
