@@ -31,7 +31,7 @@ from corpus_kb.storage.gateway import DuckDbGateway
 
 TENANT = "tenant-1"
 NOW = datetime(2026, 11, 25, 12, 0, 0, tzinfo=UTC)
-CFG = {"master": {"switch_window_s": 1800, "idle_window_s": 7200}}
+CFG = {"master": {"workspace_root": "W:/ws", "switch_window_s": 1800, "idle_window_s": 7200}}
 
 
 async def _migrated(tmp_path: Path, name: str) -> Path:
@@ -169,3 +169,118 @@ async def test_resolve_lens_pg(pg_pool) -> None:
     active_id, slug = await resolve_lens(gateway, CFG, tenant, NOW)
     assert active_id == pid
     assert slug == "alpha"
+
+
+# -- W5-5: the query and analysis ops stamp their activity kind --------------
+
+
+def _fake_search_arms(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Fake the search arms so search_with_meta runs lens + stamps for real."""
+    from corpus_kb.handlers import query_pipeline
+
+    captured: dict = {}
+
+    async def fake_arm(pool, backend, run, hnsw):
+        captured["predicates"] = list(run.dynamic_predicates)
+        return object()
+
+    async def fake_legs(*a, **k):
+        return [], []
+
+    async def fake_post(*a, **k):
+        return []
+
+    def fake_final(
+        outcome, results, run, query_rewrites=None, project_scope="all", active_project=None
+    ):
+        captured["scope"] = project_scope
+        captured["slug"] = active_project
+        return object()
+
+    monkeypatch.setattr(query_pipeline, "arm_outcome", fake_arm)
+    monkeypatch.setattr(query_pipeline, "rewrite_legs", fake_legs)
+    monkeypatch.setattr(query_pipeline, "post_fusion", fake_post)
+    monkeypatch.setattr(query_pipeline, "final_envelope", fake_final)
+    return captured
+
+
+async def test_search_stamps_query_activity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lensed search stamps kind "query" on the project_activity row."""
+    import uuid as uuid_mod
+    from types import SimpleNamespace
+
+    from corpus_kb.domain.models import SearchQuery
+    from corpus_kb.handlers import query_pipeline
+
+    captured = _fake_search_arms(monkeypatch)
+    monkeypatch.setenv("CORPUS_KB_INSTALL_DATA_DIR", str(tmp_path / "data"))
+    path = await _migrated(tmp_path, "stamp-query.duckdb")
+    gateway = await DuckDbGateway.connect(str(path))
+    tenant = "00000000-0000-0000-0000-000000000001"
+    try:
+        pid = await project_id_for_slug(gateway, tenant, "alpha")
+        recent = datetime.now(UTC) - timedelta(seconds=60)
+        await note_activity(gateway, tenant, pid, "ingest", recent)
+        await resolve_lens(gateway, CFG, tenant, datetime.now(UTC))
+        await query_pipeline.search_with_meta(
+            pool=gateway,
+            search_backend=None,
+            reranker=None,
+            rerank_settings=SimpleNamespace(return_top_k=5),
+            retrieval_settings=SimpleNamespace(lexical_candidates=20, vector_candidates=20),
+            hnsw_settings=SimpleNamespace(),
+            exclude_degraded=False,
+            self_query_parser=None,
+            self_query_enabled=False,
+            query=SearchQuery(tenant_id=uuid_mod.UUID(tenant), query="x", scope=None),
+            config=CFG,
+        )
+        async with gateway.transaction(tenant) as tx:
+            rows = await tx.fetch("SELECT kind FROM project_activity WHERE tenant_id = $1", tenant)
+        kinds = sorted(r["kind"] for r in rows)
+        assert "query" in kinds
+        assert captured["scope"] == "alpha"
+    finally:
+        await gateway.close()
+        _cleanup(path)
+
+
+async def test_analyze_run_stamps_analysis_activity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """analyze_run stamps kind "analysis" on the cached active project."""
+    from corpus_kb.tools import analysis_tools
+
+    monkeypatch.setenv("CORPUS_KB_INSTALL_DATA_DIR", str(tmp_path / "data"))
+    path = await _migrated(tmp_path, "stamp-analysis.duckdb")
+    gateway = await DuckDbGateway.connect(str(path))
+
+    async def fake_section(pool, config, tenant_id, settings=None):
+        from corpus_kb.analysis.report import disabled_section
+
+        return disabled_section("dates", "x", "y")
+
+    monkeypatch.setattr(analysis_tools, "_dates_section", fake_section)
+    monkeypatch.setattr(analysis_tools, "_labeling_section", fake_section)
+    monkeypatch.setattr(analysis_tools, "_classification_section", fake_section)
+    monkeypatch.setattr(analysis_tools, "_trends_section", fake_section)
+    config = {"master": {"workspace_root": "W:/ws"}, "analysis": {"labeling": {"enabled": True}}}
+    try:
+        pid = await project_id_for_slug(gateway, TENANT, "alpha")
+        async with gateway.transaction(TENANT) as tx:
+            await tx.execute(
+                "INSERT INTO master_state (tenant_id, active_project_id, updated_ts)"
+                " VALUES ($1, $2, $3)",
+                TENANT,
+                pid,
+                NOW,
+            )
+        await analysis_tools.analyze_run(gateway, config=config, tenant_id=TENANT)
+        async with gateway.transaction(TENANT) as tx:
+            kinds = await tx.fetch("SELECT kind FROM project_activity WHERE tenant_id = $1", TENANT)
+        assert sorted(r["kind"] for r in kinds) == ["analysis"]
+    finally:
+        await gateway.close()
+        _cleanup(path)

@@ -54,7 +54,7 @@ _RAW: list[str] = [
     "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
     "coding.model llm.base_url llm.model|honored|coding/coder_client.py||base_url|",
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
-    "coding.require_structured_enforcement|honored|config.py||require_structured_enforcement|",
+    "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",
     "database.backend database.connection_string routing.enabled retrieval.self_query.enabled "
     "retrieval.self_query.model retrieval.self_query.base_url retrieval.self_query.timeout_seconds "
     "server.host|honored|server_wiring.py|Engine, DSN, router, self-query, host|self_query|",

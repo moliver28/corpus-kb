@@ -109,7 +109,8 @@
     "tests/test_search_honesty.py": 1058,
     "tests/test_surface_parity_deep.py": 1311,
     "src/corpus_kb/surface_wrappers.py": 951,
-    "tests/_parity_legs.py": 1881
+    "tests/_parity_legs.py": 1881,
+    "src/corpus_kb/_setup/doctor_report.py": 256
   },
   "persona_meter": {
     "report_path": "tests/fixtures/persona_meter/report.v1.json",

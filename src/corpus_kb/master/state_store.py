@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,12 +22,14 @@ from corpus_kb.master.active import (
     ActiveSignals,
     aware_utc,
     compute_active_state,
+    pick_challenger,
+    pick_incumbent,
+    signals_from_stamps,
 )
 from corpus_kb.storage.gateway import SqlGateway, as_gateway
 
 SIDECAR_FILENAME = "master_state.json"
 _ACTIVITY_KINDS = frozenset({"ingest", "query", "analysis"})
-_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _master_cfg(cfg: dict[str, Any] | None) -> dict[str, Any]:
@@ -79,6 +81,23 @@ async def project_id_for_slug(gateway: SqlGateway | Any, tenant_id: str, slug: s
         return project_id
 
 
+async def project_id_only(gateway: SqlGateway | Any, tenant_id: str, slug: str) -> str | None:
+    """The existing project id for a slug, or None. Never registers a row.
+
+    The query-side twin of ``project_id_for_slug``: an explicit search
+    scope names a project that must already exist (ingest owns
+    registration), so a lookup here stays read-only.
+    """
+    gw = as_gateway(gateway)
+    async with gw.transaction(tenant_id) as tx:
+        row = await tx.fetchrow(
+            "SELECT project_id FROM research_projects WHERE tenant_id = $1 AND slug = $2",
+            tenant_id,
+            slug,
+        )
+    return str(row["project_id"]) if row is not None else None
+
+
 async def note_activity(
     gateway: SqlGateway | Any, tenant_id: str, project_id: str, kind: str, now: datetime
 ) -> None:
@@ -96,19 +115,6 @@ async def note_activity(
             kind,
             aware_utc(now),
         )
-
-
-def _latest(stamps: dict[str, datetime]) -> datetime | None:
-    values = [aware_utc(ts) for ts in stamps.values() if ts is not None]
-    return max(values) if values else None
-
-
-def _signals(stamps: dict[str, datetime]) -> ActiveSignals:
-    return ActiveSignals(
-        ingest_ts=stamps.get("ingest"),
-        query_ts=stamps.get("query"),
-        analysis_ts=stamps.get("analysis"),
-    )
 
 
 async def _read_lens_world(
@@ -135,30 +141,6 @@ async def _read_lens_world(
     return cached_id, since_ts, by_project
 
 
-def _pick_incumbent(
-    cached_id: str | None, since_ts: datetime | None, by_project: dict[str, dict[str, datetime]]
-) -> tuple[str | None, datetime | None]:
-    """The cached project (or the freshest one); its stamp or the cache since_ts."""
-    incumbent_id = cached_id
-    if incumbent_id is None and by_project:
-        incumbent_id = max(by_project, key=lambda pid: _latest(by_project[pid]) or _EPOCH)
-    incumbent_ts = _latest(by_project.get(incumbent_id, {})) if incumbent_id else None
-    if incumbent_ts is None:
-        incumbent_ts = since_ts
-    return incumbent_id, incumbent_ts
-
-
-def _pick_challenger(
-    by_project: dict[str, dict[str, datetime]], incumbent_id: str | None
-) -> tuple[str | None, ActiveSignals]:
-    """The freshest project that is not the incumbent (None when alone)."""
-    others = [pid for pid in by_project if pid != incumbent_id]
-    if not others:
-        return None, ActiveSignals()
-    challenger_id = max(others, key=lambda pid: _latest(by_project[pid]) or _EPOCH)
-    return challenger_id, _signals(by_project[challenger_id])
-
-
 async def resolve_lens(
     gateway: SqlGateway | Any, cfg: dict[str, Any] | None, tenant_id: str, now: datetime
 ) -> tuple[str | None, str | None]:
@@ -166,17 +148,24 @@ async def resolve_lens(
 
     Answers ``(active_project_id, active_slug)``. The cache row and the
     sidecar change only when the winning project changes.
+    Attribution off (``master.workspace_root`` empty) answers
+    ``(None, None)`` without touching the gateway. The windows come
+    from ``master.idle_window_s`` and ``master.switch_window_s``.
     """
+    if not _master_cfg(cfg).get("workspace_root"):
+        return None, None
     gw = as_gateway(gateway)
     master = _master_cfg(cfg)
     switch = int(master.get("switch_window_s", DEFAULT_SWITCH_WINDOW_S))
     idle = int(master.get("idle_window_s", DEFAULT_IDLE_WINDOW_S))
     async with gw.transaction(tenant_id) as tx:
         cached_id, since_ts, by_project = await _read_lens_world(tx, tenant_id)
-        incumbent_id, incumbent_ts = _pick_incumbent(cached_id, since_ts, by_project)
-        challenger_id, challenger_signals = _pick_challenger(by_project, incumbent_id)
+        incumbent_id, incumbent_ts = pick_incumbent(cached_id, since_ts, by_project)
+        challenger_id, challenger_signals = pick_challenger(by_project, incumbent_id)
         state = compute_active_state(
-            _signals(by_project.get(incumbent_id, {})) if incumbent_id else ActiveSignals(),
+            signals_from_stamps(by_project.get(incumbent_id, {}))
+            if incumbent_id
+            else ActiveSignals(),
             incumbent_id,
             incumbent_ts,
             challenger_id,
@@ -229,6 +218,8 @@ async def stamp_project_touch(
     gateway: SqlGateway | Any, cfg: dict[str, Any] | None, tenant_id: str, kind: str, now: datetime
 ) -> None:
     """Stamp the CACHED active project only — a cheap read, no recompute."""
+    if not _master_cfg(cfg).get("workspace_root"):
+        return
     if kind not in _ACTIVITY_KINDS:
         raise ValueError(f"unknown activity kind: {kind}")
     gw = as_gateway(gateway)

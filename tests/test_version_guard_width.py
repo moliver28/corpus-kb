@@ -63,5 +63,5 @@ async def test_guard_reads_a_runner_migrated_store(tmp_path, monkeypatch) -> Non
     await run_migrations(dsn)
     report = await assert_store_supported(dsn, "duckdb")
     assert report is not None
-    assert report.store_head == "049_master_membership.sql"
+    assert report.store_head == "050_master_topology.sql"
     assert report.pending_count == 0
