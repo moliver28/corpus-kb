@@ -4,12 +4,10 @@ ONE declarative row per config leaf in ``get_default_config()`` and the
 packaged ``config.yaml``. ``scripts/config_backend_parity_gate.py`` fails
 when either source and this table disagree, when a reader file lacks its
 grep token (the dead-key check), or when a refusal row lost its binding
-test (record fields: keys, behavior, reader, note, token, bind — see the
-gate script). The five PR-7-removed keys are absent BY CONSTRUCTION.
+test. The five PR-7-removed keys are absent BY CONSTRUCTION.
 
 STRICTLY DATA + STDLIB: the PyYAML-only CI job and doctor load this file by
-path; ``declared_leaf_keys()`` is the unknown-key inventory. The op half
-lives in ``ops_backend_matrix.py``. ``_RAW`` records are
+path. The op half lives in ``ops_backend_matrix.py``. ``_RAW`` records are
 ``keys|behavior|reader|note|token|bind`` (``keys``: whitespace group of leaves).
 """
 
@@ -52,11 +50,9 @@ _RAW: list[str] = [
     "cache.inductive_enabled|honored|research/exact_cache.py|Inductive exact-cache gate|"
     "inductive_enabled|",
     "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
-    'coding.model|honored|server_wiring.py|Coder model, wired at startup|coding_cfg.get("model"|',
-    "llm.base_url|honored|handlers/llm_handler.py|Ollama host for the answer LLM|"
-    '_str_or_default(llm, "base_url"|',
-    "llm.model|honored|api/routes_v1.py|Default answer model for /v1 endpoints|"
-    'llm_section.get("model"|',
+    'coding.model|honored|server_wiring.py||coding_cfg.get("model"|',
+    'llm.base_url|honored|handlers/llm_handler.py||_str_or_default(llm, "base_url"|',
+    'llm.model|honored|api/routes_v1.py||llm_section.get("model"|',
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
     "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",
     "database.backend database.connection_string routing.enabled retrieval.self_query.enabled "
