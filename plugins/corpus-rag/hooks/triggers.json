@@ -1,4 +1,6 @@
 {
+  "owner": "moliver",
+  "reviewed": "2026-11-17",
   "nouns": [
     "transcript*",
     "participant*",
@@ -6,20 +8,63 @@
     "quote*",
     "insight*",
     "codebook*",
-    "research question",
-    "hypothes*"
+    "stakeholder*",
+    "workshop*",
+    "customer call*",
+    "internal meeting*",
+    "notes from customers",
+    "customer feedback",
+    "evidence",
+    "rq",
+    "rqs",
+    "research question*",
+    "hypothes*",
+    "existing research",
+    "prior research"
   ],
   "frames": [
-    "analy*",
+    {
+      "term": "analy*",
+      "not": [
+        "analytics"
+      ]
+    },
     "synthes*",
     "summarize",
     "saturation",
-    "what did ... say"
+    "what did ... say",
+    "what does the research say",
+    "align with the data",
+    "all evidence",
+    "for each quote",
+    "across sessions",
+    "per-session",
+    "per-meeting",
+    "convergence",
+    "ingest",
+    "find the transcript",
+    "download ... transcripts"
   ],
   "exclusions": [
-    "interview script",
-    "discussion guide",
+    "web search",
+    "repo",
+    "repository",
+    "codebase",
+    "interview me",
+    "quote block",
+    "embed",
     "embedding",
-    "repo"
+    "embeddings",
+    "push",
+    "update the jira",
+    "edit the jira",
+    "jira description",
+    "jira-only",
+    "interview script",
+    "interview guide",
+    "discussion guide",
+    "moderator guide",
+    "script wording",
+    "guide wording"
   ]
 }
