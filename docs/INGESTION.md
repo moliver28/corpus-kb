@@ -106,12 +106,15 @@ corpus-kb ingest path/to/notes.md
 `run_pipeline` resolves the ingestion strategy once at entry, in this order:
 
 1. An explicit `--source-type` override on the CLI/MCP/HTTP ingest calls.
-2. The `ingestion.strategies[source_type]` map in `config.yaml`.
-3. Content detection: every registered strategy's `detect()` scores the
-   input (filename + text head); the highest-confidence match wins.
-4. The typed source registry: a canonical name or alias resolves to the
+2. The active profile's `strategies[source_type]` mapping, when a profile
+   is loaded.
+3. The `ingestion.strategies[source_type]` map in `config.yaml`.
+4. Content detection: every registered strategy's `detect()` scores the
+   input (filename + text head). The top match wins when its confidence
+   is at least `DETECT_ADOPT_CONFIDENCE`.
+5. The typed source registry: a canonical name or alias resolves to the
    strategy its `source_types` spec declares (table below).
-5. `ingestion.default` (built-in: `default`).
+6. `ingestion.default` (built-in: `default`).
 
 The resolution is printed at ingest, for example
 `detected: transcript (0.92, moderator-pattern) → strategy transcript`, and
@@ -820,10 +823,11 @@ The strategy for an ingest is resolved once, in this order:
 | Precedence | Source | Example |
 |------------|--------|---------|
 | 1 | explicit `--source-type` override | `corpus-kb ingest call.txt --source-type transcript` |
-| 2 | `ingestion.strategies[source_type]` config map | the Ladder-1 YAML above |
-| 3 | content detection | each registered strategy's `detect()` scores the input; highest confidence wins |
-| 4 | the typed source registry | `participant-session` resolves its declared `transcript` strategy |
-| 5 | `ingestion.default` | `default` |
+| 2 | the active profile's `strategies[source_type]` map | the profile's `strategies:` block |
+| 3 | `ingestion.strategies[source_type]` config map | the Ladder-1 YAML above |
+| 4 | content detection | each registered strategy's `detect()` scores the input; the winner needs confidence at or above `DETECT_ADOPT_CONFIDENCE` |
+| 5 | the typed source registry | `participant-session` resolves its declared `transcript` strategy |
+| 6 | `ingestion.default` | `default` |
 
 The resolved choice (strategy, confidence, reason) is printed at ingest and
 recorded in the pipeline result. Every document therefore carries its detection

@@ -2,10 +2,12 @@
 
 Resolution precedence (plan Section 0, pinned):
   1. EXPLICIT override (CLI --source-type / MCP tool param — a strategy name)
-  2. project config mapping ``ingestion.strategies[source_type]``
-  3. content detection (each registered strategy's detect() on the head)
-  4. the typed source_types registry (the spec's declared strategy)
-  5. ``ingestion.default`` (a strategy name, default "default")
+  2. the active profile's ``strategies[source_type]`` mapping
+  3. project config mapping ``ingestion.strategies[source_type]``
+  4. content detection (each registered strategy's detect() on the head) at
+     confidence >= DETECT_ADOPT_CONFIDENCE
+  5. the typed source_types registry (the spec's declared strategy)
+  6. ``ingestion.default`` (a strategy name, default "default")
 
 Built-ins register in code (see ``_ensure_ready``); third-party strategies load once via the
 entry-point group; a broken plugin logs a warning, is skipped, never crashes ingest.
