@@ -12,6 +12,10 @@
 -- the file ledger, and the write-once embedding cache survive the rollback.
 -- ============================================================================
 
+-- Migration 049 (W5) hangs the master_project_index view off
+-- research_projects; drop it first or the table drop is blocked.
+DROP VIEW IF EXISTS master_project_index;
+
 DROP TABLE IF EXISTS research_reviews;
 DROP TABLE IF EXISTS research_signals;
 DROP TABLE IF EXISTS research_assignments;

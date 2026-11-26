@@ -247,7 +247,7 @@ def test_finalize_envelope_status_count_and_remedy(
 def test_envelope_to_payload_shape() -> None:
     envelope = finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=4)
     payload = envelope_to_payload(envelope)
-    # Storage-portability §6: the engine index modes are guaranteed keys.
+    # Guaranteed keys: index modes (§6) + the W5-5 lens keys (SEARCH_ENVELOPE).
     assert set(payload) == {
         "status",
         "result",
@@ -256,7 +256,7 @@ def test_envelope_to_payload_shape() -> None:
         "vector_index_mode",
         "lexical_index_mode",
         "meta_hits",
-    }
+    } | {"project_scope", "active_project"}
     assert payload["status"] == STATUS_DEGRADED_EMPTY
     assert payload["degraded_excluded"] == {"count": 4, "reasons": [REASON_ZERO_QUERY]}
     healthy = envelope_to_payload(finalize_envelope([], []))
@@ -267,7 +267,7 @@ def test_envelope_to_payload_shape() -> None:
         "vector_index_mode",
         "lexical_index_mode",
         "meta_hits",
-    }
+    } | {"project_scope", "active_project"}
     assert healthy["degraded_excluded"] == {"count": 0, "reasons": []}
     # Postgres defaults on the legacy constructor path; the conditional
     # notes are absent (the embedding_mode/embedding_note contract shape).

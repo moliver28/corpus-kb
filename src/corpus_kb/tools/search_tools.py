@@ -34,6 +34,7 @@ async def search(
     k: int | None = None,
     source_type: str | None = None,
     self_query: bool | None = None,
+    scope: str | None = None,
 ) -> dict[str, Any]:
     """Hybrid vector + full-text search with the honest degraded envelope.
 
@@ -63,6 +64,7 @@ async def search(
         k=k,
         source_type=source_type,
         self_query=self_query,
+        scope=scope,
     )
     handler = QueryHandler(pg_pool, embedder, config=cfg)
     envelope = await handler.handle_search_with_meta(search_query)

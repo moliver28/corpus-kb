@@ -19,7 +19,12 @@ from .result import _stage_result_dict
 __all__ = ["_claimed_envelope", "_envelope_from", "_ledger_stages", "_skipped_envelope"]
 
 
-def _skipped_envelope(doc: IngestDocument, unchanged_doc: str) -> dict[str, Any]:
+def _skipped_envelope(
+    doc: IngestDocument,
+    unchanged_doc: str,
+    project_slug: str | None = None,
+    project_scope: str = "none",
+) -> dict[str, Any]:
     """The unchanged-content skip envelope (no ledger row is opened)."""
     return {
         "status": "skipped",
@@ -27,12 +32,18 @@ def _skipped_envelope(doc: IngestDocument, unchanged_doc: str) -> dict[str, Any]
         "path": doc.path,
         "source_type": doc.source_type,
         "reason": "unchanged",
+        "project_slug": project_slug,
+        "project_scope": project_scope,
         "errors": [],
     }
 
 
 def _claimed_envelope(
-    doc: IngestDocument, unchanged_doc: str, source_project_id: str | None
+    doc: IngestDocument,
+    unchanged_doc: str,
+    source_project_id: str | None,
+    project_slug: str | None = None,
+    project_scope: str = "none",
 ) -> dict[str, Any]:
     """The claimed envelope: an existing document joins the calling project.
 
@@ -47,6 +58,8 @@ def _claimed_envelope(
         "source_type": doc.source_type,
         "reason": "claimed",
         "source_project_id": source_project_id,
+        "project_slug": project_slug,
+        "project_scope": project_scope,
         "errors": [],
     }
 
@@ -97,6 +110,8 @@ def _envelope_from(
     errors: list[str],
     run_id: str,
     title: str | None,
+    project_slug: str | None = None,
+    project_scope: str = "none",
 ) -> dict[str, Any]:
     """The run result envelope, built from the canonical document."""
     return _stage_result_dict(
@@ -123,4 +138,6 @@ def _envelope_from(
         run_id=run_id,
         statements=artifacts.statements,
         title=title,
+        project_slug=project_slug,
+        project_scope=project_scope,
     )

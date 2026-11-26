@@ -113,10 +113,10 @@ class SearchEnvelope:
     meta_hits: list[dict[str, object]] = field(default_factory=list)
     # Issue #136: the multi-query rewrites actually used, in fusion order.
     # None unless retrieval.multi_query is on AND the rewriter produced
-    # variants — so the flag-off envelope stays byte-identical. When set,
-    # the key is the honest receipt that multi-query fusion ran
-    # (contracts/envelopes.py MULTI_QUERY_KEYS).
+    # variants — the flag-off envelope stays byte-identical (MULTI_QUERY_KEYS).
     query_rewrites: list[str] | None = None
+    project_scope: str = "all"  # W5-5 lens: guaranteed key (slug or "all")
+    active_project: str | None = None
 
 
 def is_all_zero(vector: list[float] | None) -> bool:
@@ -147,6 +147,8 @@ def finalize_envelope(
     lexical_index_note: str | None = None,
     meta_hits: list[dict[str, object]] | None = None,
     query_rewrites: list[str] | None = None,
+    project_scope: str = "all",
+    active_project: str | None = None,
 ) -> SearchEnvelope:
     """Build the final envelope: degraded_empty iff empty results + reasons.
 
@@ -178,6 +180,8 @@ def finalize_envelope(
             lexical_index_note=lexical_index_note,
             meta_hits=meta_out,
             query_rewrites=query_rewrites,
+            project_scope=project_scope,
+            active_project=active_project,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
@@ -190,6 +194,8 @@ def finalize_envelope(
         lexical_index_note=lexical_index_note,
         meta_hits=meta_out,
         query_rewrites=query_rewrites,
+        project_scope=project_scope,
+        active_project=active_project,
     )
 
 
@@ -210,6 +216,8 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
         "vector_index_mode": envelope.vector_index_mode,
         "lexical_index_mode": envelope.lexical_index_mode,
         "meta_hits": [dict(hit) for hit in envelope.meta_hits],
+        "project_scope": envelope.project_scope,
+        "active_project": envelope.active_project,
     }
     if envelope.remedy is not None:
         payload["remedy"] = envelope.remedy

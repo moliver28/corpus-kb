@@ -32,6 +32,10 @@ INGEST_ENVELOPE = (
     "embedding_mode",
     "statements",
     "profile",
+    # W5-4 (spec s3): workspace attribution - guaranteed on every success
+    # envelope; scope is "project" or "none".
+    "project_slug",
+    "project_scope",
 )
 
 # Shared search family (QueryHandler.handle_search_with_meta serialized by
@@ -46,6 +50,9 @@ SEARCH_ENVELOPE = (
     "vector_index_mode",
     "lexical_index_mode",
     "meta_hits",
+    # W5-5 project lens - guaranteed keys (spec s3).
+    "project_scope",
+    "active_project",
 )
 
 # Issue #136 multi-query retrieval (retrieval.multi_query, default OFF):

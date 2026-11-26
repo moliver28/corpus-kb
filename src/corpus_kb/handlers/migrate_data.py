@@ -106,9 +106,10 @@ VECTOR_TEXT_TRANSFORMS: dict[str, tuple[ColumnTransform, ...]] = {
 def discover_tables(conn: StreamConn, catalog: str | None = None) -> tuple[str, ...]:
     """Base-table names on one side, in stable order.
 
-    catalog=None scopes the default catalog ('schema.table'). A named
-    catalog (the ATTACH leg's read-only alias) yields three-part names so
-    attached tables cannot collide with the connection's own database.
+    catalog=None scopes the default catalog ('schema.table'); a named
+    catalog (the ATTACH leg's alias) yields three-part names. That leg
+    also drops views: the scanner reports PG views as BASE TABLE, and
+    duckdb_views() is the truth (W5's master_project_index must not copy).
     """
     if catalog is None:
         rows = conn.execute(
@@ -123,7 +124,8 @@ def discover_tables(conn: StreamConn, catalog: str | None = None) -> tuple[str, 
         " FROM information_schema.tables"
         " WHERE table_catalog = ?"
         " AND table_schema NOT IN ('information_schema', 'pg_catalog')"
-        " AND table_type = 'BASE TABLE' ORDER BY 1",
+        " AND table_type = 'BASE TABLE'"
+        " AND table_name NOT IN (SELECT view_name FROM duckdb_views()) ORDER BY 1",
         [catalog],
     ).fetchall()
     return tuple(str(row[0]) for row in rows)
@@ -201,17 +203,10 @@ def _copy_table(
     names = ", ".join(quoted_identifier(c) for c in columns)
     parts = ", ".join(_select_parts(columns, transforms, reparse))
     marks = ", ".join("?" for _ in columns)
+    insert = f"INSERT INTO {sql_qualified(target_name or entry.name)} ({names}) VALUES ({marks})"
     statements = {
         "select": "SELECT " + parts + " FROM " + sql_qualified(entry.name),
-        "insert": (
-            "INSERT INTO "
-            + sql_qualified(target_name or entry.name)
-            + " ("
-            + names
-            + ") VALUES ("
-            + marks
-            + ")"
-        ),
+        "insert": insert,
     }
     cursor = source.execute(statements["select"])
     copied = 0

@@ -199,6 +199,8 @@ async def test_claimed_envelope_keys(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "source_type",
             "reason",
             "source_project_id",
+            "project_slug",
+            "project_scope",
             "errors",
         }
         provenance = {
@@ -238,6 +240,8 @@ def test_claimed_envelope_keys_exact() -> None:
         "source_type",
         "reason",
         "source_project_id",
+        "project_slug",
+        "project_scope",
         "errors",
     }
     assert envelope["status"] == "claimed"
@@ -281,3 +285,110 @@ def _stub_embed_extract(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed)
     monkeypatch.setattr(ingest_common, "extract_with_fallback", fake_extract)
+
+
+# -- W5-3: the master topology migration (slug + meta index view) ------------
+
+
+async def test_master_index_view_exists(tmp_path: Path) -> None:
+    """A SELECT from the view answers zero rows on a fresh store."""
+    path = await _migrated(tmp_path, "index-view.duckdb")
+    con = duckdb.connect(str(path))
+    try:
+        rows = con.execute("SELECT * FROM master_project_index").fetchall()
+        assert rows == []
+    finally:
+        con.close()
+    _cleanup(path)
+
+
+async def test_slug_unique_per_tenant(tmp_path: Path) -> None:
+    """The slug is unique per tenant: cross-tenant reuse succeeds, reuse fails."""
+    path = await _migrated(tmp_path, "slug-unique.duckdb")
+    con = duckdb.connect(str(path))
+    try:
+        con.execute(
+            "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+            " VALUES ('11111111-1111-1111-1111-111111111111', ?, 'Alpha', 'alpha')",
+            [TENANT],
+        )
+        con.execute(
+            "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+            " VALUES ('22222222-2222-2222-2222-222222222222', ?, 'Beta', 'alpha')",
+            ["tenant-2"],
+        )
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
+                " VALUES (?, ?, ?, ?)",
+                ["33333333-3333-3333-3333-333333333333", TENANT, "Gamma", "alpha"],
+            )
+    finally:
+        con.close()
+    _cleanup(path)
+
+
+# -- W5-4: ingest attribution and the two envelope keys ----------------------
+
+
+async def test_ingest_envelope_names_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file under the workspace root names its project on the envelope."""
+    from corpus_kb.tools.pipeline.plan import run_pipeline
+
+    _stub_embed_extract(monkeypatch)
+    root = tmp_path / "ws"
+    slug = "uxr-alpha"
+    path = await _migrated(tmp_path, "attrib-on.duckdb")
+    doc_path = f"{root.as_posix()}/{slug}/x.md"
+    config: dict[str, Any] = {
+        "database": {"backend": "duckdb"},
+        "embedding": {"model": "stub-embed", "dimensions": 2560},
+        "graph": {"extract_entities": True},
+        "ingest": {"contextualize": {"enabled": False}},
+        "master": {"workspace_root": root.as_posix()},
+    }
+    gateway = await DuckDbGateway.connect(str(path))
+    try:
+        envelope = await run_pipeline(
+            DOC_TEXT, "text", doc_path, config, gateway, TENANT, project_id=None
+        )
+        assert envelope["status"] == "success"
+        assert envelope["project_slug"] == slug
+        assert envelope["project_scope"] == "project"
+        async with gateway.transaction(TENANT) as tx:
+            row = await tx.fetchrow(
+                "SELECT project_id, name, slug FROM research_projects WHERE slug = $1", slug
+            )
+        assert row is not None and row["name"] == slug
+    finally:
+        await gateway.close()
+        _cleanup(path)
+
+
+async def test_ingest_envelope_off_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No workspace root: the envelope says none, the slug is absent."""
+    from corpus_kb.tools.pipeline.plan import run_pipeline
+
+    _stub_embed_extract(monkeypatch)
+    path = await _migrated(tmp_path, "attrib-off.duckdb")
+    config: dict[str, Any] = {
+        "database": {"backend": "duckdb"},
+        "embedding": {"model": "stub-embed", "dimensions": 2560},
+        "graph": {"extract_entities": True},
+        "ingest": {"contextualize": {"enabled": False}},
+    }
+    gateway = await DuckDbGateway.connect(str(path))
+    try:
+        envelope = await run_pipeline(
+            DOC_TEXT, "text", DOC_PATH, config, gateway, TENANT, project_id=None
+        )
+        assert envelope["status"] == "success"
+        assert envelope["project_slug"] is None
+        assert envelope["project_scope"] == "none"
+    finally:
+        await gateway.close()
+        _cleanup(path)

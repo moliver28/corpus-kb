@@ -36,6 +36,8 @@ def _stage_result_dict(
     run_id: str,
     statements: dict[str, Any] | None = None,
     title: str | None = None,
+    project_slug: str | None = None,
+    project_scope: str = "none",
 ) -> dict[str, Any]:
     """Stage 5: the run result dict (nothing reports success on a partial).
 
@@ -78,6 +80,10 @@ def _stage_result_dict(
         "errors": errors,
         "run_id": run_id,
         "statements": statements or {"status": "disabled", "stored": 0},
+        # W5-4 (spec s3): workspace attribution rides every success envelope.
+        # Guaranteed keys, not conditional ones: scope is "project" or "none".
+        "project_slug": project_slug,
+        "project_scope": project_scope,
     }
     if embed_note is not None:
         result["embed_note"] = embed_note

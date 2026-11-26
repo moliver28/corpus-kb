@@ -43,6 +43,7 @@ async def search(request: Request) -> JSONResponse:
         k=opt_int(body.get("k"), None, name="k"),
         source_type=body.get("source_type"),
         self_query=body.get("self_query"),
+        scope=body.get("scope"),
     )
     handler = get_query_handler()
     envelope = await handler.handle_search_with_meta(query)
