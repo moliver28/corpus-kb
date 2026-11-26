@@ -943,6 +943,11 @@ class TestUnknownKeyWarnings:
             "unknown config key 'search.hnsw.typo_knob' is not read by this version"
         ]
 
+    def test_empty_user_section_not_warned(self):
+        # Item 6: an empty section dict is a shape the walk skips, not
+        # an unknown key.
+        assert validate_configs.unknown_key_warnings({"reranking": {}}) == []
+
     def test_real_project_configs_have_no_warnings(self):
         errors, warnings = validate_configs.validate_all_detailed(ROOT)
         assert errors == []

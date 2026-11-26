@@ -94,7 +94,9 @@ def unknown_key_warnings(config: dict[str, Any]) -> list[str]:
     warning (``config_aliases``): a legacy leaf is exempt, and a leaf
     under a present block rename (``search.hnsw``) is exempt when the
     rename maps it onto a declared canonical leaf — an unmapped leaf now
-    warns instead of hiding behind the block (issue #592 item 5). Warn, never error: the exit code must stay 0.
+    warns instead of hiding behind the block (issue #592 item 5). Empty
+    section dicts are skipped, not reported as unknown heads (issue #592
+    item 6). Warn, never error: the exit code must stay 0.
     """
     known = frozenset(_matrix_module().declared_leaf_keys()) | NON_DEFAULT_READ_KEYS
     aliases = _aliases_module()
@@ -116,7 +118,7 @@ def unknown_key_warnings(config: dict[str, Any]) -> list[str]:
     def walk(node: dict[str, Any], prefix: str) -> None:
         for key, value in node.items():
             path = f"{prefix}{key}"
-            if isinstance(value, dict) and value:
+            if isinstance(value, dict):
                 walk(value, f"{path}.")
                 continue
             if exempt(path):
