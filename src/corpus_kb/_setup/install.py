@@ -113,9 +113,8 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     """Read-only diagnostic command.
 
     Issue #348 exit rule: 3 when the configured database is unreachable
-    (the same meaning exit 3 has for ``ask``), 0 when the database
-    answered — even when warnings fired. ``--json`` prints one
-    machine-readable report and keeps the same exit code.
+    (the same meaning exit 3 has for ``ask``), 0 when the database answered
+    — even when warnings fired. ``--json`` prints one machine-readable report.
     """
     info = detect_profile()
     profiles = load_installer_profiles(config)
@@ -128,16 +127,16 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     info["config_file"] = str(config_file) if config_file else "packaged default"
     info["overlay_paths"] = [str(overlay) for overlay in config_overlay_paths()]
 
-    # Offline configuration-truth check (runs even without Postgres): warns
-    # about CORPUS_KB_* variables this version does not read.
+    # Offline config-truth checks (no Postgres needed).
+    from corpus_kb._setup.doctor_config_keys import config_key_check
     from corpus_kb._setup.doctor_env import env_var_check
 
-    env_check = env_var_check()
+    env_check = [env_var_check(), config_key_check()]
 
     db_cfg = config.get("database", {})
     # Runtime precedence (review F-1): env wins over config so doctor probes
-    # the SAME deployment research commands do. install_cmd/setup_cmd below
-    # deliberately keep config-first (the installer targets the docker stack).
+    # the SAME deployment research commands do. install_cmd/setup_cmd keeps
+    # config-first (the installer targets the docker stack).
     conn_str = os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
         db_cfg.get("connection_string", "")
     )
@@ -157,9 +156,7 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
     ollama_url = str(emb_cfg.get("base_url", DEFAULT_OLLAMA_URL))
     info["ollama_ok"], info["ollama_msg"] = await check_ollama(ollama_url)
 
-    # Research subsystem checks (todo-19 (a)): read-only, all guarded on
-    # postgres_ok, never affecting the doctor exit code. ollama_ok gates the
-    # zero-vector canary (it only embeds when Ollama is confirmed reachable).
+    # Research checks: read-only, guarded on postgres_ok; never flips exit.
     research = None
     if info["postgres_ok"]:
         from corpus_kb._setup.doctor_research import research_checks
@@ -168,27 +165,28 @@ async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
             conn_str, config, info.get("extensions"), ollama_ok=info["ollama_ok"]
         )
 
-    # Storage-portability section (program §9): the engine line plus the
-    # DuckDB health checks. Read-only; never flips the exit code.
+    # Storage-portability (program §9): engine line + DuckDB health checks.
+    # Novice journey (W3): the same probe the SPA composes, so CLI and UI
+    # cannot disagree. Both read-only; neither flips the exit code.
     from corpus_kb._setup.doctor_engine import database_reachable
+    from corpus_kb._setup.doctor_journey import journey_checks
+    from corpus_kb._setup.doctor_master import master_section
     from corpus_kb._setup.doctor_storage import storage_checks
 
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
-
     reachable = database_reachable(backend, bool(info["postgres_ok"]), storage)
-
-    # Novice journey section (novice-UX program W3): the same probe the SPA
-    # snapshot composes, so the CLI and the UI cannot disagree. Read-only;
-    # never flips the exit code.
-    from corpus_kb._setup.doctor_journey import journey_checks
-
     journey = await journey_checks(config, conn_str, reachable, bool(info["ollama_ok"]))
+    master = await master_section(config, conn_str)
 
     if json_output:
-        report = doctor_json_report(info, env_check, research, storage, config, conn_str, journey)
+        report = doctor_json_report(
+            info, env_check, research, storage, config, conn_str, journey, master
+        )
         print(json.dumps(report, indent=2))
     else:
-        print_doctor_report(info, research, env_check=env_check, storage=storage, journey=journey)
+        print_doctor_report(
+            info, research, env_check=env_check, storage=storage, journey=journey, master=master
+        )
     return 0 if reachable else 3
 
 

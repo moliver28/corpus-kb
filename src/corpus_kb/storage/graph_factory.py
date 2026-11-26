@@ -27,7 +27,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 import asyncpg
 
-from corpus_kb.config import AGE_ON_DUCKDB_ERROR, backend_mix_errors
+from corpus_kb.config import (
+    AGE_ON_DUCKDB_ERROR,
+    GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR,
+    backend_mix_errors,
+)
 from corpus_kb.errors import ConfigError
 from corpus_kb.storage.duckdb_store import DuckDbGraphStore
 from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path, map_connect_error
@@ -122,6 +126,8 @@ async def create_graph_store(
         graph_cfg = cfg.get("graph", {}) or {}
         if graph_cfg.get("backend") == "age":
             raise ConfigError(AGE_ON_DUCKDB_ERROR)
+        if graph_cfg.get("backend") == "postgres":
+            raise ConfigError(GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR)
         engine = str(graph_cfg.get("duckdb_graph_backend") or "cte")
         if engine not in DUCKDB_GRAPH_BACKENDS:
             raise ConfigError(
@@ -138,7 +144,12 @@ async def create_graph_store(
                 store: GraphStore = AgeGraphStore(pool)
                 await store.search_entities("")  # probe AGE availability
                 return store
-            except AgeUnavailableError as exc:
+            except (
+                AgeUnavailableError,
+                asyncpg.PostgresError,
+            ) as exc:
+                # Any probe Postgres error (permission denial, missing
+                # extension) falls back; the fallback store is the contract.
                 logger.warning(
                     "Apache AGE graph backend unavailable: %s. Falling back to PostgresGraphStore.",
                     exc,

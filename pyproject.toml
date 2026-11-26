@@ -1,6 +1,6 @@
 [project]
 name = "corpus-kb"
-version = "0.1.1rc0"
+version = "0.1.1"
 description = "Local end-to-end RAG system with MCP interface for agentic code editors"
 readme = "README.md"
 requires-python = ">=3.11.5"
@@ -745,6 +745,13 @@ help = "PyPI wheel smoke: fresh venv, unpinned corpus-kb install, CLI boot proof
 cmd = "python -m pytest tests/test_plain_language.py -m ste -q --tb=short"
 help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrings"
 
+# Latency ceiling gate (master-db W2, spec section 9, zero-drift rule 10).
+# The script measures the P1-P4 p50s on scratch DuckDB stores and compares
+# them with the bench_* ceilings in scripts/quality-baselines.json.
+[tool.poe.tasks.bench-latency]
+cmd = "python scripts/bench_latency.py --check"
+help = "Latency ceilings P1-P4: cold start, first query, per-doc ingest, 10k matrix, route (bench_latency.py)"
+
 [tool.poe.tasks.verify]
 sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "size-ratchet", "dup-check", "audit-deps", "test"]
 help = "Quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + size-ratchet + dup-check + audit-deps + test (coverage gates run in CI on the covered suite)"
@@ -809,6 +816,17 @@ help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
 # so local and CI run one command (program standard 8).
 cmd = "python src/corpus_kb/_setup/validate_configs.py"
 help = "MCP config + runtime config consistency gate (ci.yml validate-configs job)"
+
+[tool.poe.tasks.config-backend-parity]
+# The config-backend parity gate (duckdb-parity program PR-9, rule 10:
+# poe target + ci.yml config-backend-parity job + enforcement-map row +
+# the AGENTS.md rule-12 line — all four artifacts in one PR). Every
+# config leaf in get_default_config() plus the packaged config.yaml must
+# be declared in config_backend_matrix with backends, behavior, reader;
+# undeclared keys fail both directions; declared readers must contain
+# the key; refusal rows must bind to backend_gates tests.
+cmd = "python scripts/config_backend_parity_gate.py"
+help = "Config-backend parity gate: every config leaf declared with backends/behavior/reader (PR-9)"
 
 [tool.poe.tasks.toolname-lockstep]
 # The MCP tool-name allowlist lockstep (issue #416, rule 10: poe target +
@@ -995,6 +1013,12 @@ corpus-kb = "corpus_kb.cli:app"
 # corpus-kb discovers them at ingest time; a broken plugin is logged and
 # skipped, never fatal.
 [project.entry-points."corpus_kb.ingestion_strategies"]
+
+# Third-party source-type plugin group (master-db W3). Intentionally EMPTY
+# here: the built-in source types register directly in code
+# (corpus_kb.ingestion.source_types). A downstream package declares its
+# source types under this group; a broken plugin is logged and skipped.
+[project.entry-points."corpus_kb.source_types"]
 
 [tool.commitizen]
 # Customized Conventional Commits driver. The `cz_customize` plugin reads

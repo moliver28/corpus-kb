@@ -20,9 +20,6 @@ _DUCK_FK_ACTIONS = (
     "DuckDB cannot declare ON DELETE actions (duckdb 000 header); the"
     " plain FK holds and Python delete paths enforce the action."
 )
-_CHECK_GAP = "Real gap: the mirror omits this CHECK; the fix needs a DuckDB migration."
-_META_KIND_CHECK = "CHECK (META_KIND IN ('BELIEF_SUMMARY', 'DOCUMENT', 'PROFILE', 'TOPIC'))"
-
 #: (kind, table, item) -> one-line why. Anything not listed here fails.
 ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     # -- Unbounded numeric -> DOUBLE (duckdb 012 header; W0 spike finding).
@@ -101,6 +98,7 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     ("fk", "document_tags", "tag_id"): _DUCK_FK_ACTIONS,
     ("fk", "metadata", "doc_id"): _DUCK_FK_ACTIONS,
     ("fk", "nodes", "source_id"): _DUCK_FK_ACTIONS,
+    ("fk", "project_claims", "doc_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "chunk_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "source_entity_id"): _DUCK_FK_ACTIONS,
     ("fk", "relations", "target_entity_id"): _DUCK_FK_ACTIONS,
@@ -121,7 +119,6 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     ("fk", "statements", "chunk_id"): _DUCK_FK_ACTIONS,
     ("fk", "statements", "document_id"): _DUCK_FK_ACTIONS,
     # -- CHECK constraints (W4 audit G8): the fold now compares CHECKs.
-    # -- One real gap surfaced; the spelling-only differences fold equal.
-    ("check", "meta_embeddings", _META_KIND_CHECK): _CHECK_GAP,
-    ("check", "meta_embeddings", "CHECK (SOURCE_COUNT >= 0)"): _CHECK_GAP,
+    # -- The spelling-only differences fold equal. The one real gap (duck
+    # -- 035 omitted both meta_embeddings CHECKs) closed in duck 047.
 }

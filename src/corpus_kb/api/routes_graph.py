@@ -19,42 +19,41 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_int, parse_body, route_errors
-from corpus_kb.domain.models import AddEntityCommand, AddRelationCommand
 
 
 @route_errors
 async def add_entity(request: Request) -> JSONResponse:
     """POST /api/entities — add an entity to the knowledge graph."""
-    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_tools import add_entity as add_entity_tool
 
     body = await parse_body(request)
-    cmd = AddEntityCommand(
-        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
-        name=body["name"],
+    result = await add_entity_tool(
+        await research_pool(),
+        body["name"],
+        tenant_id=str(body.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=body.get("entity_type", "concept"),
         metadata=body.get("metadata", {}),
     )
-    handler = get_command_handler()
-    result = handler.handle_add_entity(cmd)
     return JSONResponse(result)
 
 
 @route_errors
 async def add_relation(request: Request) -> JSONResponse:
     """POST /api/relations — add a relation between two entities."""
-    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_tools import add_relation as add_relation_tool
 
     body = await parse_body(request)
-    cmd = AddRelationCommand(
-        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
-        source_entity_id=UUID(body["source_entity_id"]),
-        target_entity_id=UUID(body["target_entity_id"]),
+    result = await add_relation_tool(
+        await research_pool(),
+        body["source_entity_id"],
+        body["target_entity_id"],
+        tenant_id=str(body.get("tenant_id", DEFAULT_TENANT_ID)),
         relation_type=body.get("relation_type", "related_to"),
         weight=body.get("weight", 1.0),
         metadata=body.get("metadata", {}),
     )
-    handler = get_command_handler()
-    result = handler.handle_add_relation(cmd)
     return JSONResponse(result)
 
 

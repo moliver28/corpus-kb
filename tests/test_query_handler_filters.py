@@ -77,3 +77,78 @@ async def test_self_query_predicate_narrows_results(pg_pool) -> None:
     assert len(results) > 0, "predicate matched zero rows -- test proves nothing"
     assert "test-filter-markdown" in result_sources
     assert "test-filter-text" not in result_sources
+
+
+@pytest.mark.asyncio
+async def test_source_type_filter_resolves_legacy_alias(
+    pg_pool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RVW4-02: a legacy ``web`` filter binds the canonical ``external-site``.
+
+    resolve_predicates canonicalizes the explicit source_type filter with
+    the W3 resolver, so a legacy filter name reaches canonical-stamped
+    rows; a name no spec knows passes through unchanged. The seed stubs
+    the embed stage (hermetic: no live Ollama needed).
+    """
+    from typing import Any
+
+    from corpus_kb.domain.models import SearchQuery as _Query
+    from corpus_kb.handlers.query_pipeline import resolve_predicates
+    from corpus_kb.tools import ingest_common
+    from corpus_kb.utils.models import Chunk
+
+    resolved = resolve_predicates(_Query(query="x", source_type="web"), None, False)
+    assert [p.value for p in resolved[1]] == ["external-site"]
+    resolved_unknown = resolve_predicates(_Query(query="x", source_type="gyre"), None, False)
+    assert [p.value for p in resolved_unknown[1]] == ["gyre"]
+
+    async def fake_embed(
+        chunks: list[Chunk],
+        config: dict[str, Any],
+        pool: Any = None,
+        text_override: dict[str, str] | None = None,
+        document_text: str | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> tuple[bool, str | None]:
+        for chunk in chunks:
+            chunk.embedding = [0.0] * 2560
+        return False, None
+
+    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed)
+
+    config: dict[str, Any] = {
+        "graph": {"extract_entities": False},
+        "embedding": {"model": "stub", "dimensions": 2560},
+        "ingest": {"contextualize": {"enabled": False}},
+    }
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        await conn.execute(
+            "DELETE FROM documents WHERE tenant_id = $1 AND source = ANY($2)",
+            str(DEFAULT_TENANT_ID),
+            ["test-alias-external"],
+        )
+    unique_phrase = "zzyzx alias external probe spend"
+    result = await ingest_common.run_pipeline(
+        unique_phrase + " external edition",
+        "text",
+        "test-alias-external",
+        config,
+        pg_pool,
+        str(DEFAULT_TENANT_ID),
+    )
+    assert result["status"] == "success"
+    # Re-stamp the row to the W3 canonical name, the way the W3 stamps do.
+    from corpus_kb.storage.gateway import as_gateway
+
+    gateway = as_gateway(pg_pool)
+    async with gateway.transaction(str(DEFAULT_TENANT_ID)) as tx:
+        await tx.execute(
+            "UPDATE documents SET source_type = 'external-site'"
+            " WHERE tenant_id = $1 AND source = $2",
+            str(DEFAULT_TENANT_ID),
+            "test-alias-external",
+        )
+    handler = QueryHandler(pg_pool, embedder=FakeEmbedder(config), config=config)
+    results = await handler.handle_search(SearchQuery(query=unique_phrase, k=20, source_type="web"))
+    assert len(results) > 0, "the legacy filter matched zero canonical rows"
+    assert all(r.source == "test-alias-external" for r in results)

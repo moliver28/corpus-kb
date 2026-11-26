@@ -382,8 +382,23 @@ class _FakeStore:
         self.pool = pool
         self.tenant_id = tenant_id
 
-    async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
+    async def unchanged_doc_id(
+        self, path: str, file_hash: str, declared_visibility: str | None = None
+    ) -> None:
         return None
+
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        return None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        return None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        return True
 
     async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
         return "doc-w2", "run-w2"

@@ -50,7 +50,9 @@ that.
 ## Decisions (locked by the user, 2026-10-14)
 
 1. Default embedding = `qwen3-embedding:4b` at its **native 2560 dims**, with
-   `storage.vector_type: halfvec`. No reliance on MRL truncation.
+   the vector type pinned to `halfvec`. (The vector-type config key later
+   shipped as dead and was removed; the column type is schema-derived —
+   see the DuckDB parity matrix, section 1.1.) No reliance on MRL truncation.
 2. Schema becomes `halfvec(2560)` with a real HNSW index
    (`halfvec_cosine_ops`). halfvec is REQUIRED at 2560: pgvector HNSW caps
    `vector` at 2000 dims and `halfvec` at 4000.
@@ -87,14 +89,14 @@ that.
 | `embedding.{model,dimensions}` | same | value flip 4b/2560; `provider` → ollama |
 | `embedding.query_instruction` | (none; ungated constant) | new bool key |
 | `embedding.mrl_trained` | same | false → true |
-| `storage.vector_type` | (none) | new key; `halfvec` only supported value for now |
+| the vector-type key (since removed) | (none) | `halfvec` only supported value for now |
 | `ingest.chunking.{child,chunk,parent,overlap}_tokens, respect_boundaries` | `ingest.hierarchy.*` (same values) | rename; numbers already match target |
 | `ingest.chunking.enabled` | `ingest.hierarchy.enabled` | rename |
 | `retrieval.expand_to_parent` | `ingest.hierarchy.expand_to_parent` | move + flip false→true |
 | `retrieval.{mode, vector_candidates, lexical_candidates}` | `search.candidates_per_branch` (inert) | new keys; alias feeds both |
 | `retrieval.rrf_k` | `search.rrf_k` | move; value already 60 |
 | `retrieval.hnsw.*` | `search.hnsw.*` | move; query-time trio already at target values; add m/ef_construction |
-| `retrieval.{exclude_degraded, qa_context_in_fts, exact_filter_selectivity_threshold, candidate_multiplier, self_query, matryoshka_*}` | `search.*` (same names) | move unchanged |
+| `retrieval.{exclude_degraded, exact_filter_selectivity_threshold, candidate_multiplier, self_query, matryoshka_*}` | `search.*` (same names) | move unchanged (the qa-context FTS flag is not in this list: it shipped later and was removed — parity matrix section 1.1) |
 | `reranking.*` | `search.rerank.*` | move; model/candidates/max_pair_tokens already at target; add `return_top_k` |
 | `ingest.contextualize.*` | `contextual.*` | move; add backend/prompt_profile/max_context_tokens/document_first_prompt/apply_to; model qwen3:4b → qwen3:8b (W3) |
 | `topics.*` | (none) | new block, built in W4 |

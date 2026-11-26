@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS chunks_vectors (
     -- Postgres action: ON DELETE CASCADE; the gateway enforces it here.
     tenant_id VARCHAR NOT NULL,
     -- halfvec(2560) on Postgres (the migration-025 regime); FLOAT[2560] here.
-    embedding FLOAT[2560],
+    -- __EMBEDDING_DIMS__ is substituted by the migration runner from
+    -- embedding.dimensions (issue #559); see _setup/store_width.py.
+    embedding FLOAT[__EMBEDDING_DIMS__],
     embedding_model VARCHAR(255) NOT NULL DEFAULT 'qwen3-embedding:4b',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- degraded arrives with migration 022 on Postgres; it is created here

@@ -54,15 +54,14 @@ def _duckdb_config_env(tmp_path: Path, event_store_path: str, monkeypatch: pytes
 
     A minimal config file (CORPUS_KB_CONFIG is discovery slot 2) carries
     the backend switch + DSN without the Postgres-only engine selections
-    the repo default config sets (the loader's mix gate refuses those).
+    the repo default config sets (the loader's mix gate refuses those —
+    including graph.backend: postgres under duckdb since PR-6 G09).
     """
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         "database:\n"
         "  backend: duckdb\n"
         f"  connection_string: {event_store_path.replace(chr(92), '/')}\n"
-        "graph:\n"
-        "  backend: postgres\n"
         "extraction:\n"
         "  backend: regex\n",
         encoding="utf-8",

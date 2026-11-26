@@ -21,6 +21,7 @@ from corpus_kb.contracts.envelopes import (
     TITLE_KEYS,
     TOKEN_KEYS,
     VALIDATION_KEYS,
+    VISIBILITY_KEYS,
 )
 from corpus_kb.contracts.model import (
     CLI,
@@ -137,11 +138,12 @@ INGEST_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("crawl", default=False),
             ParamSpec("source_type"),
             ParamSpec("validate"),
+            ParamSpec("visibility"),
             _TENANT,
         ),
         envelope_keys=("status", "pages", "total_documents"),
-        http_extra=VALIDATION_KEYS | TOKEN_KEYS,
-        socket_extra=VALIDATION_KEYS | TOKEN_KEYS,
+        http_extra=VALIDATION_KEYS | TOKEN_KEYS | VISIBILITY_KEYS,
+        socket_extra=VALIDATION_KEYS | TOKEN_KEYS | VISIBILITY_KEYS,
         surfaces=(
             SurfaceSpec(MCP, "ingest_url"),
             SurfaceSpec(CLI, "ingest-url"),

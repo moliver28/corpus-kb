@@ -24,22 +24,31 @@ orchestrator (the legacy keyword seam was removed — PR 280 F2).
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
 
+from ...ingestion.source_types import VISIBILITY_VALUES
 from ...storage.gateway import SqlGateway
 from ...storage.rag_backend import RagBackend
 from ._facade import _ic
 from .document import IngestDocument
-from .produce import StageArtifacts, _commit_document, _mirror_rag_backend, _produce_artifacts
-from .result import _stage_result_dict
+from .envelope import _claimed_envelope, _envelope_from, _ledger_stages, _skipped_envelope
+from .produce import _commit_document, _mirror_rag_backend, _produce_artifacts
 from .sinks import ChunkSink, IngestSink
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["_run_document_stages"]
+
+
+def _declared_visibility(config: dict[str, Any]) -> str | None:
+    """The caller-declared visibility for typed external-site ingests."""
+    value = ((config or {}).get("document") or {}).get("visibility")
+    return value if value in VISIBILITY_VALUES else None
 
 
 def _book_title(config: dict[str, Any]) -> str | None:
@@ -57,87 +66,6 @@ def _book_title(config: dict[str, Any]) -> str | None:
         return None
     title = raw.strip()
     return title or None
-
-
-def _skipped_envelope(doc: IngestDocument, unchanged_doc: str) -> dict[str, Any]:
-    """The unchanged-content skip envelope (no ledger row is opened)."""
-    return {
-        "status": "skipped",
-        "document_id": unchanged_doc,
-        "path": doc.path,
-        "source_type": doc.source_type,
-        "reason": "unchanged",
-        "errors": [],
-    }
-
-
-def _ledger_stages(
-    artifacts: StageArtifacts,
-    errors: list[str],
-    validation_report: dict[str, Any] | None,
-    validation_mode: str,
-    calibration_summary: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """The ledger stages JSONB: stage counts plus additive payloads.
-
-    The shadow keys appear only when the hierarchy flag is on. Wave 4
-    calibrate mode: the validation report rides the ledger stages JSONB
-    (the Wave 7 calibration feed) without blocking and without touching
-    the envelope. Wave 7: the calibration sweep summary rides it the same
-    way; a refused sweep writes nothing (its reason went to the log).
-    """
-    stages: dict[str, Any] = {
-        "chunks": artifacts.pg_chunk_count,
-        "vectors": artifacts.pg_vector_count,
-        "entities": len(artifacts.entities),
-        "relations": len(artifacts.relations),
-        "degraded": artifacts.degraded,
-        "extractor_id": artifacts.extractor_id,
-        "errors": errors,
-    }
-    if artifacts.hierarchy_settings.enabled:
-        stages["shadow_chunk_count"] = artifacts.shadow_chunk_count
-        stages["shadow_vector_count"] = artifacts.shadow_vector_count
-    if validation_mode == "calibrate" and validation_report is not None:
-        stages["validation"] = validation_report
-    if calibration_summary:
-        stages["calibration"] = calibration_summary
-    return stages
-
-
-def _envelope_from(
-    doc: IngestDocument,
-    artifacts: StageArtifacts,
-    errors: list[str],
-    run_id: str,
-    title: str | None,
-) -> dict[str, Any]:
-    """The run result envelope, built from the canonical document."""
-    return _stage_result_dict(
-        document=doc.document,
-        chunks=doc.chunks,
-        source_type=doc.source_type,
-        path=doc.path,
-        degraded=artifacts.degraded,
-        embed_note=artifacts.embed_note,
-        embed_meta=artifacts.embed_meta,
-        empty_reason=doc.empty_reason,
-        hierarchy_settings=artifacts.hierarchy_settings,
-        shadow_chunk_count=artifacts.shadow_chunk_count,
-        shadow_vector_count=artifacts.shadow_vector_count,
-        shadow_note=artifacts.shadow_note,
-        entities=artifacts.entities,
-        relations=artifacts.relations,
-        extractor_id=artifacts.extractor_id,
-        stats=artifacts.stats,
-        pg_chunk_count=artifacts.pg_chunk_count,
-        pg_chunk_total=artifacts.pg_chunk_total,
-        pg_vector_count=artifacts.pg_vector_count,
-        errors=errors,
-        run_id=run_id,
-        statements=artifacts.statements,
-        title=title,
-    )
 
 
 async def _run_document_stages(
@@ -172,10 +100,48 @@ async def _run_document_stages(
     title = _book_title(config)
     if title is not None:
         doc.document.metadata["title"] = title
+    declared = _declared_visibility(config)
+    if declared is not None:
+        doc.document.metadata["visibility"] = declared
 
-    unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
+    # Workspace attribution (W5-4, spec s3): a path under master.workspace_root
+    # names its project; an unknown slug auto-registers the row. Storage never
+    # moves and the link can never fail the ingest — same best-effort posture
+    # as the project_id link below. The keys ride every envelope branch.
+    from corpus_kb.master.attribution import master_cfg, slug_from_path
+    from corpus_kb.master.state_store import note_activity, project_id_for_slug
+
+    now = datetime.now(UTC)
+    had_explicit = project_id is not None
+    slug: str | None = None
+    try:
+        slug = slug_from_path(doc.path, str(master_cfg(config).get("workspace_root", "")))
+        if slug and not had_explicit:
+            project_id = await project_id_for_slug(pg_pool, tenant_id, slug)
+    except Exception:
+        slug = None
+    if project_id:
+        with contextlib.suppress(Exception):
+            await note_activity(pg_pool, tenant_id, project_id, "ingest", now)
+    scope = "project" if (slug and not had_explicit) else "none"
+
+    # Hash-first dedupe (W4, F-06): the hash probe answers across path
+    # spellings; the path probe stays as the fallback. The declared visibility
+    # folds into BOTH probes, so a changed stamp re-ingests (P2).
+    unchanged_doc = await ingest_sink.unchanged_hash_doc_id(doc.file_hash, declared)
+    if unchanged_doc is None:
+        unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash, declared)
     if unchanged_doc is not None:
-        return _skipped_envelope(doc, unchanged_doc)
+        origin = await ingest_store.document_origin_project(unchanged_doc)
+        if project_id and origin != project_id:
+            # The claim write happens BEFORE any chunk/embed/extract work:
+            # reuse before re-ingest (spec s3). The origin document never
+            # moves; membership rides the project_claims row.
+            await ingest_store.claim_document(unchanged_doc, project_id, origin)
+            return _claimed_envelope(
+                doc, unchanged_doc, origin, project_slug=slug, project_scope=scope
+            )
+        return _skipped_envelope(doc, unchanged_doc, project_slug=slug, project_scope=scope)
 
     document_id, run_id = await ingest_sink.begin_run(doc.document, doc.file_hash)
     if project_id:
@@ -194,14 +160,21 @@ async def _run_document_stages(
         await _commit_document(ingest_sink, doc, errors)
 
         stages = _ledger_stages(
-            artifacts, errors, validation_report, validation_mode, calibration_summary
+            artifacts,
+            errors,
+            validation_report,
+            validation_mode,
+            calibration_summary,
+            declared_visibility=declared,
         )
 
         # Close the ledger LAST — completed only when no stage recorded an
         # error; failed with the error text otherwise.
         await ingest_sink.finish_run(run_id, doc.file_hash, stages, errors)
 
-        envelope = _envelope_from(doc, artifacts, errors, run_id, title)
+        envelope = _envelope_from(
+            doc, artifacts, errors, run_id, title, project_slug=slug, project_scope=scope
+        )
         if project_id and envelope.get("status") in ("success", "partial"):
             # Track C3: raw content-addressed storage into the project's
             # raw table, with honest envelope keys.

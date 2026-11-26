@@ -269,6 +269,9 @@ def test_note_conditional_shape_follows_embedding_note_contract() -> None:
         "vector_index_mode",
         "lexical_index_mode",
         "meta_hits",
+        # W5-5 lens keys: guaranteed payload keys (contracts SEARCH_ENVELOPE).
+        "project_scope",
+        "active_project",
     }
     healthy = finalize_envelope([], [])
     assert set(envelope_to_payload(healthy)) == base_keys

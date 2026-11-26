@@ -41,7 +41,7 @@ def error_triplet(error_type: str) -> tuple[int, int, int]:
 
     Unknown types fall back to the internal triplet, never a silent zero.
     """
-    return ERROR_MAP.get(error_type, ERROR_MAP["internal"])
+    return ERROR_MAP.get(error_type, ERROR_MAP["internal_error"])
 
 
 @dataclass(frozen=True)

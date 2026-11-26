@@ -27,6 +27,8 @@ _TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
 PROVISION_ENVELOPE = ("status", "table", "registry_id", "backend", "already_provisioned")
 LIST_ENVELOPE = ("status", "entries", "count")
 DROP_ENVELOPE = ("status", "table", "dropped_rows")
+CLAIM_ENVELOPE = ("status", "doc_id", "project_id", "source_project_id", "claimed")
+CLAIM_LIST_ENVELOPE = ("status", "entries", "count")
 
 PROJECT_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -89,5 +91,50 @@ PROJECT_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(SOCKET, "project_drop"),
         ),
         exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="project_claim",
+        family="project",
+        description=(
+            "Claim one stored document into the named project. The origin "
+            "document stays; the claim row joins it to the project."
+        ),
+        handler="corpus_kb.tools.project_tools:project_claim",
+        params=(
+            ParamSpec("doc_id", required=True),
+            ParamSpec("slug", required=True),
+            ParamSpec("project_id"),
+            _TENANT,
+        ),
+        envelope_keys=CLAIM_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "project_claim"),
+            SurfaceSpec(CLI, "project-claim"),
+            SurfaceSpec(HTTP, "/api/project/claim", "POST"),
+            SurfaceSpec(SOCKET, "project_claim"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="project_claim_list",
+        family="project",
+        description=(
+            "List the project claims, filtered by doc or project slug. "
+            "Entries order by project and document id."
+        ),
+        handler="corpus_kb.tools.project_tools:project_claim_list",
+        params=(
+            ParamSpec("doc_id"),
+            ParamSpec("slug"),
+            _TENANT,
+        ),
+        envelope_keys=CLAIM_LIST_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "project_claim_list"),
+            SurfaceSpec(CLI, "project-claim-list"),
+            SurfaceSpec(HTTP, "/api/project/claim-list", "POST"),
+            SurfaceSpec(SOCKET, "project_claim_list"),
+        ),
+        exit_codes=(0, 1, 3),
     ),
 )

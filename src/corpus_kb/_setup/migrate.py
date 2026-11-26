@@ -32,6 +32,11 @@ from corpus_kb._setup.migrate_postgres import (  # noqa: F401 — historical imp
     run_postgres_migrations,
 )
 from corpus_kb._setup.migrate_report import MigrateReport
+from corpus_kb._setup.store_width import (
+    configured_embedding_dims,
+    record_applied_width_duck_sync,
+    substitute_dims,
+)
 
 if TYPE_CHECKING:
     import duckdb
@@ -84,17 +89,26 @@ def _applied_duckdb_migrations(con: duckdb.DuckDBPyConnection) -> set[str]:
     return {row[0] for row in rows}
 
 
-def run_duckdb_migrations(dsn: str, dry_run: bool = False) -> MigrateReport:
+def run_duckdb_migrations(
+    dsn: str, dry_run: bool = False, *, embedding_dims: int | None = None
+) -> MigrateReport:
     """Run all unapplied DuckDB migrations against the file in ``dsn``.
 
     Synchronous: the DuckDB client is synchronous (program doc section 2).
     Each migration runs inside one transaction together with its
     ``schema_migrations`` insert, so a failure leaves nothing recorded.
     ``dry_run`` lists the applied and pending names and applies nothing.
+
+    The ``__EMBEDDING_DIMS__`` placeholder in the DDL is substituted with
+    ``embedding_dims`` (default: the configured ``embedding.dimensions``),
+    and the width this run leaves ``chunks_vectors`` with is recorded in
+    the store meta table (issue #559).
     """
     import importlib.resources as resources
 
     import duckdb
+
+    dims = embedding_dims if embedding_dims is not None else configured_embedding_dims()
 
     ref = resources.files("corpus_kb") / "migrations_duckdb"
     with resources.as_file(ref) as migration_dir:
@@ -117,12 +131,13 @@ def run_duckdb_migrations(dsn: str, dry_run: bool = False) -> MigrateReport:
             if dry_run:
                 return MigrateReport("duckdb", sorted(done), pending, [], True)
 
+            applied_now: list[str] = []
             for sql_file in sql_files:
                 if sql_file.name in done:
                     logger.info("Migration already applied: %s", sql_file.name)
                     continue
 
-                sql = sql_file.read_text(encoding="utf-8")
+                sql = substitute_dims(sql_file.read_text(encoding="utf-8"), dims)
                 logger.info("Applying DuckDB migration: %s", sql_file.name)
                 con.execute("BEGIN TRANSACTION")
                 try:
@@ -135,8 +150,13 @@ def run_duckdb_migrations(dsn: str, dry_run: bool = False) -> MigrateReport:
                 except Exception:
                     con.execute("ROLLBACK")
                     raise
+                applied_now.append(sql_file.name)
+            if applied_now:
+                recorded = record_applied_width_duck_sync(con)
+                if recorded is not None:
+                    logger.info("Recorded the store embedding width: %d", recorded)
             logger.info("DuckDB migrations complete")
-            return MigrateReport("duckdb", sorted(done), pending, pending, False)
+            return MigrateReport("duckdb", sorted(done), pending, applied_now, False)
         finally:
             con.close()
 
@@ -168,15 +188,25 @@ async def run_migrations(
       client gets it.
     - ``reset_embeddings``: accept the migration-025 data decision that
       discards embeddings stored in the old ``vector`` column.
+
+    The embedding width travels with the run (issue #559): the configured
+    ``embedding.dimensions`` (env override ``CORPUS_KB_EMBEDDING_DIMENSIONS``
+    flows through ``load_config``) substitutes the ``__EMBEDDING_DIMS__``
+    placeholder in BOTH migration sets and is recorded in the store meta
+    table.
     """
+    dims = configured_embedding_dims()
     if connection_string.startswith("duckdb:"):
-        return await asyncio.to_thread(run_duckdb_migrations, connection_string, dry_run)
+        return await asyncio.to_thread(
+            run_duckdb_migrations, connection_string, dry_run, embedding_dims=dims
+        )
     return await run_postgres_migrations(
         connection_string,
         superuser_dsn=superuser_dsn,
         session_settings=session_settings,
         reset_embeddings=reset_embeddings,
         dry_run=dry_run,
+        embedding_dims=dims,
     )
 
 

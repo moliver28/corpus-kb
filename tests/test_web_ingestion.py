@@ -757,7 +757,14 @@ class _StubStore:
     def __init__(self, pool: object, tenant_id: str = "t") -> None:
         del pool, tenant_id
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        return None
+
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
@@ -1028,7 +1035,7 @@ def test_cli_ingest_url_help_lists_flags() -> None:
     # ANSI, drop the box-drawing characters, and collapse whitespace before
     # matching.
     text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
-    for flag in ("--crawl", "--max-pages", "--source-type", "--json"):
+    for flag in ("--crawl", "--max-pages", "--source-type", "--visibility", "--json"):
         assert flag in " ".join(text.split())
 
 
@@ -1049,6 +1056,41 @@ def test_http_app_registers_ingest_url_route() -> None:
 
     paths = {route.path for route in create_http_app().routes}
     assert "/api/ingest/url" in paths
+
+
+def test_cli_ingest_url_forwards_visibility(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--visibility rides to the handler; omitting it stays None."""
+    from typer.testing import CliRunner
+
+    from corpus_kb.cli import app
+
+    seen: dict[str, object] = {}
+
+    class _ClosingPool:
+        """The flow awaits pool.close(); the fake pool has no close."""
+
+        async def close(self) -> None:
+            return None
+
+    async def fake_ingest_url(url, pool, cfg, tenant_id, **kwargs):
+        seen["visibility"] = kwargs.get("visibility")
+        return {"status": "success", "pages": [], "total_documents": 0}
+
+    async def _open(_cfg: object) -> _ClosingPool:
+        return _ClosingPool()
+
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.tools.ingest_tools.ingest_url", fake_ingest_url)
+
+    result = CliRunner().invoke(
+        app, ["ingest-url", "https://research.test/a", "--visibility", "internal"]
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["visibility"] == "internal"
+
+    result = CliRunner().invoke(app, ["ingest-url", "https://research.test/a"])
+    assert result.exit_code == 0, result.output
+    assert seen["visibility"] is None
 
 
 # ---------------------------------------------------------------------------

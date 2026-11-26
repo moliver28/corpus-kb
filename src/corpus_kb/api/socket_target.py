@@ -14,6 +14,8 @@ import sys
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+from corpus_kb.server_port import coerce_server_port
+
 # How long the live-socket probe waits for one connect before it calls
 # the endpoint dead (issue #348).
 _SOCKET_PROBE_TIMEOUT_S = 1.0
@@ -44,10 +46,7 @@ def resolve_socket_target(config: dict[str, Any], platform: str | None = None) -
     plat = sys.platform if platform is None else platform
     server = config.get("server") if isinstance(config, dict) else None
     server = server if isinstance(server, dict) else {}
-    try:
-        port = int(server.get("port", 8010))
-    except (TypeError, ValueError):
-        port = 8010
+    port = coerce_server_port(server)
     if plat == "win32":
         configured = server.get("socket_port") or 0
         try:

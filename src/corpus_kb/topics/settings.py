@@ -57,13 +57,13 @@ UMAP_RANDOM_STATE = 42
 AUTO_MIN_TOPIC_SIZE = 10
 
 # The zero-shot match floor, settable via ``topics.zeroshot_min_similarity``.
-# The default IS the installed BERTopic default (bertopic 0.17.4,
-# ``BERTopic.__init__``: ``zeroshot_min_similarity = 0.7``), so the key
-# stays OUT of TOPICS_CONFIG_DEFAULTS — the shipped YAML files cannot
-# carry a key without breaking the three-ways lockstep, and the module
-# default equals the library default anyway. Documents whose similarity
-# to every listed zero-shot topic sits below this floor fall back to
-# clustering; the envelope reports the resulting unassigned count.
+# The default equals the installed BERTopic default (bertopic 0.17.4,
+# ``BERTopic.__init__``: ``zeroshot_min_similarity = 0.7``). The key IS in
+# TOPICS_CONFIG_DEFAULTS (the three-ways lockstep is complete: module,
+# ``get_default_config()``, packaged config.yaml — so setup write-back
+# round-trips a user-set value). Documents whose similarity to every
+# listed zero-shot topic sits below this floor fall back to clustering;
+# the envelope reports the resulting unassigned count.
 DEFAULT_ZEROSHOT_MIN_SIMILARITY = 0.7
 
 TOPICS_CONFIG_DEFAULTS: dict[str, object] = {
@@ -75,6 +75,7 @@ TOPICS_CONFIG_DEFAULTS: dict[str, object] = {
     "llm_base_url": DEFAULT_TOPICS_LLM_BASE_URL,
     "fixture_dir": DEFAULT_TOPICS_FIXTURE_DIR,
     "live_fallback": DEFAULT_TOPICS_LIVE_FALLBACK,
+    "zeroshot_min_similarity": DEFAULT_ZEROSHOT_MIN_SIMILARITY,
 }
 
 

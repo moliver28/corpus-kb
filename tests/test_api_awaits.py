@@ -212,7 +212,22 @@ async def test_socket_search_source_type_defaults_to_none(monkeypatch: Any) -> N
 
 
 async def test_socket_add_relation_forwards_weight_and_metadata(monkeypatch: Any) -> None:
-    handler = _install(monkeypatch)
+    import corpus_kb.api.research_http as research_http_module
+    import corpus_kb.tools.graph_tools as graph_tools_module
+
+    captured: dict[str, object] = {}
+    pool = object()
+
+    async def stub(pool_arg: Any, src: str, dst: str, **kwargs: object) -> dict[str, object]:
+        captured["args"] = (pool_arg, src, dst)
+        captured["kwargs"] = kwargs
+        return {"status": "success", "handler": "add_relation"}
+
+    async def fake_pool() -> object:
+        return pool
+
+    monkeypatch.setattr(graph_tools_module, "add_relation", stub)
+    monkeypatch.setattr(research_http_module, "research_pool", fake_pool)
     server = JSONRPCServer()
     src = "00000000-0000-0000-0000-00000000000a"
     dst = "00000000-0000-0000-0000-00000000000b"
@@ -234,15 +249,27 @@ async def test_socket_add_relation_forwards_weight_and_metadata(monkeypatch: Any
     )
 
     assert response["result"] == {"status": "success", "handler": "add_relation"}
-    cmd = handler.relations[0]
-    assert str(cmd.source_entity_id) == src
-    assert str(cmd.target_entity_id) == dst
-    assert cmd.weight == 0.5
-    assert cmd.metadata == {"origin": "test"}
+    assert captured["args"] == (pool, src, dst)
+    kwargs = captured["kwargs"]
+    assert kwargs["weight"] == 0.5
+    assert kwargs["metadata"] == {"origin": "test"}
 
 
 async def test_socket_add_relation_keeps_http_defaults(monkeypatch: Any) -> None:
-    handler = _install(monkeypatch)
+    import corpus_kb.api.research_http as research_http_module
+    import corpus_kb.tools.graph_tools as graph_tools_module
+
+    captured: dict[str, object] = {}
+
+    async def stub(pool_arg: Any, src: str, dst: str, **kwargs: object) -> dict[str, object]:
+        captured["kwargs"] = kwargs
+        return {"status": "success", "handler": "add_relation"}
+
+    async def fake_pool() -> object:
+        return object()
+
+    monkeypatch.setattr(graph_tools_module, "add_relation", stub)
+    monkeypatch.setattr(research_http_module, "research_pool", fake_pool)
     server = JSONRPCServer()
     src = "00000000-0000-0000-0000-00000000000a"
     dst = "00000000-0000-0000-0000-00000000000b"
@@ -258,9 +285,9 @@ async def test_socket_add_relation_keeps_http_defaults(monkeypatch: Any) -> None
         )
     )
 
-    cmd = handler.relations[0]
-    assert cmd.weight == 1.0
-    assert cmd.metadata == {}
+    kwargs = captured["kwargs"]
+    assert kwargs["weight"] == 1.0
+    assert kwargs["metadata"] == {}
 
 
 async def test_socket_unknown_method_returns_32601() -> None:
@@ -322,6 +349,7 @@ async def test_socket_ingest_url_awaits_tool(monkeypatch: Any) -> None:
         crawl: bool = False,
         source_type: str | None = None,
         validate: str = "off",
+        visibility: str | None = None,
     ) -> dict[str, object]:
         seen.append((url, crawl))
         return {"status": "success", "handler": "ingest_url"}
@@ -383,7 +411,22 @@ async def test_socket_list_documents_awaits_query_handler(monkeypatch: Any) -> N
 
 
 async def test_socket_add_entity_dispatches_to_handler(monkeypatch: Any) -> None:
-    handler = _install(monkeypatch)
+    import corpus_kb.api.research_http as research_http_module
+    import corpus_kb.tools.graph_tools as graph_tools_module
+
+    captured: dict[str, object] = {}
+    pool = object()
+
+    async def stub(pool_arg: Any, name: str, **kwargs: object) -> dict[str, object]:
+        captured["args"] = (pool_arg, name)
+        captured["kwargs"] = kwargs
+        return {"status": "success", "handler": "add_entity"}
+
+    async def fake_pool() -> object:
+        return pool
+
+    monkeypatch.setattr(graph_tools_module, "add_entity", stub)
+    monkeypatch.setattr(research_http_module, "research_pool", fake_pool)
     server = JSONRPCServer()
 
     response = await server._process_request(
@@ -398,7 +441,8 @@ async def test_socket_add_entity_dispatches_to_handler(monkeypatch: Any) -> None
     )
 
     assert response["result"] == {"status": "success", "handler": "add_entity"}
-    assert str(handler.entities[0].name) == "concept-a"
+    assert captured["args"] == (pool, "concept-a")
+    assert captured["kwargs"]["entity_type"] == "concept"
 
 
 async def test_socket_verify_answer_awaits_query_handler(monkeypatch: Any) -> None:

@@ -1,0 +1,13 @@
+name: internal-meeting
+description: >
+  Starter profile for internal meeting notes. One notes file becomes one
+  meeting document chunked by headings. Edit freely, or copy and rename.
+data_type: internal_meeting
+ingestion:
+  default: markdown_sections
+extraction:
+  mode: few_shot
+templates:
+  - preference
+  - opinion
+  - sentiment_target

@@ -34,6 +34,7 @@ import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
 import corpus_kb.handlers.versioning_handler as versioning_handler_module
 import corpus_kb.tools.ask_tools as ask_tools
+import corpus_kb.tools.graph_tools as graph_tools
 import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 from corpus_kb.api.http import create_http_app
@@ -256,24 +257,6 @@ _HANDLER_ROUTES = [
         "dict",
         {"directory_path": "docs"},
         id="POST /api/ingest/directory",
-    ),
-    pytest.param(
-        "POST",
-        "/api/entities",
-        "command",
-        "handle_add_entity",
-        "dict",
-        {"name": "n"},
-        id="POST /api/entities",
-    ),
-    pytest.param(
-        "POST",
-        "/api/relations",
-        "command",
-        "handle_add_relation",
-        "dict",
-        {"source_entity_id": str(uuid4()), "target_entity_id": str(uuid4())},
-        id="POST /api/relations",
     ),
     pytest.param(
         "DELETE",
@@ -611,9 +594,66 @@ def test_ingest_url_route_supplies_pool(monkeypatch: Any) -> None:
     kwargs = cast("dict[str, object]", captured.get("kwargs", {}))
     # Wave 6: the route hands validate=None when the body omits it. None
     # lets the active profile's validate value decide (no profile means off).
-    assert set(kwargs) <= {"tenant_id", "crawl", "source_type", "validate"}
+    assert set(kwargs) <= {"tenant_id", "crawl", "source_type", "validate", "visibility"}
     assert kwargs.get("validate") is None
+    assert kwargs.get("visibility") is None
     assert kwargs.get("tenant_id") == DEFAULT_TENANT
+
+
+# ---------------------------------------------------------------------------
+# Family C.1: graph write tool routes — read-your-writes runs the ONE tool
+# ---------------------------------------------------------------------------
+
+
+_GRAPH_WRITE_TOOL_ROUTES = [
+    pytest.param(
+        "POST",
+        "/api/entities",
+        {"name": "n"},
+        graph_tools,
+        "add_entity",
+        id="POST /api/entities",
+    ),
+    pytest.param(
+        "POST",
+        "/api/relations",
+        {"source_entity_id": str(uuid4()), "target_entity_id": str(uuid4())},
+        graph_tools,
+        "add_relation",
+        id="POST /api/relations",
+    ),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body", "module", "fn_name"), _GRAPH_WRITE_TOOL_ROUTES)
+def test_graph_write_tool_route_supplies_pool(
+    method: str, path: str, body: dict[str, str], module: Any, fn_name: str, monkeypatch: Any
+) -> None:
+    """The graph write routes call ``tools.graph_tools`` with the pool.
+
+    Read-your-writes (issue #530) moved the write path onto the ONE tool
+    handler, so the stub pins the pool handoff and the tool signature
+    instead of the old command-handler seam.
+    """
+    real = getattr(module, fn_name)
+    captured: dict[str, object] = {}
+
+    async def stub(*args: object, **kwargs: object) -> dict[str, object]:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return dict(_CANNED)
+
+    monkeypatch.setattr(module, fn_name, stub)
+    pool = _FakePool()
+    monkeypatch.setattr(research_http, "_pool", pool)
+
+    client = TestClient(create_http_app())
+    response = client.request(method, path, json=body)
+
+    assert _assert_live_response(response) == _CANNED
+    args = captured.get("args", ())
+    assert pool in args, "route did not pass the pool positionally"
+    inspect.signature(real).bind(*args, **captured.get("kwargs", {}))
 
 
 def test_ask_route_supplies_pool(monkeypatch: Any) -> None:

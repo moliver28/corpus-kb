@@ -1,16 +1,13 @@
-"""Spec rows for the mechanical socket arms (pure data).
-
-One row per pool-and-call operation: the lazy import target, where the
-research pool goes, and the strict coercion per parameter (issue #238
-helpers). ``socket_ops`` turns these rows into arms once at import; this
-module holds no behavior.
+"""Spec rows for the mechanical socket arms (pure data): one row per
+pool-and-call op (lazy import target, pool slot, strict coercion per
+parameter, issue #238 helpers). ``socket_ops`` builds the arms at import.
 """
 
 from __future__ import annotations
 
 from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
 from corpus_kb.api._socket_rows_reingest import REINGEST_SPECS
-from corpus_kb.api._socket_specs import _Opt, _Spec
+from corpus_kb.api._socket_specs import _INGEST_URL_OPTS, _Opt, _Spec
 
 # Lazy-import targets for the spec rows (one short name per tool module).
 _INGEST = "corpus_kb.tools.ingest_tools"
@@ -24,6 +21,7 @@ _STMT = "corpus_kb.tools.statements_tools"
 _CONF = "corpus_kb.tools.conflicts_tools"
 _QUEUE = "corpus_kb.tools.queue_tools"
 _PROJECT = "corpus_kb.tools.project_tools"
+_CLAIM_OPTS = (_Opt("doc_id", "str"), _Opt("slug", "sdef", ""))
 _BELIEFS = "corpus_kb.tools.beliefs_tools"
 _KEY = "corpus_kb.tools.keyphrase_tools"
 _LEX = "corpus_kb.tools.lexical_tools"
@@ -56,7 +54,7 @@ _SPECS: dict[str, _Spec] = {
         "ingest_url",
         pool_pos=1,
         positional=(_Opt("url", "req"),),
-        opts=(_Opt("crawl", "bool", False), _Opt("source_type", "raw"), _Opt("validate", "str")),
+        opts=_INGEST_URL_OPTS,
     ),
     "ingest_status": _Spec(
         _INGEST_S, "ingest_status", opts=(_Opt("limit", "int", 20), _Opt("project_id", "str"))
@@ -196,6 +194,8 @@ _SPECS: dict[str, _Spec] = {
     ),
     "project_list": _Spec(_PROJECT, "project_list"),
     "project_drop": _Spec(_PROJECT, "project_drop", opts=(_Opt("slug", "sdef", ""),)),
+    "project_claim": _Spec(_PROJECT, "project_claim", opts=_CLAIM_OPTS),
+    "project_claim_list": _Spec(_PROJECT, "project_claim_list", opts=_CLAIM_OPTS),
     "ask": _Spec(
         _ASK,
         "ask",

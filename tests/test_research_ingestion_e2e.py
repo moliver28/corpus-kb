@@ -149,8 +149,15 @@ class _RecordingStore:
         self.chunks_by_doc: dict[str, list[Chunk]] = {}
         self.finished: list[tuple[str, list[str]]] = []
 
-    async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
+    async def unchanged_doc_id(
+        self, path: str, file_hash: str, declared_visibility: str | None = None
+    ) -> None:
         del path, file_hash
+        return None
+
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
@@ -361,7 +368,8 @@ async def test_article_ingestion_preserves_sections_and_metadata(
     ]
     assert method_chunks, "h3 subsection must nest under its breadcrumb"
 
-    assert store.documents[0]["source_type"] == "web"
+    # The web hint is an alias: the document stamps its canonical name (W3).
+    assert store.documents[0]["source_type"] == "external-site"
     assert all(errors == [] for _run, errors in store.finished)
 
 
@@ -383,7 +391,7 @@ async def test_crawl_reaches_the_linked_appendix(monkeypatch: pytest.MonkeyPatch
 
     assert result["status"] == "success"
     assert result["total_documents"] == 2
-    assert {doc["source_type"] for doc in store.documents} == {"web"}
+    assert {doc["source_type"] for doc in store.documents} == {"external-site"}
     paths = {doc["path"] for doc in store.documents}
     assert paths == {f"{RESEARCH_HOST}{ARTICLE_PATH}", f"{RESEARCH_HOST}{APPENDIX_PATH}"}
 

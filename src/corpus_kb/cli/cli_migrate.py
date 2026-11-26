@@ -68,8 +68,8 @@ def register(app: typer.Typer) -> None:
             "",
             "--superuser-dsn",
             help=(
-                "Postgres DSN for steps that need a superuser. Ownership and "
-                "grants go to the app role after the run. "
+                "Postgres only. Postgres DSN for steps that need a superuser. "
+                "Ownership and grants go to the app role after the run. "
                 "Default: CORPUS_KB_SUPERUSER_DSN."
             ),
         ),
@@ -77,16 +77,19 @@ def register(app: typer.Typer) -> None:
             False,
             "--reset-embeddings",
             help=(
-                "Accept that migration 025 discards the embeddings stored in the old vector column."
+                "Postgres only. Accept that migration 025 discards the "
+                "embeddings stored in the old vector column."
             ),
         ),
         work_mem: str = typer.Option(
-            "", "--work-mem", help="Session work_mem for heavy migrations. Example: 1GB."
+            "",
+            "--work-mem",
+            help="Postgres only. Session work_mem for heavy migrations. Example: 1GB.",
         ),
         maintenance_work_mem: str = typer.Option(
             "",
             "--maintenance-work-mem",
-            help="Session maintenance_work_mem for heavy migrations. Example: 1GB.",
+            help="Postgres only. Session maintenance_work_mem for heavy migrations. Example: 1GB.",
         ),
     ) -> int:
         """Apply pending migrations to the configured database.
@@ -114,11 +117,21 @@ def register(app: typer.Typer) -> None:
                     "No database found. Set database.connection_string in "
                     "config.yaml, or CORPUS_KB_DATABASE_URL."
                 )
-            if maintenance_work_mem and conn_str.startswith(DUCKDB_DSN_PREFIX):
-                raise ConfigError(
-                    "--maintenance-work-mem is a Postgres session setting. The target is DuckDB.",
-                    remediation="Drop the flag. Or point the migrate target at Postgres.",
+            if conn_str.startswith(DUCKDB_DSN_PREFIX):
+                # Issue #527 (G07): every Postgres-only flag is typed-refused
+                # on a DuckDB target; none of them is a silent no-op.
+                pg_only_flags = (
+                    ("--maintenance-work-mem", maintenance_work_mem),
+                    ("--superuser-dsn", superuser_dsn),
+                    ("--work-mem", work_mem),
+                    ("--reset-embeddings", reset_embeddings),
                 )
+                for flag, value in pg_only_flags:
+                    if value:
+                        raise ConfigError(
+                            f"{flag} is a Postgres option. The target is DuckDB.",
+                            remediation="Drop the flag. Or point the migrate target at Postgres.",
+                        )
             su_dsn = superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN", "") or None
             report = asyncio.run(
                 run_migrations(

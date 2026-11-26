@@ -62,6 +62,17 @@ class _Spec:
     method_id: str | None = None
 
 
+# The ingest_url arm's option list (lives here so the socket_rows row that
+# uses it stays one line tall). "raw" passes the visibility value through;
+# the handler owns the public/internal validation.
+_INGEST_URL_OPTS = (
+    _Opt("crawl", "bool", False),
+    _Opt("source_type", "raw"),
+    _Opt("validate", "str"),
+    _Opt("visibility", "raw"),
+)
+
+
 def _spec_arm(spec: _Spec) -> Arm:
     """Build one mechanical arm: lazy import, pool fetch, strict params."""
 

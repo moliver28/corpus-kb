@@ -46,6 +46,9 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("k", default=20),
             ParamSpec("source_type"),
             ParamSpec("self_query"),
+            # W5-5 project lens: None rides the active project; "all" is
+            # pool-wide; a slug pins that project.
+            ParamSpec("scope"),
             _TENANT,
         ),
         envelope_keys=SEARCH_ENVELOPE,

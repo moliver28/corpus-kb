@@ -47,6 +47,11 @@ INGEST_EXIT_PARTIAL = 1
 INGEST_EXIT_FAILED = 2
 INGEST_EXIT_CONFIG = 3
 
+WATCH_LEDGER_WARNING = (
+    "WARNING: ingest_runs table absent (migration 022 not applied) - "
+    "watch bookkeeping is IN-MEMORY ONLY (run corpus-kb setup)"
+)
+
 
 def register(app: typer.Typer) -> None:
     """Attach the five top-level ingest commands to the main Typer app."""
@@ -273,6 +278,7 @@ async def _ingest_url_flow(
     source_type: str | None,
     json_output: bool,
     validate: ValidateMode | None,
+    visibility: str | None = None,
 ) -> int:
     from corpus_kb.tools.ingest_tools import ingest_url
 
@@ -280,10 +286,9 @@ async def _ingest_url_flow(
         _unknown_strategy_exit(source_type)
     cfg = _load_config()
     if max_pages is not None:
-        raw_web = cfg.get("web")
-        web_cfg = dict(raw_web) if isinstance(raw_web, dict) else {}
-        web_cfg["max_pages"] = max_pages
-        cfg = {**cfg, "web": web_cfg}
+        web = cfg.get("web")
+        base = web if isinstance(web, dict) else {}
+        cfg = {**cfg, "web": {**base, "max_pages": max_pages}}
     pool = await _open_pool(cfg)
     try:
         aggregate = await ingest_url(
@@ -293,6 +298,7 @@ async def _ingest_url_flow(
             TENANT_DEFAULT,
             crawl=crawl,
             source_type=source_type,
+            visibility=visibility,
             **validate_kwargs(validate),
         )
     finally:
@@ -327,23 +333,20 @@ def ingest_url_command(
     max_pages: int | None = typer.Option(
         None, "--max-pages", min=1, help="Cap pages fetched (overrides web.max_pages)"
     ),
-    source_type: str = typer.Option(
-        None,
-        "--source-type",
-        help="Ingestion strategy override (default: web_structure via detection)",
-    ),
+    source_type: str = typer.Option(None, "--source-type", help="Ingestion strategy override"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+    visibility: str = typer.Option(None, "--visibility", help="Stamp page visibility"),
     validate: ValidateMode | None = _VALIDATE_OPT,
 ) -> int:
     """Fetch a website and ingest its HTML pages (web_structure strategy).
 
-    Exit codes: 0 every page ok, 1 partial success (some pages failed),
-    2 total failure (fetch blocked or every page failed), 3 configuration
-    error (unknown --source-type). Typer rejects an unknown --validate
-    value with exit 2.
+    Exit codes: 0 ok, 1 partial, 2 total failure, 3 config error. Typer
+    rejects an unknown --validate value with exit 2.
     """
     return _run_sync(
-        lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output, validate)
+        lambda: _ingest_url_flow(
+            url, crawl, max_pages, source_type, json_output, validate, visibility
+        )
     )
 
 
@@ -364,10 +367,7 @@ async def _watch_flow(
     try:
         persistent = await ledger_available(pool, TENANT_DEFAULT)
         if not persistent:
-            print(
-                "WARNING: ingest_runs table absent (migration 022 not applied) — "
-                "watch bookkeeping is IN-MEMORY ONLY (run corpus-kb setup)"
-            )
+            print(WATCH_LEDGER_WARNING)
         ledger = WatchLedger(persistent=persistent)
         interval = _watch_interval(cfg)
 

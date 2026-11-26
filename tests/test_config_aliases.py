@@ -29,7 +29,6 @@ def test_search_scalars_move_to_retrieval() -> None:
         "search": {
             "rrf_k": 42,
             "exclude_degraded": False,
-            "qa_context_in_fts": True,
             "exact_filter_selectivity_threshold": 0.2,
             "candidate_multiplier": 5,
             "matryoshka_enabled": False,
@@ -39,7 +38,6 @@ def test_search_scalars_move_to_retrieval() -> None:
     apply_legacy_aliases(config)
     assert _get(config, "retrieval.rrf_k") == 42
     assert _get(config, "retrieval.exclude_degraded") is False
-    assert _get(config, "retrieval.qa_context_in_fts") is True
     assert _get(config, "retrieval.exact_filter_selectivity_threshold") == 0.2
     assert _get(config, "retrieval.candidate_multiplier") == 5
     assert _get(config, "retrieval.matryoshka_enabled") is False

@@ -46,7 +46,10 @@ try:
         validate_opencode_config,
         validate_zcode_config,
     )
-    from corpus_kb._setup.validate_configs_runtime import validate_runtime_config
+    from corpus_kb._setup.validate_configs_runtime import (
+        unknown_key_warnings,
+        validate_runtime_config,
+    )
 except ImportError:  # pragma: no cover - script context (CI validate job)
     import importlib as _importlib
 
@@ -64,6 +67,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     validate_opencode_config = _mcp.validate_opencode_config
     validate_zcode_config = _mcp.validate_zcode_config
     _runtime = _importlib.import_module("validate_configs_runtime")
+    unknown_key_warnings = _runtime.unknown_key_warnings
     validate_runtime_config = _runtime.validate_runtime_config
 
 
@@ -120,12 +124,16 @@ def _validate_mcp_config_dir(
     return errors, claude_config, cursor_config, codex_config
 
 
-def _validate_runtime_yaml(project_root: Path) -> list[str]:
+def _validate_runtime_yaml(project_root: Path) -> tuple[list[str], list[str]]:
     """Runtime config.yaml checks: root and packaged copies must agree.
 
     Lockstep rule for new config keys; all three validators run per copy.
+    Returns ``(errors, warnings)``: errors fail the gate; warnings (the
+    PR-9 unknown-key residue scope) are report-only — the exit code
+    stays 0.
     """
     errors: list[str] = []
+    warnings: list[str] = []
     for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
         config_path = project_root / relative_path
         display = relative_path.as_posix()
@@ -139,13 +147,17 @@ def _validate_runtime_yaml(project_root: Path) -> list[str]:
         errs += validate_ingestion_block(runtime_cfg)
         errs += validate_runtime_config(runtime_cfg)
         errors.extend(f"{display}: {e}" for e in errs)
-    return errors
+        unknowns = unknown_key_warnings(runtime_cfg)
+        warnings.extend(f"{display}: {e}" for e in unknowns)
+    return errors, warnings
 
 
-def validate_all(project_root: Path | None = None) -> list[str]:
-    """Run all validations against the project's config files.
+def validate_all_detailed(project_root: Path | None = None) -> tuple[list[str], list[str]]:
+    """Run all validations; return ``(errors, warnings)``.
 
-    Returns a combined list of error strings.
+    ``validate_all`` keeps its historical errors-only contract; ``main``
+    prints the warnings prefixed ``WARN:`` and still exits 0 when only
+    warnings fired.
     """
     if project_root is None:
         project_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -185,7 +197,8 @@ def validate_all(project_root: Path | None = None) -> list[str]:
             )
 
     # 5. Runtime config.yaml — root and packaged copies (see helper).
-    errors.extend(_validate_runtime_yaml(project_root))
+    runtime_errors, warnings = _validate_runtime_yaml(project_root)
+    errors.extend(runtime_errors)
 
     # 6. Packaged-config lockstep (issue #246): the code-side defaults and
     # the PACKAGED yaml must agree leaf-for-leaf. Skips cleanly where the
@@ -195,6 +208,16 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     if not lockstep.skipped:
         errors.extend(f"config-lockstep: {e}" for e in lockstep.errors)
 
+    return errors, warnings
+
+
+def validate_all(project_root: Path | None = None) -> list[str]:
+    """Run all validations against the project's config files.
+
+    Returns a combined list of error strings (warnings are report-only;
+    see ``validate_all_detailed``).
+    """
+    errors, _warnings = validate_all_detailed(project_root)
     return errors
 
 
@@ -204,10 +227,16 @@ def validate_all(project_root: Path | None = None) -> list[str]:
 
 
 def main() -> None:
-    """Run validation and exit with appropriate code."""
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
-    errors = validate_all(project_root)
+    """Run validation and exit with appropriate code.
 
+    Warnings (unknown config keys — the PR-9 residue scope) are printed
+    prefixed ``WARN:`` and never flip the exit code.
+    """
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    errors, warnings = validate_all_detailed(project_root)
+
+    for warning in warnings:
+        print(f"WARN: {warning}", file=sys.stderr)
     if errors:
         print(f"CONFIG VALIDATION FAILED ({len(errors)} error(s)):", file=sys.stderr)
         for err in errors:

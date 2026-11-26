@@ -3,11 +3,15 @@
 ``validate_runtime_config`` checks every dotted key in
 ``RUNTIME_CONFIG_KEYS`` for presence and type, then applies the
 cross-field enum/range/backend-mix rules through the per-block helpers
-in ``validate_configs_rules.py``.
+in ``validate_configs_rules.py``. ``unknown_key_warnings`` reports leaf
+keys no runtime reader declares (PR-9 residue scope): warn only, exit
+stays 0, and the legacy alias namespaces stay accepted.
 """
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
 from typing import Any
 
 try:
@@ -17,13 +21,10 @@ try:
         SUPPORTED_DUCKDB_GRAPH_BACKENDS,
         SUPPORTED_GRAPH_POLICY_MODES,
         SUPPORTED_RETRIEVAL_MODES,
-        SUPPORTED_VECTOR_INDEX_MODES,
-        SUPPORTED_VECTOR_TYPES,
     )
     from corpus_kb._setup.validate_configs_rules import (
         _contextualize_block_errors,
         _database_block_errors,
-        _fts_debounce_errors,
         _max_hops_errors,
         _queue_block_errors,
         _reranking_block_errors,
@@ -39,18 +40,79 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     SUPPORTED_DUCKDB_GRAPH_BACKENDS = _keys.SUPPORTED_DUCKDB_GRAPH_BACKENDS
     SUPPORTED_GRAPH_POLICY_MODES = _keys.SUPPORTED_GRAPH_POLICY_MODES
     SUPPORTED_RETRIEVAL_MODES = _keys.SUPPORTED_RETRIEVAL_MODES
-    SUPPORTED_VECTOR_INDEX_MODES = _keys.SUPPORTED_VECTOR_INDEX_MODES
-    SUPPORTED_VECTOR_TYPES = _keys.SUPPORTED_VECTOR_TYPES
     _rules = _importlib.import_module("validate_configs_rules")
     _contextualize_block_errors = _rules._contextualize_block_errors
     _database_block_errors = _rules._database_block_errors
-    _fts_debounce_errors = _rules._fts_debounce_errors
     _max_hops_errors = _rules._max_hops_errors
     _queue_block_errors = _rules._queue_block_errors
     _reranking_block_errors = _rules._reranking_block_errors
     _return_top_k_errors = _rules._return_top_k_errors
     _textbook_block_errors = _rules._textbook_block_errors
     _topics_block_errors = _rules._topics_block_errors
+
+
+def _load_data_module(rel_path: str, name: str) -> Any:
+    """Load a data-only corpus_kb module in both import contexts.
+
+    Package context imports it; the PyYAML-only CI validate job (no
+    ``corpus_kb``) loads it straight from the source file — both modules
+    import nothing beyond the stdlib, so either path works.
+    """
+    try:
+        return importlib.import_module(f"corpus_kb.{name}")
+    except ImportError:  # pragma: no cover - script context (CI validate job)
+        path = Path(__file__).resolve().parents[1] / rel_path
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load {name} from {path}") from None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+
+def _matrix_module() -> Any:
+    return _load_data_module("config_backend_matrix.py", "config_backend_matrix_warn_src")
+
+
+def _aliases_module() -> Any:
+    return _load_data_module("config_aliases.py", "config_aliases_warn_src")
+
+
+# Keys a runtime reader consumes that are NOT default leaves, so the
+# declaration matrix cannot list them: ``search.reranker`` feeds the pgml
+# reranker refusal in ``backend_gates`` (the canonical key is
+# ``reranking.backend``). Extend only with a named consumer.
+NON_DEFAULT_READ_KEYS: frozenset[str] = frozenset({"search.reranker"})
+
+
+def unknown_key_warnings(config: dict[str, Any]) -> list[str]:
+    """Leaf keys in ``config`` that no runtime reader declares (warn only).
+
+    The known set is the declaration matrix (``config_backend_matrix``),
+    the same table the parity gate enforces against the defaults, plus
+    ``NON_DEFAULT_READ_KEYS``. Legacy alias keys stay accepted without a
+    warning (``config_aliases``): anything ``used_legacy_keys`` reports —
+    including a present block rename such as ``search.hnsw`` — is exempt
+    subtree-wide. Warn, never error: the exit code must stay 0.
+    """
+    known = frozenset(_matrix_module().declared_leaf_keys()) | NON_DEFAULT_READ_KEYS
+    present_legacy = _aliases_module().used_legacy_keys(config)
+    warnings: list[str] = []
+
+    def walk(node: dict[str, Any], prefix: str) -> None:
+        for key, value in node.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict) and value:
+                walk(value, f"{path}.")
+                continue
+            if path in known:
+                continue
+            if any(path == leg or path.startswith(f"{leg}.") for leg in present_legacy):
+                continue
+            warnings.append(f"unknown config key '{path}' is not read by this version")
+
+    walk(config, "")
+    return sorted(warnings)
 
 
 def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
@@ -91,11 +153,6 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
             errors.append(
                 f"retrieval.mode: must be one of {sorted(SUPPORTED_RETRIEVAL_MODES)}, got {mode!r}"
             )
-        vector_index = retrieval.get("vector_index")
-        if vector_index not in SUPPORTED_VECTOR_INDEX_MODES:
-            modes = ", ".join(sorted(SUPPORTED_VECTOR_INDEX_MODES))
-            errors.append(f"retrieval.vector_index: must be one of ({modes}), got {vector_index!r}")
-        errors.extend(_fts_debounce_errors(retrieval.get("fts_rebuild_debounce_s")))
         if retrieval.get("matryoshka_enabled") is True:
             embedding = config.get("embedding")
             mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
@@ -106,15 +163,6 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
                     "sound for Matryoshka-trained models; qwen3-embedding is MRL-trained, "
                     "nomic-embed-text is not)"
                 )
-
-    storage = config.get("storage")
-    if isinstance(storage, dict):
-        vector_type = storage.get("vector_type")
-        if vector_type not in SUPPORTED_VECTOR_TYPES:
-            errors.append(
-                f"storage.vector_type: must be one of {sorted(SUPPORTED_VECTOR_TYPES)}, "
-                f"got {vector_type!r}"
-            )
 
     ingest = config.get("ingest")
     if isinstance(ingest, dict):
@@ -139,8 +187,8 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
     Every key must be PRESENT (explicit in both config.yaml files — the
     default lives in code, but the shipped YAML is the visible contract)
     and hold the expected type. Also enforces the cross-field rules:
-    ``retrieval.mode`` is enum-locked to hybrid_rrf, ``storage.vector_type``
-    to halfvec, ``reranking.backend`` to null or the supported set,
+    ``retrieval.mode`` is enum-locked to hybrid_rrf,
+    ``reranking.backend`` to null or the supported set,
     ``reranking.return_top_k`` is a positive int in range, and
     ``retrieval.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
     true`` (the two-stage arm front-slices embeddings, which is only sound

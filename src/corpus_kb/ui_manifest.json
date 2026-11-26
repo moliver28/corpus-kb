@@ -648,6 +648,26 @@
     "required": []
   },
   {
+    "description": "Claim one stored document into the named project.",
+    "id": "project-claim",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/project/claim",
+    "required": []
+  },
+  {
+    "description": "List the claims for a doc or project slug.",
+    "id": "project-claim-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/project/claim-list",
+    "required": []
+  },
+  {
     "description": "Drop one project raw table and its registry row.",
     "id": "project-drop",
     "longRunning": false,

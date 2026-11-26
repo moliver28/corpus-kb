@@ -149,7 +149,10 @@ CREATE TABLE IF NOT EXISTS chunks_vectors (
     -- doctor` reports the "embedding dimensions vs schema" check on drift.
     -- Stale rows (embedding IS NULL after a model switch, migration 025)
     -- are a supported state: rebuild via `corpus-kb ingest-reembed`.
-    embedding halfvec(2560),
+    -- __EMBEDDING_DIMS__ is substituted by the schema bootstrap and the
+    -- migration runners from embedding.dimensions (issue #559); see
+    -- _setup/store_width.py.
+    embedding halfvec(__EMBEDDING_DIMS__),
     embedding_model VARCHAR(255) NOT NULL DEFAULT 'qwen3-embedding:4b',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

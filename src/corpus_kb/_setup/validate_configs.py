@@ -44,6 +44,7 @@ try:
         load_json,
         main,
         validate_all,
+        validate_all_detailed,
     )
     from corpus_kb._setup.validate_configs_consistency import (
         _description_mismatches,
@@ -68,8 +69,6 @@ try:
         SUPPORTED_RETRIEVAL_MODES,
         SUPPORTED_TEXTBOOK_PARSERS,
         SUPPORTED_TOPIC_METHODS,
-        SUPPORTED_VECTOR_INDEX_MODES,
-        SUPPORTED_VECTOR_TYPES,
         backend_error,
         return_top_k_error,
     )
@@ -88,7 +87,6 @@ try:
         _contextualize_block_errors,
         _database_block_errors,
         _effective_extraction_backend,
-        _fts_debounce_errors,
         _max_hops_errors,
         _queue_block_errors,
         _reranking_block_errors,
@@ -98,6 +96,7 @@ try:
     )
     from corpus_kb._setup.validate_configs_runtime import (
         _validate_cross_field_rules,
+        unknown_key_warnings,
         validate_runtime_config,
     )
     from corpus_kb._setup.validate_configs_toolnames import (
@@ -136,6 +135,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     load_json = _cli.load_json
     main = _cli.main
     validate_all = _cli.validate_all
+    validate_all_detailed = _cli.validate_all_detailed
     _consistency = _modules["validate_configs_consistency"]
     _description_mismatches = _consistency._description_mismatches
     _extract_tool_set = _consistency._extract_tool_set
@@ -158,8 +158,6 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     SUPPORTED_RETRIEVAL_MODES = _keys.SUPPORTED_RETRIEVAL_MODES
     SUPPORTED_TEXTBOOK_PARSERS = _keys.SUPPORTED_TEXTBOOK_PARSERS
     SUPPORTED_TOPIC_METHODS = _keys.SUPPORTED_TOPIC_METHODS
-    SUPPORTED_VECTOR_INDEX_MODES = _keys.SUPPORTED_VECTOR_INDEX_MODES
-    SUPPORTED_VECTOR_TYPES = _keys.SUPPORTED_VECTOR_TYPES
     backend_error = _keys.backend_error
     return_top_k_error = _keys.return_top_k_error
     _mcp = _modules["validate_configs_mcp"]
@@ -176,7 +174,6 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     _contextualize_block_errors = _rules._contextualize_block_errors
     _database_block_errors = _rules._database_block_errors
     _effective_extraction_backend = _rules._effective_extraction_backend
-    _fts_debounce_errors = _rules._fts_debounce_errors
     _max_hops_errors = _rules._max_hops_errors
     _queue_block_errors = _rules._queue_block_errors
     _reranking_block_errors = _rules._reranking_block_errors
@@ -185,6 +182,7 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     _topics_block_errors = _rules._topics_block_errors
     _runtime = _modules["validate_configs_runtime"]
     _validate_cross_field_rules = _runtime._validate_cross_field_rules
+    unknown_key_warnings = _runtime.unknown_key_warnings
     validate_runtime_config = _runtime.validate_runtime_config
     _toolnames = _modules["validate_configs_toolnames"]
     VALID_TOOL_NAMES = _toolnames.VALID_TOOL_NAMES
@@ -208,8 +206,6 @@ __all__ = [
     "SUPPORTED_RETRIEVAL_MODES",
     "SUPPORTED_TEXTBOOK_PARSERS",
     "SUPPORTED_TOPIC_METHODS",
-    "SUPPORTED_VECTOR_INDEX_MODES",
-    "SUPPORTED_VECTOR_TYPES",
     "VALID_TOOL_NAMES",
     "backend_error",
     "check_cross_config_consistency",
@@ -217,7 +213,9 @@ __all__ = [
     "load_yaml",
     "main",
     "return_top_k_error",
+    "unknown_key_warnings",
     "validate_all",
+    "validate_all_detailed",
     "validate_claude_config",
     "validate_cursor_config",
     "validate_extraction_gliner",

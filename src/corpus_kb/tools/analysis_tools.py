@@ -1,35 +1,19 @@
 """MCP/HTTP/socket/CLI handlers for the analysis ops (analysis program).
 
-One handler per operation, shared by every surface — the
-``tools/topics_tools.py`` pattern:
-
-  * :func:`analysis_backfill_dates` — the one-shot, idempotent
-    ``documents.document_date`` backfill (migration 027's rule,
-    callable after new ingests; no-op on already-dated documents).
-  * :func:`analyze_run` — the composed analysis run (WP-5): four
-    sections in fixed order (dates-coverage, labeling, classification,
-    trends), each DELEGATING to its one handler in
-    ``tools/{labeling,classification,topics}_tools.py``. The section
-    rows, the composer and the artifact writer live in
-    ``analysis/report.py``. One failing section never fails the run.
-
-Envelope: ``{status, documents_scanned, documents_dated}`` for the
-backfill, ``{status, sections}`` for the composed run — guaranteed on
-every outcome, so the parity gate holds on the disabled path too. The
-dormant default keeps the wave-0 stub envelope exactly; success gains
-``report_path`` when an output path was requested.
+One handler per operation, shared by every surface. ``analyze_run``
+composes the four sections (dates-coverage, labeling, classification,
+trends), each delegating to its one handler; the section rows, the
+composer, and the artifact writer live in ``analysis/report.py``. One
+failing section never fails the run. Success gains ``report_path`` when
+an output path was requested.
 """
 
 from __future__ import annotations
 
 import asyncpg
 
+from ..analysis import dates as dates_mod
 from ..analysis import report as report_mod
-from ..analysis.dates import (
-    BACKFILL_RULE_VERSION,
-    document_dates_present,
-    run_document_date_backfill,
-)
 from ..analysis.settings import AnalysisSettings, load_analysis_settings
 from ..classification import store as classification_store
 from . import classification_tools, labeling_tools, matrix_tools, topics_tools
@@ -45,10 +29,6 @@ _DISABLED_REASON = (
 _DISABLED_REMEDY = "Set the analysis.*.enabled flags you need to true, then retry."
 _BACKFILL_DISABLED_REASON = "the date backfill needs analysis.topics.over_time.enabled: true."
 _BACKFILL_DISABLED_REMEDY = "Set analysis.topics.over_time.enabled: true, then retry."
-_BACKFILL_UNAVAILABLE_REASON = (
-    "the documents.document_date column is missing (migration 027 has not run)."
-)
-_BACKFILL_UNAVAILABLE_REMEDY = "Run corpus-kb setup (or migration 027), then retry."
 
 # The flags-on/no-data corner: sections answered honestly, none succeeded.
 _RUN_NO_DATA_REASON = "the analysis flags are on but no section produced data."
@@ -91,22 +71,13 @@ async def analysis_backfill_dates(
     document the earliest of published_time, modified_time, then the
     chunk's source_timestamp). Returns ``{status, documents_scanned,
     documents_dated}`` plus the rule version in ``params``; a second run
-    dates nothing new.
+    dates nothing new. On DuckDB the write is engine-bound, so the
+    envelope answers ``unavailable`` there.
     """
     settings = load_analysis_settings(load_config_or_pass(config))
     if not settings.over_time.enabled:
         return _honest_backfill("disabled", _BACKFILL_DISABLED_REASON, _BACKFILL_DISABLED_REMEDY)
-    if not await document_dates_present(pg_pool):
-        return _honest_backfill(
-            "unavailable", _BACKFILL_UNAVAILABLE_REASON, _BACKFILL_UNAVAILABLE_REMEDY
-        )
-    outcome = await run_document_date_backfill(pg_pool, tenant_id)
-    return {
-        "status": "success",
-        "documents_scanned": outcome.documents_scanned,
-        "documents_dated": outcome.documents_dated,
-        "params": {"rule_version": BACKFILL_RULE_VERSION},
-    }
+    return await dates_mod.backfill_envelope(pg_pool, tenant_id)
 
 
 async def analyze_run(
@@ -133,6 +104,16 @@ async def analyze_run(
         )
     ):
         return _disabled_run()
+    # W5-5 activity stamp: the analysis op touches the CACHED active project
+    # (cheap read, no recompute) so the active-state rule sees lensed
+    # analysis, not only ingests and queries (spec s3).
+    from datetime import UTC, datetime
+
+    from corpus_kb.master.state_store import stamp_project_touch
+
+    await stamp_project_touch(
+        pg_pool, load_config_or_pass(config), tenant_id, "analysis", datetime.now(UTC)
+    )
     sections = [
         await _dates_section(pg_pool, config, tenant_id, settings),
         await _labeling_section(pg_pool, config, tenant_id, settings),

@@ -32,8 +32,10 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.ingestion.source_types import canonical_source_type, is_accepted_ingest_text_type
+
 from ..config import load_config
-from ..errors import ConfigError
+from ..errors import ConfigError, SourceTypeUnknownError
 from ..ontology import Ontology, load_ontology
 from ..rag.embedder_selection import POOLED_MODE
 from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
@@ -261,10 +263,10 @@ def ontology(config: dict[str, Any]) -> Ontology:
 
 
 def build_document(path: str, source_type: str, text: str) -> Document:
-    """Construct a Document model from raw text."""
+    """Construct a Document model from raw text with its canonical type stamp."""
     return Document(
         path=path,
-        source_type=source_type,
+        source_type=canonical_source_type(source_type) or source_type,
         content=text,
         size_bytes=len(text.encode("utf-8")),
     )
@@ -396,19 +398,13 @@ async def ingest_text(
 ) -> dict[str, Any]:
     """Ingest raw text with optional type hint and source identifier.
 
-    Lives here (rather than only in ``ingest_tools``) so tests and other
-    ingest-side code can import it alongside ``run_pipeline`` without a
-    circular import; ``ingest_tools.ingest_text`` re-exports this function.
-
-    ``source_type`` is the DOCUMENT source type (it feeds the
-    ``ingestion.strategies`` config mapping and content detection); use the
-    explicit ``run_pipeline(strategy_name=...)`` override to pin a strategy.
-    ``validate`` is the optional validation gate (off | advisory | enforce |
-    calibrate); None falls back to the active profile's ``validate`` value,
-    then ``off``. ``off`` keeps the envelope byte-identical.
+    ``ingest_tools.ingest_text`` re-exports this function. ``source_type``
+    feeds the strategy mapping, detection, and the registry gate.
+    ``validate`` is the gate (off | advisory | enforce | calibrate); None
+    falls back to the profile value, then ``off``.
     """
-    if source_type not in {"code", "markdown", "text", "transcript"}:
-        return {"status": "error", "message": f"Invalid source_type: {source_type}"}
+    if not is_accepted_ingest_text_type(source_type):
+        raise SourceTypeUnknownError(f"Unknown source type {source_type!r}.")
     config = load_config_or_pass(config)
     return await run_pipeline(
         text,

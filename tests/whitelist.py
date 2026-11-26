@@ -354,8 +354,7 @@ __dir__
 
 # config-v2 typed-reader fields owned for contract completeness (the block
 # declares the whole canonical namespace even where W1 has no live consumer
-# yet; qa_context_in_fts gates migration-023 index maintenance):
-qa_context_in_fts
+# yet):
 used_legacy_keys
 mode_error
 profile_for_model
@@ -657,3 +656,16 @@ closed_count
 # degraded embed paths and read by the timeout tests and future receipt
 # surfaces; the vulture src scan sees only the writes.
 last_note
+
+# Typed source_types registry (master-db W3): SourceTypeSpec.metadata_keys is
+# declared data-surface; later typed-ingest waves read it. The resolver
+# functions left this list when ingest_common wired them (same PR).
+metadata_keys
+
+# Validator refusal-text mirror bank (_setup/validate_configs_keys.py): the
+# three PR-6 explicit-set texts are byte-for-byte mirrors of the
+# corpus_kb.backend_gates texts; tests/test_backend_config_truth.py pins the
+# equality, and vulture scans src/ only so it cannot see that pin.
+HNSW_ON_DUCKDB_ERROR
+DUCKDB_GRAPH_BACKEND_ON_POSTGRES_ERROR
+GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR

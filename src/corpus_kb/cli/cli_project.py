@@ -17,10 +17,12 @@ from corpus_kb.cli._plumbing import _JSON_OPT, _TENANT_OPT, EXIT_FAILED, EXIT_OK
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the three project commands to the main Typer app."""
+    """Attach the project commands to the main Typer app."""
     app.command("project-provision")(project_provision)
     app.command("project-list")(project_list)
     app.command("project-drop")(project_drop)
+    app.command("project-claim")(project_claim)
+    app.command("project-claim-list")(project_claim_list)
 
 
 def _emit(result: dict[str, object], json_output: bool) -> None:
@@ -28,7 +30,18 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
         print(json.dumps(result, indent=2, default=str))
         return
     print(f"project: {result.get('status', 'error')}")
-    for key in ("table", "registry_id", "backend", "already_provisioned", "dropped_rows", "count"):
+    for key in (
+        "table",
+        "registry_id",
+        "backend",
+        "already_provisioned",
+        "dropped_rows",
+        "count",
+        "doc_id",
+        "project_id",
+        "source_project_id",
+        "claimed",
+    ):
         if key in result:
             print(f"  {key}: {result[key]}")
     entries = result.get("entries")
@@ -102,3 +115,39 @@ def project_drop(
     """Drop one project raw table and its registry row."""
     kwargs: dict[str, object] = {"slug": slug, "tenant_id": tenant_id}
     return _dispatch("project_drop", kwargs, json_output)
+
+
+def project_claim(
+    doc_id: str = typer.Argument(..., help="The doc id to claim"),
+    slug: str = typer.Argument(..., help="The project slug to claim into"),
+    project_id: str = typer.Option(
+        None,
+        "--project-id",
+        help="Research project id. Overrides the slug when set.",
+    ),
+    tenant_id: str = _TENANT_OPT,
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """Claim one stored document into the named project (idempotent)."""
+    kwargs: dict[str, object] = {
+        "doc_id": doc_id,
+        "slug": slug,
+        "project_id": project_id,
+        "tenant_id": tenant_id,
+    }
+    return _dispatch("project_claim", kwargs, json_output)
+
+
+def project_claim_list(
+    doc_id: str = typer.Option(None, "--doc-id", help="Filter by doc id"),
+    slug: str = typer.Option(None, "--slug", help="Filter by project slug"),
+    tenant_id: str = _TENANT_OPT,
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """List the project claims, filtered by doc or project."""
+    kwargs: dict[str, object] = {
+        "doc_id": doc_id,
+        "slug": slug,
+        "tenant_id": tenant_id,
+    }
+    return _dispatch("project_claim_list", kwargs, json_output)

@@ -80,6 +80,7 @@ def test_unit_sink_carries_every_ingest_sink_member() -> None:
         "tenant_id",
         "gateway",
         "unchanged_doc_id",
+        "unchanged_hash_doc_id",
         "begin_run",
         "finish_run",
         "fail_run",

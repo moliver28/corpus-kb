@@ -11,8 +11,9 @@ connection-level acquisition and result assembly live in
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 
 import asyncpg
 
@@ -94,13 +95,17 @@ def resolve_predicates(
         semantic_query = parsed.semantic_query
         dynamic_predicates = list(parsed.predicates)
     if query.source_type:
+        from corpus_kb.ingestion.source_types import canonical_source_type
         from corpus_kb.rag.self_query import Predicate
 
         dynamic_predicates.append(
             Predicate(
                 target="documents.source_type",
                 op="=",
-                value=query.source_type,
+                # RVW4-02: legacy alias names (web) resolve to the W3
+                # canonical stamp (external-site), so canonical filters
+                # match canonical rows; unknown names pass through.
+                value=canonical_source_type(query.source_type) or query.source_type,
             )
         )
     return semantic_query, dynamic_predicates
@@ -131,6 +136,7 @@ async def search_with_meta(
     query: SearchQuery,
     multi_query_settings: MultiQuerySettings | None = None,
     rewriter: QueryRewriter | None = None,
+    config: dict[str, Any] | None = None,
 ) -> SearchEnvelope:
     """Hybrid search with the degraded-honesty envelope attached.
 
@@ -142,6 +148,9 @@ async def search_with_meta(
     primary outcome and their rows fuse with it; the envelope then carries
     ``query_rewrites``. Off or degraded, the path is the single-query
     pipeline with no extra envelope key.
+
+    The project lens is best effort: a store failure or a failed activity
+    stamp degrades to the pool-wide stamp and never fails the search.
     """
     with span(SPAN_QUERY):
         query = resolve_default_k(query, rerank_settings)
@@ -152,6 +161,44 @@ async def search_with_meta(
         semantic_query, dynamic_predicates = resolve_predicates(
             query, self_query_parser, self_query_enabled
         )
+        # W5-5 project lens (spec s3): scope=None rides the active project;
+        # scope="all" is pool-wide; a slug pins that project. The "project"
+        # target stays parser-hidden — the pipeline appends it after parsing.
+        # A named-but-unknown slug falls back to pool-wide with an honest
+        # "all" stamp (the typed ProjectNotFoundError is a spec-s11 row).
+        scope_used = "all"
+        active_slug: str | None = None
+        if (query.scope or "") != "all":
+            from datetime import UTC, datetime
+
+            from corpus_kb.master.state_store import (
+                note_activity,
+                project_id_only,
+                resolve_lens,
+            )
+
+            tenant = str(query.tenant_id)
+            now = datetime.now(UTC)
+            lens_id: str | None = None
+            # Best effort (W5): a store failure or a failed stamp degrades
+            # the search to the honest pool-wide stamp, never fails it.
+            try:
+                if query.scope:
+                    lens_id = await project_id_only(pool, tenant, query.scope)
+                    if lens_id is not None:
+                        active_slug = query.scope
+                else:
+                    lens_id, active_slug = await resolve_lens(pool, config, tenant, now)
+            except Exception:
+                lens_id = None
+                active_slug = None
+            if lens_id is not None:
+                from corpus_kb.rag.self_query import Predicate
+
+                dynamic_predicates.append(Predicate(target="project", op="=", value=lens_id))
+                scope_used = active_slug or "project"
+                with contextlib.suppress(Exception):
+                    await note_activity(pool, tenant, lens_id, "query", now)
         over_retrieve = over_retrieve_n(reranker, rerank_settings)
         run = ArmRun(
             query=query,
@@ -173,4 +220,11 @@ async def search_with_meta(
         final_results = await post_fusion(
             reranker, rerank_settings, pool, retrieval_settings, outcome, run, extra_outcomes
         )
-        return final_envelope(outcome, final_results, run, query_rewrites=rewrites or None)
+        return final_envelope(
+            outcome,
+            final_results,
+            run,
+            query_rewrites=rewrites or None,
+            project_scope=scope_used,
+            active_project=active_slug,
+        )

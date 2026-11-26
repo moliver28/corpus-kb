@@ -1,7 +1,6 @@
 """Database-backend config truth (storage-portability program, phase A).
 
-Covers the four new keys — ``database.backend``, ``graph.max_hops``,
-``retrieval.vector_index``, ``retrieval.fts_rebuild_debounce_s`` — the
+Covers the surviving keys — ``database.backend``, ``graph.max_hops`` — the
 ``CORPUS_KB_DATABASE_BACKEND`` env override, the backend-mix refusal
 (pure function in ``config.py`` + ``load_config`` raise +
 ``validate_configs`` surfacing), and doctor env-var recognition.
@@ -19,7 +18,8 @@ from typing import cast
 import pytest
 import yaml
 
-from corpus_kb._setup import validate_configs
+from corpus_kb import backend_gates
+from corpus_kb._setup import validate_configs, validate_configs_keys
 from corpus_kb._setup.doctor_env import env_var_check, unknown_env_vars
 from corpus_kb._setup.doctor_research import STATUS_OK
 from corpus_kb.config import (
@@ -41,6 +41,10 @@ PGML_RERANKER_ON_DUCKDB_ERROR = (
 )
 PGML_EXTRACTION_ON_DUCKDB_ERROR = (
     "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
+)
+GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR = (
+    "graph.backend: postgres cannot run on the DuckDB engine."
+    " Remove graph.backend, or set database.backend to postgres."
 )
 
 
@@ -65,14 +69,6 @@ class TestDefaults:
         graph = cast(dict[str, object], get_default_config()["graph"])
         assert graph["max_hops"] == 5
 
-    def test_default_vector_index_is_exact_scan(self):
-        retrieval = cast(dict[str, object], get_default_config()["retrieval"])
-        assert retrieval["vector_index"] == "exact_scan"
-
-    def test_default_fts_debounce_is_two_seconds(self):
-        retrieval = cast(dict[str, object], get_default_config()["retrieval"])
-        assert retrieval["fts_rebuild_debounce_s"] == 2.0
-
     def test_defaults_have_no_backend_mix(self):
         assert backend_mix_errors(get_default_config()) == []
 
@@ -81,11 +77,8 @@ class TestDefaults:
         cfg = cast(dict[str, object], yaml.safe_load((ROOT / name).read_text(encoding="utf-8")))
         database = cast(dict[str, object], cfg["database"])
         graph = cast(dict[str, object], cfg["graph"])
-        retrieval = cast(dict[str, object], cfg["retrieval"])
         assert database["backend"] == "postgres"
         assert graph["max_hops"] == 5
-        assert retrieval["vector_index"] == "exact_scan"
-        assert retrieval["fts_rebuild_debounce_s"] == 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -243,11 +236,12 @@ class TestLoadConfigGate:
     def test_duckdb_clean_selection_loads(self, tmp_path: Path):
         path = tmp_path / "config.yaml"
         path.write_text(yaml.safe_dump({"database": {"backend": "duckdb"}}), encoding="utf-8")
-        # The default age/pgml mix still raises; the clean selection loads.
+        # The default age/pgml mix still raises; the clean selection (an
+        # explicit duck graph store) loads. PR-6 G09 refuses postgres.
         clean = tmp_path / "clean.yaml"
         payload = {
             "database": {"backend": "duckdb"},
-            "graph": {"backend": "postgres"},
+            "graph": {"backend": "duckdb"},
             "extraction": {"backend": "regex"},
         }
         clean.write_text(yaml.safe_dump(payload), encoding="utf-8")
@@ -255,19 +249,19 @@ class TestLoadConfigGate:
         database = cast(dict[str, object], config["database"])
         assert database["backend"] == "duckdb"
 
-    def test_duckdb_clean_defaults_load_after_backend_default_change(self, tmp_path: Path):
-        # Issue #246 owner decision: the default extraction backend is
-        # "ml", so a duckdb switch plus a postgres graph store now loads
-        # cleanly (the old pgml default tripped the mix gate at load).
+    def test_duckdb_explicit_postgres_graph_backend_raises(self, tmp_path: Path):
+        # PR-6 G09: an explicit postgres graph backend under duckdb is
+        # refused AT LOAD (the factory layer gives hand-built dicts the
+        # same refusal). The pre-G09 load-cleanly contract is gone.
         path = tmp_path / "config.yaml"
         payload = {
             "database": {"backend": "duckdb"},
             "graph": {"backend": "postgres"},
         }
         path.write_text(yaml.safe_dump(payload), encoding="utf-8")
-        config = load_config(str(path))
-        database = cast(dict[str, object], config["database"])
-        assert database["backend"] == "duckdb"
+        with pytest.raises(ValueError) as excinfo:
+            load_config(str(path))
+        assert GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR in str(excinfo.value)
 
     def test_duckdb_explicit_pgml_extraction_still_raises_after_aliases(self, tmp_path: Path):
         # An EXPLICIT pgml extraction backend stays refused on duckdb; the
@@ -296,8 +290,6 @@ class TestValidateConfigsKeys:
         keys = validate_configs.RUNTIME_CONFIG_KEYS
         assert keys["database.backend"] is str
         assert keys["graph.max_hops"] is int
-        assert keys["retrieval.vector_index"] is str
-        assert keys["retrieval.fts_rebuild_debounce_s"] is float
         # Wave 4 opt-in gates stay OPTIONAL: absent is the shipped
         # default, so they are checked when-present (validate_ingestion_block).
         assert "ingestion.tokenizer" not in keys
@@ -332,28 +324,6 @@ class TestValidateConfigsKeys:
         graph["max_hops"] = True
         errors = validate_configs.validate_runtime_config(config)
         assert any("key 'graph.max_hops' must be int" in e for e in errors)
-
-    def test_vector_index_enum_locked(self):
-        config = cast(dict[str, object], validate_configs.load_yaml(ROOT / "config.yaml"))
-        retrieval = cast(dict[str, object], config["retrieval"])
-        retrieval["vector_index"] = "ivfflat"
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.vector_index" in e and "hnsw" in e for e in errors)
-
-    def test_fts_debounce_positive_float(self):
-        config = cast(dict[str, object], validate_configs.load_yaml(ROOT / "config.yaml"))
-        retrieval = cast(dict[str, object], config["retrieval"])
-        retrieval["fts_rebuild_debounce_s"] = 0
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.fts_rebuild_debounce_s" in e for e in errors)
-        retrieval["fts_rebuild_debounce_s"] = -1.0
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("retrieval.fts_rebuild_debounce_s" in e for e in errors)
-        retrieval["fts_rebuild_debounce_s"] = 2  # int accepted for float keys
-        assert validate_configs.validate_runtime_config(config) == []
-        retrieval["fts_rebuild_debounce_s"] = True
-        errors = validate_configs.validate_runtime_config(config)
-        assert any("key 'retrieval.fts_rebuild_debounce_s' must be float" in e for e in errors)
 
 
 class TestValidateConfigsMix:
@@ -402,6 +372,33 @@ class TestValidateConfigsMix:
             expected = backend_mix_errors(scenario)
             surfaced = [e for e in validate_configs.validate_runtime_config(scenario) if e in bank]
             assert expected == surfaced, scenario
+
+
+# ---------------------------------------------------------------------------
+# the PyYAML-only mirror bank stays in lockstep with backend_gates
+# ---------------------------------------------------------------------------
+
+
+class TestMirrorBankLockstep:
+    def test_bank_texts_match_backend_gates_verbatim(self):
+        """Every bank text equals its runtime twin, byte for byte.
+
+        The bank mirrors all seven refusal texts so a reword upstream
+        cannot drift the validator's strings; the mix gate renders the
+        four always-on rules, and the three explicit-set texts fire at
+        load in corpus_kb.backend_gates.
+        """
+        names = (
+            "AGE_ON_DUCKDB_ERROR",
+            "PGML_EMBEDDER_ON_DUCKDB_ERROR",
+            "PGML_RERANKER_ON_DUCKDB_ERROR",
+            "PGML_EXTRACTION_ON_DUCKDB_ERROR",
+            "HNSW_ON_DUCKDB_ERROR",
+            "DUCKDB_GRAPH_BACKEND_ON_POSTGRES_ERROR",
+            "GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR",
+        )
+        for name in names:
+            assert getattr(validate_configs_keys, name) == getattr(backend_gates, name), name
 
 
 # ---------------------------------------------------------------------------

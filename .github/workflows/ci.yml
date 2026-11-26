@@ -88,6 +88,13 @@ jobs:
     outputs:
       ollama_code: ${{ steps.filter.outputs.ollama_code }}
       docker_code: ${{ steps.filter.outputs.docker_code }}
+      # parity_code arms the config-backend-parity gate: the config
+      # surfaces, the two matrix modules, the gate script, the poe
+      # target surface, and the bound backend-gates tests.
+      parity_code: ${{ steps.filter.outputs.parity_code }}
+      # bench_code arms the bench-latency job: any src/** change can
+      # move a p50, plus the bench drivers and the ceilings file.
+      bench_code: ${{ steps.filter.outputs.bench_code }}
       # ollama_live is the gate the live-Ollama steps consume: the path
       # filter OR the manual live_ollama dispatch input. A dispatched run
       # has no event diff, so the input decides there on its own.
@@ -172,6 +179,34 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'pyproject.toml'
               - 'ui_src/**'
+            parity_code:
+              # The config-backend parity gate (rule 12): its whole input
+              # universe — defaults (config.py + both config.yamls), the
+              # two matrix modules, the gate script, the poe target
+              # surface, and the bound backend-gates tests — must re-run
+              # the gate, as must the gate wiring itself. (The reader-grep
+              # half is always covered: the cross-OS legs run the same
+              # gate logic in-process via
+              # tests/test_config_backend_parity_gate.py.)
+              - '.github/workflows/ci.yml'
+              - 'pyproject.toml'
+              - 'src/corpus_kb/config.py'
+              - 'src/corpus_kb/config.yaml'
+              - 'config.yaml'
+              - 'src/corpus_kb/config_backend_matrix.py'
+              - 'src/corpus_kb/ops_backend_matrix.py'
+              - 'scripts/config_backend_parity_gate.py'
+              - 'tests/test_backend_gates.py'
+            bench_code:
+              # The latency ceilings (rule 10): any src/** change can move
+              # a p50, plus the bench drivers, the ceilings file, the poe
+              # target surface, and the gate wiring itself.
+              - '.github/workflows/ci.yml'
+              - 'pyproject.toml'
+              - 'src/**'
+              - 'scripts/bench_latency.py'
+              - 'scripts/_bench_latency_paths.py'
+              - 'scripts/quality-baselines.json'
 
   # ─────────────────────────────────────────────────────────────────────
   # Lint: ruff check + format check (fast, ~10s, no deps needed)
@@ -339,6 +374,43 @@ jobs:
       - name: Persona meter gate
         run: poe persona-meter
 
+  # Path-gated by bench_code: a PR that touches no bench input
+  # short-circuits green behind the notice step (the warning-ratchet
+  # pattern — the job always reports, so its context stays valid).
+  bench-latency:
+    name: "bench-latency (P1-P4 p50 ceilings)"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    timeout-minutes: 15
+    steps:
+      - name: Path gate notice
+        env:
+          BENCH_ARMED: ${{ needs.changes.outputs.bench_code }}
+        run: |
+          if [ "$BENCH_ARMED" = "true" ]; then
+            echo "Bench path gate OPEN: the P1-P4 p50 measurement proceeds."
+          else
+            echo "Bench path gate CLOSED: this job short-circuits green; no bench ran."
+          fi
+
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.bench_code == 'true'
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: needs.changes.outputs.bench_code == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install poethepoet and project deps
+        if: needs.changes.outputs.bench_code == 'true'
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev,duckdb]"
+      - name: Latency ceiling gate
+        if: needs.changes.outputs.bench_code == 'true'
+        run: poe bench-latency
+
   # ─────────────────────────────────────────────────────────────────────
   # Validate-configs: checks MCP config JSON files for format correctness
   # and cross-config consistency. Fast, no deps needed beyond stdlib.
@@ -370,6 +442,55 @@ jobs:
 
       - name: Validate config files
         run: poe validate-configs
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Config-backend parity (duckdb-parity program PR-9, zero-drift rule
+  # 10 + rule 12): every config leaf in get_default_config() plus the
+  # packaged config.yaml must be declared in config_backend_matrix with
+  # backends, behavior, and reader; undeclared keys fail both
+  # directions, declared readers must contain the key, and refusal rows
+  # must bind to backend_gates tests. Needs corpus_kb importable (the
+  # gate imports get_default_config), so this job installs the package.
+  # Path-gated by parity_code: a PR that touches no gate input
+  # short-circuits green behind the notice step (the warning-ratchet
+  # pattern — the job always reports, so its context stays valid).
+  # ─────────────────────────────────────────────────────────────────────
+  config-backend-parity:
+    name: "config-backend-parity"
+    runs-on: ubuntu-latest
+    needs: [changes]
+
+    steps:
+      - name: Path gate notice
+        env:
+          PARITY_ARMED: ${{ needs.changes.outputs.parity_code }}
+        run: |
+          if [ "$PARITY_ARMED" = "true" ]; then
+            echo "Config-parity path gate OPEN: the parity gate proceeds."
+          else
+            echo "Config-parity path gate CLOSED: this job short-circuits green; no gate ran."
+          fi
+
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.parity_code == 'true'
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: needs.changes.outputs.parity_code == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project deps
+        if: needs.changes.outputs.parity_code == 'true'
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev]"
+
+      - name: Config-backend parity gate
+        if: needs.changes.outputs.parity_code == 'true'
+        run: poe config-backend-parity
 
   # ─────────────────────────────────────────────────────────────────────
   # Toolname lockstep (issue #416, zero-drift rule 10): VALID_TOOL_NAMES
@@ -747,10 +868,10 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test steps:
-  #   - ubuntu timeout-minutes: 40 (rule 20 floor is 20; the covered suite
+  #   - ubuntu timeout-minutes: 60 (rule 20 floor is 20; the covered suite
   #     measured 19:57 of pytest alone and hit the old 20-min cap after
   #     every test had passed; the locked-env leg outgrew 30 later) —
-  #     cross-OS legs carry the same 40
+  #     cross-OS legs carry the same 60 (PR-8 grew the armed suite)
   # ─────────────────────────────────────────────────────────────────────
   # ─────────────────────────────────────────────────────────────────────
   # ui-e2e: the SPA Playwright smoke + axe scan against a REAL corpus-kb
@@ -1058,14 +1179,16 @@ jobs:
           done
 
       - name: Run tests
-        # timeout-minutes: 40 — rule 20 requires >= 20 min on the ubuntu
+        # timeout-minutes: 60 — rule 20 requires >= 20 min on the ubuntu
         # leg, and this is now the same budget the cross-OS legs carry.
         # History: the covered suite ran 19:57 of pytest and hit the old
         # 20-min cap after every test had passed (run 40471314193; PR
         # #189 raised it to 30). The locked-env leg outgrew 30 again
         # (run 43530817482: the step timed out — install plus the
-        # 3-model pull plus the covered suite no longer fit 30).
-        timeout-minutes: 40
+        # 3-model pull plus the covered suite no longer fit 30). PR-8
+        # added the parity legs; the armed suite now needs about 55
+        # minutes (run 45573731187 clipped at 70 percent).
+        timeout-minutes: 60
         env:
           # Gate closed: deselect the ollama-marked modules — they need a
           # pulled model, and their zero-vector fallback runs are not the
@@ -1298,13 +1421,14 @@ jobs:
       - name: Run tests
         # timeout-minutes prevents hung Ollama connection attempts from
         # blocking CI indefinitely (Windows TCP timeout can be 21s+ per
-        # attempt × multiple embed calls). 40 min: the hardening round's
+        # attempt × multiple embed calls). 60 min: the hardening round's
         # suite outgrew the old 15-minute line on windows (ubuntu needs
         # 24 min with the same tests), and PYTHONUNBUFFERED keeps the
         # per-test progress visible instead of trapped in the pipe buffer
         # until the process dies — without it a slow leg looks identical
-        # to a hang.
-        timeout-minutes: 40
+        # to a hang. PR-8 added the parity legs; the armed suite now
+        # needs about 55 minutes (run 45573731187 clipped at 70 percent).
+        timeout-minutes: 60
         env:
           PYTHONUNBUFFERED: "1"
           # Gate closed: deselect the ollama-marked modules (same contract

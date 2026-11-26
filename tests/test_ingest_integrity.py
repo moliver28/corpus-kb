@@ -24,6 +24,7 @@ from typing import Any, ClassVar
 import asyncpg
 import pytest
 
+from corpus_kb._setup.store_width import substitute_dims
 from corpus_kb.errors import ConfigError
 from tests.research_db import RLS_PROBE_ROLE, ensure_rls_probe, super_dsn_for
 
@@ -244,7 +245,22 @@ class _StubStore:
         self.fail_args: tuple[str, str] | None = None
         _StubStore.last = self
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        return None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        return None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        return True
+
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         self.calls.append("probe")
         return type(self).unchanged_doc
 
@@ -601,7 +617,9 @@ async def test_run_pipeline_nonconformant_plan_raises_before_any_write(
 
 async def _apply_schema_and_migrations(conn: Any) -> None:
     # The halfvec(2560) schema carries only LEGAL indexes — verbatim apply.
-    await conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+    # Issue #559: the primary-width DDL carries the __EMBEDDING_DIMS__
+    # placeholder; replay it at the shipped 2560 like the runners do.
+    await conn.execute(substitute_dims(SCHEMA_SQL.read_text(encoding="utf-8"), 2560))
     from corpus_kb._setup.migrate import ensure_migrations_table
 
     await ensure_migrations_table(conn)
@@ -610,7 +628,7 @@ async def _apply_schema_and_migrations(conn: Any) -> None:
             continue
         if path.name in _EXTENSION_GATED:
             continue
-        await conn.execute(path.read_text(encoding="utf-8"))
+        await conn.execute(substitute_dims(path.read_text(encoding="utf-8"), 2560))
         await conn.execute(
             "INSERT INTO corpus.schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
             path.name,
@@ -781,6 +799,47 @@ async def test_ledger_failed_run_never_enables_probe(integrity_pool) -> None:
     assert "EmbeddingError" in row["error"]
     # documents.file_hash MATCHES but the run failed: probe must not skip.
     assert await store.unchanged_doc_id(doc.path, file_hash) is None
+
+
+@pytest.mark.requires_postgres
+async def test_declared_visibility_folds_into_probe_and_upsert_merges_stamp(
+    integrity_pool,
+) -> None:
+    """A changed visibility declaration re-ingests; a match skips; the stamp lands.
+
+    The upsert metadata merge (latest declared keys win) refreshes the row
+    stamp, so the probe can compare the declaration against it.
+    """
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    store = PostgresIngestStore(integrity_pool, TENANT)
+    doc = _document("vis-probe")
+    file_hash = "d" * 64
+
+    doc.metadata["visibility"] = "public"
+    doc_id, run_id = await store.begin_run(doc, file_hash)
+    await store.finish_run(run_id, file_hash, {"chunks": 1, "errors": []}, [])
+
+    # Same hash, same declared visibility: skip.
+    assert await store.unchanged_doc_id(doc.path, file_hash, "public") == doc_id
+    # Same hash, changed declared visibility: no skip (the old probe hid this).
+    assert await store.unchanged_doc_id(doc.path, file_hash, "internal") is None
+    # No declaration: the legacy content-only skip stays intact.
+    assert await store.unchanged_doc_id(doc.path, file_hash) == doc_id
+
+    # Re-ingest under the new declaration: the upsert merges the new stamp.
+    doc.metadata["visibility"] = "internal"
+    _doc_id2, run_id2 = await store.begin_run(doc, file_hash)
+    await store.finish_run(run_id2, file_hash, {"chunks": 1, "errors": []}, [])
+    row = await _tenant_fetchrow(
+        integrity_pool,
+        "SELECT metadata->>'visibility' AS vis FROM documents WHERE doc_id = $1::uuid",
+        doc_id,
+    )
+    assert row["vis"] == "internal"
+    # The probe now matches the new stamp and refuses the old one.
+    assert await store.unchanged_doc_id(doc.path, file_hash, "internal") == doc_id
+    assert await store.unchanged_doc_id(doc.path, file_hash, "public") is None
 
 
 @pytest.mark.requires_postgres
@@ -1069,7 +1128,7 @@ async def _create_force_rls_db() -> str:
             "GRANT CONNECT ON DATABASE corpus_kb_ir075_force_rls_test TO corpus_ir075_probe"
         )
         # The halfvec(2560) schema carries only LEGAL indexes.
-        await owner.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+        await owner.execute(substitute_dims(SCHEMA_SQL.read_text(encoding="utf-8"), 2560))
         from corpus_kb._setup.migrate import ensure_migrations_table
 
         await ensure_migrations_table(owner)
@@ -1078,7 +1137,7 @@ async def _create_force_rls_db() -> str:
                 continue
             if path.name in _IR075_EXTENSION_GATED:
                 continue
-            await owner.execute(path.read_text(encoding="utf-8"))
+            await owner.execute(substitute_dims(path.read_text(encoding="utf-8"), 2560))
             await owner.execute(
                 "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)"
                 " ON CONFLICT DO NOTHING",

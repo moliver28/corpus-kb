@@ -29,6 +29,12 @@ if TYPE_CHECKING:
 #: this prefix names a DuckDB database file; anything else opens as Postgres.
 DUCKDB_DSN_PREFIX = "duckdb:///"
 
+#: One pool posture for every pool creation (the server wiring included):
+#: a tune on one arm must never miss the other (F-15).
+POOL_MIN_SIZE = 5
+POOL_MAX_SIZE = 20
+POOL_COMMAND_TIMEOUT_S = 60.0
+
 
 def is_duckdb_dsn(conn_str: str) -> bool:
     """True when the connection string names a DuckDB file."""
@@ -77,9 +83,9 @@ async def open_store(conn_str: str) -> asyncpg.Pool | DuckDbGateway:
     try:
         return await asyncpg.create_pool(
             conn_str,
-            min_size=5,
-            max_size=20,
-            command_timeout=60.0,
+            min_size=POOL_MIN_SIZE,
+            max_size=POOL_MAX_SIZE,
+            command_timeout=POOL_COMMAND_TIMEOUT_S,
         )
     except Exception as exc:
         raise DatabaseUnavailableError(

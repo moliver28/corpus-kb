@@ -323,7 +323,6 @@ You can also use environment variables. These override some values in `config.ya
 | `CORPUS_KB_OLLAMA_HOST` | `embedding.base_url` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
 | `CORPUS_KB_HOST` | `server.host` |
-| `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
 `corpus-kb doctor` honors the same precedence as the runtime (env wins over

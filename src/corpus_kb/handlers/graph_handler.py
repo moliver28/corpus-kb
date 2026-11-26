@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_HOPS = 5
 MAX_HOPS_CEILING = 25
 MIN_TRAVERSE_DEPTH = 2
+# bfs depth ceiling, uniform for every store (issue #527 P3): the AGE
+# store validates 1..MAX_BFS_DEPTH (25) but the other stores never
+# validated, so the handler gates bfs requests for all of them at 16.
+BFS_MAX_DEPTH = 16
 
 
 def configured_max_hops(config: dict[str, Any] | None) -> int:
@@ -92,7 +96,8 @@ class GraphHandler:
         self, tenant_id: UUID, start_entity_id: UUID, max_depth: int = 3
     ) -> list[dict[str, Any]]:
         """BFS traversal from a starting entity; result shape preserved via get_entity."""
-        result = await self._graph_store.bfs(str(start_entity_id), max_depth)
+        depth = _int_field("max_depth", max_depth, 1, BFS_MAX_DEPTH)
+        result = await self._graph_store.bfs(str(start_entity_id), depth)
         visited = result.get("visited", {})
         response: list[dict[str, Any]] = []
         for entity_id, depth in visited.items():

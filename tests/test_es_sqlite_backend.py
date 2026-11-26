@@ -39,7 +39,6 @@ PG_ENV_SNAPSHOTS: dict[str, dict[str, str]] = {
         "POSTGRES_USER": "corpus_user",
         "POSTGRES_PASSWORD": PG_PASSWORD,
         "POSTGRES_SCHEMA": "public",
-        "CREATE_TABLE": "y",
     },
     "postgresql://localhost/kb": {
         "PERSISTENCE_MODULE": "eventsourcing.postgres",
@@ -49,7 +48,6 @@ PG_ENV_SNAPSHOTS: dict[str, dict[str, str]] = {
         "POSTGRES_USER": "corpus_user",
         "POSTGRES_PASSWORD": "",
         "POSTGRES_SCHEMA": "public",
-        "CREATE_TABLE": "y",
     },
     "postgresql://u:p@db.example.com:5433/prod": {
         "PERSISTENCE_MODULE": "eventsourcing.postgres",
@@ -59,7 +57,6 @@ PG_ENV_SNAPSHOTS: dict[str, dict[str, str]] = {
         "POSTGRES_USER": "u",
         "POSTGRES_PASSWORD": "p",
         "POSTGRES_SCHEMA": "public",
-        "CREATE_TABLE": "y",
     },
 }
 
@@ -95,7 +92,6 @@ def test_duckdb_env_uses_sqlite_module_and_sidecar_path(tmp_path):
     assert env == {
         "PERSISTENCE_MODULE": "eventsourcing.sqlite",
         "SQLITE_DBNAME": os.path.normpath(str(target)) + ".events.db",
-        "CREATE_TABLE": "y",
     }
 
 

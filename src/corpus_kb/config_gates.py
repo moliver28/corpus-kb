@@ -44,4 +44,20 @@ def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
     )
 
 
-__all__ = ["matryoshka_mrl_error"]
+def store_width_mismatch_error(config_width: int, store_width: int) -> str | None:
+    """The one width-refusal message for both engines (issue #559).
+
+    The boot guard calls this on Postgres and DuckDB alike, so a store
+    reopened with a different ``embedding.dimensions`` answers the same
+    bytes on both engines. Returns None when the widths match.
+    """
+    if config_width == store_width:
+        return None
+    return (
+        f"Embedding dimensions {config_width} do not match this store's width "
+        f"{store_width}. Re-migrate the store with the new width, or set "
+        f"embedding.dimensions back to {store_width}."
+    )
+
+
+__all__ = ["matryoshka_mrl_error", "store_width_mismatch_error"]

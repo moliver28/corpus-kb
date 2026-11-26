@@ -10,9 +10,9 @@ the socket JSON-RPC ``ingest_file``/``ingest_text`` ALL go through them.
 ``source_type`` means ONE thing on every surface:
   - file ingest: an optional INGESTION-STRATEGY override (validated against
     ``ingestion.registry``); unknown names return an error envelope.
-  - text ingest: the DOCUMENT source type, whitelisted to
-    {code, markdown, text, transcript} with the same error message
-    everywhere (``Invalid source_type: <value>``).
+  - text ingest: the DOCUMENT source type, gated by the typed
+    ``ingestion.source_types`` registry with the same error message
+    everywhere (``Unknown source type <value>``).
 The detected document type is recorded by the pipeline in the envelope and
 copied into the event-store Document aggregate, so the audit ledger stays
 coherent.
@@ -93,7 +93,22 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         _StubStore.last = self
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
+        return None
+
+    async def document_origin_project(self, doc_id: str) -> str | None:
+        return None
+
+    async def claim_document(
+        self, doc_id: str, project_id: str, source_project_id: str | None
+    ) -> bool:
+        return True
+
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
@@ -343,10 +358,9 @@ async def test_socket_ingest_text_whitelist_matches_tool_message(
             }
         )
     )
-    assert response["result"] == {
-        "status": "error",
-        "message": f"Invalid source_type: {source_type}",
-    }
+    # W4-3: the refusal rides the taxonomy (-32006 socket code).
+    assert response["error"]["code"] == -32006
+    assert f"Unknown source type {source_type!r}." in response["error"]["message"]
 
 
 @pytest.mark.parametrize("source_type", ["web", "bogus"])
@@ -359,10 +373,13 @@ def test_http_ingest_text_whitelist_matches_tool_message(
         "/api/ingest/text",
         json={"text": "hello", "source_type": source_type},
     )
-    assert response.status_code == 200
-    assert response.json() == {
+    # W4-3: the refusal answers 400 through the taxonomy envelope.
+    assert response.status_code == 400
+    body = response.json()
+    assert body == {
         "status": "error",
-        "message": f"Invalid source_type: {source_type}",
+        "error": f"Unknown source type {source_type!r}.",
+        "error_type": "source_type_unknown",
     }
 
 

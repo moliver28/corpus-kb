@@ -67,6 +67,8 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "notebook-evidence": { path: "/api/notebook/evidence", method: "POST", longRunning: false },
   "notebook-overlap": { path: "/api/notebook/overlap", method: "POST", longRunning: false },
   "notebook-uncoded": { path: "/api/notebook/uncoded", method: "POST", longRunning: false },
+  "project-claim": { path: "/api/project/claim", method: "POST", longRunning: false },
+  "project-claim-list": { path: "/api/project/claim-list", method: "POST", longRunning: false },
   "project-drop": { path: "/api/project/drop", method: "POST", longRunning: false },
   "project-list": { path: "/api/project/list", method: "POST", longRunning: false },
   "project-provision": { path: "/api/project/provision", method: "POST", longRunning: false },

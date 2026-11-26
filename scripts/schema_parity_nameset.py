@@ -45,6 +45,13 @@ ALLOWED_NAME_ASYMMETRY: dict[tuple[str, str, str], str] = {
         "DuckDB-only ledger migration (030). No Postgres twin, and no"
         " rollback in either tree (issue #230)."
     ),
+    # -- Forward: DuckDB-only CHECK backfill for meta_embeddings (duck 047,
+    # -- issue #527 G04). The Postgres truth declares both CHECKs at table
+    # -- create (pg 034); the mirror needed a follow-up migration.
+    ("forward", "duckdb", "meta_embeddings_checks"): (
+        "DuckDB-only CHECK backfill (047): pg 034 declares the CHECKs at"
+        " create, so only the mirror needs a follow-up file."
+    ),
 }
 
 

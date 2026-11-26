@@ -12,6 +12,7 @@ which is critical for MCP integration where the working directory is unpredictab
 
 from __future__ import annotations
 
+import copy
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -19,8 +20,35 @@ from typing import Any, cast
 
 import yaml
 
+# Re-exports (graph_factory and tests import these from corpus_kb.config).
+# The ``x as x`` spelling marks each name as an intentional re-export, so
+# one string bank can serve both import surfaces (ruff isort keeps
+# them as one import per statement).
+from corpus_kb.backend_gates import (
+    AGE_ON_DUCKDB_ERROR as AGE_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR as GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_EMBEDDER_ON_DUCKDB_ERROR as PGML_EMBEDDER_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_EXTRACTION_ON_DUCKDB_ERROR as PGML_EXTRACTION_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    PGML_RERANKER_ON_DUCKDB_ERROR as PGML_RERANKER_ON_DUCKDB_ERROR,
+)
+from corpus_kb.backend_gates import (
+    backend_key_errors,
+)
 from corpus_kb.config_aliases import apply_legacy_aliases
-from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
+from corpus_kb.config_defaults import DEFAULT_CONFIG
+from corpus_kb.config_defaults_features import (
+    SPA_MAX_UPLOAD_MB_DEFAULT,
+    SPA_POLL_MS_DEFAULT,
+    SPA_REQUEST_TIMEOUT_S_DEFAULT,
+)
 from corpus_kb.errors import ConfigError
 
 
@@ -37,19 +65,37 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
+def _load_yaml_mapping(path: Path) -> dict[str, object]:
+    """One YAML file as a mapping; an empty file yields ``{}``."""
+    with path.open() as f:
+        return cast(dict[str, object], yaml.safe_load(f) or {})
+
+
 # The verify badge's "verified" bar (UI SPA program Task 3): at or above this
 # groundedness the judge entailed every claim it checked; below it the answer
 # is "partial". Hoisted from ui/view_models.py BEFORE that file's deletion so
 # the policy keeps one source. Task 4 codegens thresholds.generated.ts from it.
 VERIFY_FULL_GROUNDEDNESS = 0.99
 
-# ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount).
-# poll_ms: interval between status polls on the Ingest and Scale pages.
-SPA_POLL_MS_DEFAULT = 2000
-# request_timeout_s: how long one SPA API call waits before giving up.
-SPA_REQUEST_TIMEOUT_S_DEFAULT = 60
-# max_upload_mb: the per-file upload cap (taxonomy 413 above it).
-SPA_MAX_UPLOAD_MB_DEFAULT = 50
+# ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount)
+# moved to config_defaults_features.py with the defaults tree (W5-1 split);
+# they are imported above and re-exported for the SPA module and tools.
+
+
+#: One row per checked ui.spa.* value: key, default, low, high, a
+#: whole-number flag, and the plain-English unit note the refusal names.
+_SPA_VALUE_RULES: tuple[tuple[str, float, float, float, bool, str], ...] = (
+    ("poll_ms", SPA_POLL_MS_DEFAULT, 100, 60000, True, "milliseconds between status polls"),
+    (
+        "request_timeout_s",
+        SPA_REQUEST_TIMEOUT_S_DEFAULT,
+        0.1,
+        600,
+        False,
+        "seconds one API call waits",
+    ),
+    ("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT, 1, 2048, True, "megabytes per file"),
+)
 
 
 def ui_spa_settings_error(config: dict[str, object]) -> str | None:
@@ -65,25 +111,15 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
         return None
     if not isinstance(spa, dict):
         return f"ui.spa: must be a settings block; got {spa!r}"
-    poll = spa.get("poll_ms", SPA_POLL_MS_DEFAULT)
-    if not isinstance(poll, int) or isinstance(poll, bool) or not 100 <= poll <= 60000:
-        return (
-            "ui.spa.poll_ms: must be a whole number from 100 to 60000 "
-            "(milliseconds between status polls)."
-        )
-    timeout = spa.get("request_timeout_s", SPA_REQUEST_TIMEOUT_S_DEFAULT)
-    if (
-        not isinstance(timeout, (int, float))
-        or isinstance(timeout, bool)
-        or not 0.1 <= timeout <= 600
-    ):
-        return (
-            "ui.spa.request_timeout_s: must be a number from 0.1 to 600 "
-            "(seconds one API call waits)."
-        )
-    upload = spa.get("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT)
-    if not isinstance(upload, int) or isinstance(upload, bool) or not 1 <= upload <= 2048:
-        return "ui.spa.max_upload_mb: must be a whole number from 1 to 2048 (megabytes per file)."
+    for key, default, low, high, whole_number, note in _SPA_VALUE_RULES:
+        value = spa.get(key, default)
+        if whole_number:
+            well_typed = isinstance(value, int) and not isinstance(value, bool)
+        else:
+            well_typed = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not well_typed or not low <= value <= high:
+            kind = "a whole number" if whole_number else "a number"
+            return f"ui.spa.{key}: must be {kind} from {low} to {high} ({note})."
     return None
 
 
@@ -98,7 +134,6 @@ _ENV_OVERRIDES: dict[tuple[str, str], str] = {
     ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
     ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
     ("server", "host"): "CORPUS_KB_HOST",
-    ("server", "transport"): "CORPUS_KB_TRANSPORT",
     ("server", "port"): "CORPUS_KB_PORT",
     ("server", "socket_path"): "CORPUS_KB_SOCKET_PATH",
     ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
@@ -120,7 +155,7 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
     any set-but-unmapped CORPUS_KB_* variable (see KNOWN_CORPUS_KB_ENV_VARS
     and _setup/doctor_env.py).
     """
-    bool_keys = {"verify_image_signature", "openai_compat", "enabled"}
+    bool_keys = {"verify_image_signature", "openai_compat", "enabled", "adopt_on_start"}
     int_keys = {"dimensions", "port"}
     float_keys = {"timeout_s"}
 
@@ -198,31 +233,27 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     """
     config = get_default_config()
 
-    config_path: Path | None = None
+    # Candidate list, in discovery order: the explicit path (or the
+    # CORPUS_KB_CONFIG path), then ./config.yaml in the working directory.
+    # The packaged default is the last resort, so the first EXISTING
+    # candidate wins.
+    first_choice: Path | None = None
     if path:
-        config_path = Path(path)
-    else:
-        env_path = os.environ.get("CORPUS_KB_CONFIG")
-        if env_path:
-            config_path = Path(env_path)
-
-    if config_path is not None and config_path.exists():
-        with config_path.open() as f:
-            file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-        _deep_update(config, file_config)
-    elif (Path.cwd() / "config.yaml").exists():
-        cwd_config = Path.cwd() / "config.yaml"
-        with cwd_config.open() as f:
-            file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-        _deep_update(config, file_config)
-    else:
+        first_choice = Path(path)
+    elif env_path := os.environ.get("CORPUS_KB_CONFIG"):
+        first_choice = Path(env_path)
+    file_config: dict[str, object] | None = None
+    for candidate in (p for p in (first_choice, Path.cwd() / "config.yaml") if p is not None):
+        if candidate.exists():
+            file_config = _load_yaml_mapping(candidate)
+            break
+    if file_config is None:
         import importlib.resources as resources
 
         ref = resources.files("corpus_kb") / "config.yaml"
         with resources.as_file(ref) as packaged_path:
-            with Path(packaged_path).open() as f:
-                file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-            _deep_update(config, file_config)
+            file_config = _load_yaml_mapping(Path(packaged_path))
+    _deep_update(config, file_config)
 
     # Issue #348 overlays: deep-merge IN ORDER after the main file, before
     # the alias and env layers. `file_config` stays the MAIN file's tree —
@@ -234,8 +265,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 f"Config overlay file not found: {overlay_path}. "
                 "Fix the path in CORPUS_KB_CONFIG_OVERLAY."
             )
-        with overlay_path.open() as f:
-            overlay_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        overlay_config = _load_yaml_mapping(overlay_path)
         if not isinstance(overlay_config, dict):
             raise ConfigError(
                 f"Config overlay {overlay_path} must hold a YAML mapping of settings."
@@ -254,9 +284,11 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     # Issue #330: an UNCHOSEN graph.backend follows the database backend.
     _follow_graph_backend(config, file_config)
 
-    # Storage-portability backend truth: Postgres-only engine selections are
-    # refused while database.backend is duckdb (the mix gate sees the aliases).
-    mix_errors = backend_mix_errors(config)
+    # Backend-mismatch truth: Postgres-only engine selections are refused
+    # while database.backend is duckdb, DuckDB-only settings while it is
+    # postgres (the gate sees the aliases and the raw file tree for the
+    # explicit-set rules).
+    mix_errors = backend_mix_errors(config, file_config)
     if mix_errors:
         raise ValueError(mix_errors[0])
 
@@ -350,45 +382,15 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(_ENV_OVERRIDES.values()) | 
 )
 
 
-# Backend-mix refusals (storage-portability program §11 rule 15 string
-# bank — the texts are binding and used verbatim; validate_configs mirrors
-# them because the CI validate-configs job installs only PyYAML and cannot
-# import this package. tests/test_backend_config_truth.py pins the
-# equality between the two renderings).
-AGE_ON_DUCKDB_ERROR = "Set database.backend to postgres, or remove the graph.backend setting."
-PGML_EMBEDDER_ON_DUCKDB_ERROR = (
-    "PostgresML runs only on Postgres. The Ollama embedder will be used instead."
-)
-PGML_RERANKER_ON_DUCKDB_ERROR = (
-    "PostgresML reranking runs only on Postgres. The Ollama reranker will be used instead."
-)
-PGML_EXTRACTION_ON_DUCKDB_ERROR = (
-    "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
-)
+# The backend-mix refusal constants (AGE_ON_DUCKDB_ERROR, PGML_*_ON_DUCKDB_ERROR)
+# are re-exported from corpus_kb.backend_gates (see the import block above) —
+# one string bank, one gate body, both import surfaces keep working.
 
 
 def _section_dict(config: dict[str, object], section: str) -> dict[str, object]:
     """The named config section when it is a mapping, else an empty dict."""
     node = config.get(section)
     return node if isinstance(node, dict) else {}
-
-
-def _effective_extraction_backend(config: dict[str, object]) -> str | None:
-    """The extraction backend the alias layer would settle on.
-
-    Mirrors ``apply_extraction_backend_alias`` precedence: a non-empty
-    ``extraction.backend`` wins; only when it is absent does the legacy
-    ``graph.extractor`` alias stay authoritative.
-    """
-    extraction = _section_dict(config, "extraction")
-    raw = extraction.get("backend")
-    if isinstance(raw, str) and raw:
-        return raw
-    graph = _section_dict(config, "graph")
-    raw = graph.get("extractor")
-    if isinstance(raw, str) and raw:
-        return raw
-    return None
 
 
 def _follow_graph_backend(config: dict[str, object], file_config: dict[str, object]) -> None:
@@ -411,475 +413,30 @@ def _follow_graph_backend(config: dict[str, object], file_config: dict[str, obje
         graph_cfg["backend"] = "duckdb"
 
 
-def backend_mix_errors(config: dict[str, object]) -> list[str]:
-    """Refuse Postgres-only engine selections while ``database.backend`` is duckdb.
+def backend_mix_errors(
+    config: dict[str, object], file_config: dict[str, object] | None = None
+) -> list[str]:
+    """Refuse engine-mismatched backend keys, in one fixed order.
 
-    One operation, one truth: AGE and PostgresML (embedder, legacy
-    ``search.reranker``, extraction) physically cannot run on DuckDB, so a
-    duckdb selection that still names one is refused AT LOAD with a
-    plain-English remediation — never a silent downgrade. Returns every
-    violation in a fixed order (age, embedder, reranker, extraction);
-    empty when the backend is not ``duckdb`` (Postgres accepts all of
-    these) — an unknown ``database.backend`` value is NOT a mix and is
-    left to ``validate_configs``' enum rule. Pure: no IO, no globals.
+    Thin wrapper over :func:`corpus_kb.backend_gates.backend_key_errors`
+    (one operation, one truth). ``file_config`` is the RAW user file tree:
+    ``load_config`` passes it so the explicit-set rules (retrieval.hnsw.*,
+    graph.backend, graph.duckdb_graph_backend) fire AT LOAD; hand-built
+    dicts pass nothing, and only the always-on rules (age, pgml under
+    duckdb) can fire. Empty when no rule matches — an unknown
+    ``database.backend`` is NOT a mix (``validate_configs``' enum rule
+    owns it). Pure: no IO, no globals.
     """
-    database = _section_dict(config, "database")
-    if database.get("backend") != "duckdb":
-        return []
-    errors: list[str] = []
-    graph = _section_dict(config, "graph")
-    if graph.get("backend") == "age":
-        errors.append(AGE_ON_DUCKDB_ERROR)
-    embedding = _section_dict(config, "embedding")
-    if "pgml" in (embedding.get("provider"), embedding.get("fallback_provider")):
-        errors.append(PGML_EMBEDDER_ON_DUCKDB_ERROR)
-    search = _section_dict(config, "search")
-    if search.get("reranker") == "pgml":
-        errors.append(PGML_RERANKER_ON_DUCKDB_ERROR)
-    if _effective_extraction_backend(config) == "pgml":
-        errors.append(PGML_EXTRACTION_ON_DUCKDB_ERROR)
-    return errors
+    database_backend = str(_section_dict(config, "database").get("backend") or "postgres")
+    return backend_key_errors(config, file_config, database_backend)
 
 
 def get_default_config() -> dict[str, object]:
     """Return the default configuration dict (no file needed)."""
-    config: dict[str, object] = {
-        "server": {
-            "transport": "stdio",
-            "host": "localhost",
-            "port": 8010,
-            # Gates the OpenAI-compatible /v1 adapter (api/routes_v1.py);
-            # on by default so chat frontends work out of the box.
-            "openai_compat": True,
-            # JSON-RPC socket file (POSIX). Empty = derive from the port:
-            # /tmp/corpus-kb.sock on the default port 8010, else
-            # /tmp/corpus-kb-<port>.sock (issue #348: one path per study
-            # server, so a second server never takes the first one over).
-            # Windows ignores the path and uses socket_port (below).
-            "socket_path": "",
-            # JSON-RPC TCP port (Windows only). 0 = derive: 8011 when the
-            # server port is 8010, else port + 1000. Study ports count up
-            # from 8010, so port + 1 would clash with the next study.
-            "socket_port": 0,
-        },
-        "graph": {
-            "backend": "age",
-            # DuckDB graph traversal engine (graph.backend: duckdb only):
-            # "cte" (recursive-CTE walker, deterministic) or "duckpgq" (the
-            # DuckPGQ extension). Postgres ignores the key.
-            "duckdb_graph_backend": "cte",
-            # Graph traversal depth cap (1..25; 25 is today's AGE cap).
-            # Consumed by the neighbor/traverse operations (program §5.2).
-            "max_hops": 5,
-            # Accepted legacy alias for extraction.backend (kept forever);
-            # see apply_extraction_backend_alias.
-            "extractor": "ml",
-            "model_version": "langextract-default",
-            "prompt_version": "v1",
-            # Recorded-fixture extraction (LangExtract members): the fixture
-            # corpus and the live-call escape hatch. fixture_dir is the
-            # repo-relative tests path; installed runs resolve it from CWD
-            # exactly as before — the packaged yaml carries the same value.
-            "fixture_dir": "tests/fixtures/langextract_recorded",
-            "live_fallback": False,
-            "ontology_path": "config/ontology.yaml",
-        },
-        "embedding": {
-            # ollama serves the 4B embedder; pgml cannot host a model of
-            # this size.
-            "provider": "ollama",
-            "fallback_provider": "ollama",
-            "model": "qwen3-embedding:4b",
-            "base_url": "http://localhost:11434",
-            "batch_size": 32,
-            # Issue #468: hard cap on the per-call ``input`` array.
-            "max_batch_texts": 32,
-            # Native output width. Must equal the schema width
-            # (chunks_vectors.embedding = halfvec(EMBEDDING_DIMENSIONS)).
-            "dimensions": EMBEDDING_DIMENSIONS,
-            # U32 MRL gating: qwen3-embedding is Matryoshka-trained, so
-            # front-slice truncation + L2 renormalization is sound. Gates
-            # the matryoshka arm and the Ollama dimensions passthrough.
-            "mrl_trained": True,
-            # Gates QUERY_INSTRUCTION_PREFIX at instruct() (query side only).
-            "query_instruction": True,
-            # Late chunking gate; honest pooled fallback. The packaged
-            # config.yaml holds the full contract.
-            "late_chunking": True,
-        },
-        "ingestion": {
-            # Bounded parallel file ingestion (Wave 1 throughput); the
-            # runtime helper caps it at two below the pool size.
-            "concurrency": 4,
-            # Pluggable strategy mapping (source_type -> strategy name) and
-            # the fallback strategy; see corpus_kb.ingestion.registry.
-            "strategies": {
-                "transcript": "transcript",
-                "pptx": "pptx_structure",
-                "web": "web_structure",
-                "survey": "survey",
-            },
-            "default": "default",
-        },
-        # Textbook ingestion (textbook-ingestion program). Full parses
-        # need the [docling] extra; these are the gate + window + parser
-        # declarations the validate_configs gate pins (types and enums
-        # in RUNTIME_CONFIG_KEYS). window_subprocess isolates each
-        # Docling window in a child process (issue #219); cache_max_mb
-        # evicts the oldest window-cache files past the cap (issue #221).
-        # structured_output keeps rich page structure in the windows.
-        # citations writes a plain page + section citation into each
-        # chunk's metadata. worker_reuse keeps one loaded parser worker
-        # child alive across windows (issue #270); worker_max_windows
-        # recycles that worker after the given window count;
-        # worker_idle_ttl_s drops a worker idle longer than that at the
-        # next acquire, so an idle server sheds its parser children.
-        "textbook": {
-            "min_pages": 120,
-            "window_pages": 50,
-            "parser": "docling",
-            "cache_dir": "~/.corpus-kb/textbook-cache",
-            "window_subprocess": True,
-            "window_timeout_s": 3600.0,
-            "worker_reuse": True,
-            "worker_max_windows": 32,
-            "worker_idle_ttl_s": 600.0,
-            "cache_max_mb": 2048,
-            "structured_output": False,
-            "citations": False,
-        },
-        # Ingest queue worker knobs (tools/queue_tools.py + the Wave 2
-        # worker). autorun: false keeps the worker off; enqueue-only is
-        # the shipped default.
-        "queue": {
-            "autorun": False,
-            "poll_seconds": 20,
-            "stale_lease_seconds": 600,
-            "max_attempts": 3,
-        },
-        # Graph write policy: "all" mirrors today's behavior (every
-        # extracted relation reaches the graph store); "semantic_only"
-        # admits only the ontology's graph_eligible relation types.
-        "graph_policy": {
-            "mode": "all",
-        },
-        "storage": {
-            # chunks_vectors.embedding column type. halfvec is REQUIRED at
-            # 2560 dims: pgvector HNSW caps plain vector at 2000, halfvec
-            # at 4000 (migration 025).
-            "vector_type": "halfvec",
-        },
-        "retrieval": {
-            # Only hybrid_rrf exists today; other values are rejected at
-            # load time (load_retrieval_settings).
-            "mode": "hybrid_rrf",
-            # DuckDB vector-search mode: exact_scan (default, deterministic)
-            # or hnsw (the experimental vss extension; doctor warns).
-            # Postgres keeps its pgvector HNSW and ignores this key.
-            "vector_index": "exact_scan",
-            # DuckDB fts-index rebuild debounce (seconds, positive). DuckDB
-            # FTS has no auto-refresh; the gateway rebuilds on a debounce.
-            "fts_rebuild_debounce_s": 2.0,
-            # Live per-arm candidate depths before fusion (effective limit
-            # is max(candidates, k * 2), so small values never under-fetch
-            # below k).
-            "vector_candidates": 150,
-            "lexical_candidates": 150,
-            "rrf_k": 60,
-            # Post-fusion small-to-big parent expansion (moved from
-            # ingest.hierarchy; fail-open).
-            "expand_to_parent": True,
-            # Stage 3 degraded policy: candidate CTEs drop rows flagged
-            # degraded (migration 022).
-            "exclude_degraded": True,
-            "qa_context_in_fts": False,
-            # U21: below this estimated selectivity, filtered queries take
-            # the exact scan instead of the HNSW probe.
-            "exact_filter_selectivity_threshold": 0.05,
-            # Matryoshka two-tier retrieval: candidate fan-out is
-            # k * this multiplier.
-            "candidate_multiplier": 8,
-            "self_query": {
-                "enabled": True,
-                "model": "qwen3:4b",
-                "base_url": "http://localhost:11434",
-                "timeout_seconds": 8,
-            },
-            # Issue #136 multi-query rewriting: OFF by default (query
-            # expansion gives limited benefit for precise numerical
-            # queries — the corpus owner opts in). On, one LLM call
-            # rewrites the query into `variants` diverse rewrites; their
-            # legs fuse with the original's through the existing RRF
-            # fusion.
-            "multi_query": {
-                "enabled": False,
-                "variants": 3,
-                "model": "qwen3:4b",
-                "base_url": "http://localhost:11434",
-                "timeout_seconds": 8,
-            },
-            "matryoshka_enabled": False,
-            "matryoshka_dim": RESEARCH_EMBEDDING_DIMENSIONS,
-        },
-        "reranking": {
-            "enabled": True,
-            # backend selects the scorer: null = qwen3 judgment scorer via
-            # Ollama, "llamacpp" = true cross-encoder client (POST /v1/rerank
-            # on llamacpp_url), "generative" = the null alias, "fake" = the
-            # test double (build_reranker).
-            "backend": None,
-            # Committed upgrade-program default: qwen3-reranker 4B. That
-            # tag is not yet pullable from the Ollama registry — until a
-            # model with it exists locally, the rerank stage degrades to
-            # the un-reranked RRF order with a logged warning
-            # (rag/rerank_settings.py contract).
-            "model": "qwen3-reranker:4b",
-            "base_url": "http://localhost:11434",
-            # llama.cpp /v1/rerank server for backend: "llamacpp"
-            # (llama-server listens on 8080 by default).
-            "llamacpp_url": "http://localhost:8080",
-            # Remote rerank endpoints are opt-in (SSRF hardening):
-            # localhost and private hosts are always allowed.
-            "allow_remote_urls": False,
-            # Rerank pre-fetch width for score-based rerankers.
-            "over_retrieve_n": 60,
-            "candidates": 100,
-            # Accepted and range-validated now; becomes the default return
-            # k (catalogue contract change) in wave 3.
-            "return_top_k": 20,
-            "max_pair_tokens": 768,
-            "timeout_seconds": 120,
-            "score_floor": 0.15,
-            "calibration": "minmax",
-        },
-        # U42 provenance-keyed exact result cache, read by
-        # corpus_kb.research.exact_cache.load_cache_settings. `enabled` gates
-        # every access (the --no-cache flag drops it at the CLI layer);
-        # deductive runs default on, inductive discovery runs default off
-        # unless seeded.
-        "cache": {
-            "enabled": True,
-            "deductive_enabled": True,
-            "inductive_enabled": False,
-        },
-        "judge": {
-            "enabled": True,
-            "model": "qwen3:4b",
-            "base_url": "http://localhost:11434",
-            "max_claims": 20,
-        },
-        "routing": {
-            "enabled": True,
-            "confidence_threshold": 0.35,
-            "prototypes": {
-                "semantic": [
-                    "what does the document say about X",
-                    "explain the concept of X",
-                    "summarize the section on X",
-                ],
-                "relational": [
-                    "how many documents mention X",
-                    "count the chunks by type",
-                    "aggregate statistics across the corpus",
-                ],
-                "graph": [
-                    "what is related to X",
-                    "how is X connected to Y",
-                    "what entities are linked to X",
-                ],
-            },
-        },
-        "llm": {
-            "model": "qwen3:4b",
-            "base_url": "http://localhost:11434",
-        },
-        "coding": {
-            "coder": "qwen3:8b",
-            "model": "qwen3:8b",
-            # U43 validate/repair: retries before a response is marked
-            # invalid_output; strict enforcement opt-in (default off).
-            "repair_retries": 1,
-            "require_structured_enforcement": False,
-        },
-        # research: MUST stay in lockstep with the packaged config.yaml block —
-        # write_config's passthrough writes THIS dict into user configs, so a
-        # missing block here would silently drop research.* keys (todo-19 (c)).
-        "research": {
-            "embedder": {
-                # model_revision ("1024") and the G1-winning strategy
-                # (naive-prefix) are FIXED IN CODE, deliberately not knobs:
-                # embedding rows always record revision "1024" and the
-                # strategy is a committed experiment result, not a runtime
-                # choice. Only the promotion guard is configurable.
-                "dimensions": RESEARCH_EMBEDDING_DIMENSIONS,
-            },
-            "ingest": {
-                "watch_interval_s": 10,
-            },
-            "inductive": {
-                "entropy_threshold": 0.85,
-                "recluster_every_batches": 8,
-                "centroid_drift_threshold": 0.15,
-                "tau_dup": 0.85,
-            },
-            "cycle": {
-                # codebook_promotion is HARD-FLOORED (never removable);
-                # this list may only ADD halt gates.
-                "halt_on": [
-                    "interpretive_code_review",
-                    "gray_zone_escalation",
-                    "drift_alarm",
-                    "overlap_conflict",
-                    "threshold_unreliable",
-                    "human_parity_breach",
-                    "unreleased_draft",
-                ],
-            },
-        },
-        "database": {
-            # Storage engine selector: postgres (default) or duckdb. The
-            # backend-mix gate (backend_mix_errors) refuses Postgres-only
-            # engine selections (AGE, pgml) while duckdb is set. Consumed
-            # by the storage gateway (storage-portability program §3).
-            "backend": "postgres",
-            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
-        },
-        # extraction.backend is the PREFERRED extraction-backend key;
-        # graph.extractor (above) stays as the accepted legacy alias.
-        # "ml" is the shipped default (the packaged yaml value wins at
-        # runtime either way; aligning the code side keeps duckdb
-        # code-fallback environments loadable — pgml is Postgres-only and
-        # the backend-mix gate refuses it on duckdb AT LOAD).
-        "extraction": {
-            "backend": "ml",
-            # zero_shot: GLiNER2 NER + GLiNER-Relex relations under one
-            # extractor; few_shot/customized route to LangExtract instead.
-            "mode": "zero_shot",
-            # Opt-in GLiNER2 NER knobs (the standalone "gliner" backend
-            # refuses to construct while enabled is false).
-            "gliner": {
-                "enabled": False,
-                "model": "fastino/gliner2-large-v1",
-                "revision": "main",
-                "types": [
-                    "person",
-                    "organization",
-                    "location",
-                    "date",
-                    "money",
-                    "product",
-                ],
-            },
-            # GLiNER-Relex zero-shot relation member.
-            "relex": {
-                "model": "knowledgator/gliner-relex-large-v1.0",
-                "threshold": 0.5,
-                "max_label_pairs": 40,
-            },
-            # LoRA adapter tuning (extraction-tune method=lora). The adapter
-            # is a candidate artifact; the eval promotion gate decides.
-            "tune": {
-                "model": "knowledgator/gliner-multitask-large-v0.5",
-                "steps": 200,
-                "learning_rate": 5e-05,
-                "batch_size": 2,
-                "lora_r": 8,
-                "lora_alpha": 16,
-                "lora_dropout": 0.05,
-            },
-            # Optional voting across extractors (issue #133): members run
-            # beside the primary; candidates survive on majority agreement.
-            "ensemble": {
-                "enabled": False,
-                "members": ["langextract"],
-            },
-            # Chunk-hash result cache (migration 030): re-ingesting
-            # unchanged content skips the extraction pass.
-            "cache": {
-                "enabled": True,
-            },
-        },
-        # Statement atoms (Living Corpus W2, migration 031): chunks
-        # atomize into classified, bi-temporal statement rows.
-        "statements": {
-            "enabled": True,
-            "templates_dir": "config/claim_templates",
-            # Per-chunk cap on atoms; overflow is dropped and reported.
-            "max_per_chunk": 12,
-        },
-        # Website (URL) ingestion; ingest_url builds WebFetchConfig from
-        # this section (web/settings.py). Values mirror the WebFetchConfig
-        # dataclass defaults.
-        "web": {
-            "user_agent": "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)",
-            "timeout_seconds": 30,
-            "max_bytes": 5242880,
-            "respect_robots": True,
-            "max_pages": 5,
-            "max_depth": 2,
-            "delay_seconds": 1.0,
-            # SSRF-guard escape hatch; true only for genuinely local targets.
-            "allow_private_addresses": False,
-        },
-        # OpenTelemetry tracing (UX program Wave 4). Off by default: the
-        # no-op opentelemetry-api tracer makes every span free. Enable with
-        # the [otel] extra; see docs/OBSERVABILITY.md. utils/tracing.py is
-        # the typed reader (its DEFAULT_* constants must stay in lockstep).
-        "observability": {
-            "enabled": False,
-            "otlp_endpoint": "http://localhost:4318",
-            "service_name": "corpus-kb",
-        },
-        "installer": {
-            "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
-            # Literal tilde form: ~ expands at READ time (install_state
-            # expanduser), never at import time — an import-time
-            # Path.home() baked the authoring machine's path into the
-            # defaults and broke machine-independent comparison.
-            "data_dir": "~/.corpus-kb",
-            "verify_image_signature": True,
-            # All three profiles embed at 2560 dims (the schema width);
-            # only the LLM varies. A different embedding width needs a
-            # schema migration first.
-            "profiles": {
-                "minimal": {
-                    "ram_gb_max": 8,
-                    "vram_gb_max": 0,
-                    "model": "qwen3-embedding:4b",
-                    "llm": "qwen3:0.6b",
-                },
-                "balanced": {
-                    "ram_gb_max": 16,
-                    "vram_gb_max": 4,
-                    "model": "qwen3-embedding:4b",
-                    "llm": "qwen3:4b",
-                },
-                "performance": {
-                    "ram_gb_max": 999,
-                    "vram_gb_max": 8,
-                    "model": "qwen3-embedding:4b",
-                    "llm": "qwen3:14b",
-                },
-            },
-        },
-        # Lifecycle SPA (UI SPA program Task 3; ui/spa.py mounts it at
-        # /app). The spa block is runtime-tunable and travels over the
-        # wire in /app/runtime-config.json. VERIFY_FULL_GROUNDEDNESS is
-        # a module constant only: it is the codegen source for Task 4's
-        # thresholds and NEVER enters the config tree or the wire.
-        "ui": {
-            "spa": {
-                "poll_ms": SPA_POLL_MS_DEFAULT,
-                "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
-                "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
-            },
-        },
-        # Opt-in local event log (issue #442): OFF by default. See ADMIN.md.
-        "telemetry": {
-            "enabled": False,
-            "log_dir": "telemetry_logs",
-        },
-    }
+    # The literal lives in config_defaults_* (W5-1 split); the typed
+    # module merge stays here so its imports stay lazy (validate_configs,
+    # the installer, and other tool paths load config.py first).
+    config = copy.deepcopy(DEFAULT_CONFIG)
     _apply_typed_module_defaults(config)
     return config
 
@@ -890,8 +447,10 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     research.release.* + the measurement blocks, ingest.chunking.*,
     retrieval.hnsw.* come from the owning modules so the defaults in
     config.py, both config.yaml files and the typed readers cannot drift.
-    Imported lazily: config.py is loaded before the package is fully
-    importable in some tool paths (validate_configs, installer).
+    (ui.spa.* and telemetry.* are literals in get_default_config, so they
+    need no setdefault here.) Imported lazily: config.py is loaded before
+    the package is fully importable in some tool paths (validate_configs,
+    installer).
     """
     from corpus_kb.chunking.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
@@ -925,25 +484,9 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # Wave 4 topics layer (topics/settings.py is the typed reader): the
     # opt-in BERTopic block, dormant behind topics.enabled: false.
     config.setdefault("topics", _detached_defaults(TOPICS_CONFIG_DEFAULTS))
-    # UI SPA browser UI (ui/spa.py reads ui.spa.* with defaults): the
-    # block MUST exist here or the setup write-back would silently drop
-    # ui.spa.* keys from user configs (the same passthrough rule as
-    # research above).
-    config.setdefault(
-        "ui",
-        _detached_defaults(
-            {
-                "spa": {
-                    "poll_ms": SPA_POLL_MS_DEFAULT,
-                    "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
-                    "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
-                }
-            }
-        ),
-    )
     # UX Wave 6 notebooks console (notebooks/settings.py is the typed
     # reader): the marimo console block, mounted at /notebooks behind the
-    # [notebook] extra. Same passthrough rule as ui above.
+    # [notebook] extra. Same passthrough rule as research/ui above.
     from corpus_kb.notebooks.settings import NOTEBOOKS_CONFIG_DEFAULTS
 
     config.setdefault("notebooks", _detached_defaults(NOTEBOOKS_CONFIG_DEFAULTS))
@@ -953,10 +496,6 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.analysis.settings import ANALYSIS_CONFIG_DEFAULTS
 
     config.setdefault("analysis", _detached_defaults(ANALYSIS_CONFIG_DEFAULTS))
-    # Opt-in telemetry (issue #442; telemetry/settings.py is the typed reader).
-    from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
-
-    config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
     from corpus_kb.ask.ask_settings import ASK_CONFIG_DEFAULTS  # issue #540
 
     config.setdefault("ask", _detached_defaults(ASK_CONFIG_DEFAULTS))

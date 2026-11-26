@@ -155,18 +155,16 @@ Tokens are cached for performance.
             "graph": {"extract_entities": True, "backend": "postgres"},
             "database": {"connection_string": _TEST_DSN},
         }
-        result = await ingest_text(
-            text=text,
-            pg_pool=pg_pool,
-            source_type="invalid_type",
-            config=config,
-        )
-        status = result["status"]
-        assert isinstance(status, str)
-        assert status == "error"
-        message = result["message"]
-        assert isinstance(message, str)
-        assert "Invalid source_type" in message
+        from corpus_kb.errors import SourceTypeUnknownError
+
+        with pytest.raises(SourceTypeUnknownError) as excinfo:
+            await ingest_text(
+                text=text,
+                pg_pool=pg_pool,
+                source_type="invalid_type",
+                config=config,
+            )
+        assert "Unknown source type" in str(excinfo.value)
 
     @pytest.mark.requires_ollama
     @pytest.mark.asyncio

@@ -20,8 +20,8 @@ from typing import cast
 
 import pytest
 
+from corpus_kb.backend_gates import _effective_extraction_backend
 from corpus_kb.config import (
-    _effective_extraction_backend,
     apply_extraction_backend_alias,
     load_config,
 )
@@ -35,7 +35,6 @@ FROZEN_RENAMES: frozenset[tuple[str, str]] = frozenset(
     {
         ("search.rrf_k", "retrieval.rrf_k"),
         ("search.exclude_degraded", "retrieval.exclude_degraded"),
-        ("search.qa_context_in_fts", "retrieval.qa_context_in_fts"),
         (
             "search.exact_filter_selectivity_threshold",
             "retrieval.exact_filter_selectivity_threshold",

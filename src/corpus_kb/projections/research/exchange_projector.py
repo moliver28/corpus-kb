@@ -27,6 +27,7 @@ from corpus_kb.projections.research._embed_writes import (
     embed_exchange_texts,
     turn_prefixes,
 )
+from corpus_kb.projections.research._rekey import DOCUMENTS_INGEST_SQL, rekey_ingested_document
 from corpus_kb.research.chunking import build_context_prefix
 from corpus_kb.research.conn import Store, dialect_of, json_cast, resolve_store
 from corpus_kb.tools.pipeline.sinks import UnitSink
@@ -44,32 +45,31 @@ class ExchangeProjector:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
         metadata = payload.get("metadata", {}) or {}
+        source = str(payload.get("source", ""))
+        # Re-key first (issue #529): a documents row kept under an older
+        # doc_id is deleted with its children, so the fresh row lands
+        # under the incoming id and the speaker/unit writes keep their
+        # foreign key. DuckDB reads foreign keys at the last commit
+        # (issue #330), so on duck the stages run before this write
+        # transaction opens; Postgres re-keys inside it.
+        if self._duck:
+            doc_id = await rekey_ingested_document(
+                self._store, tenant_id, payload["aggregate_id"], source
+            )
         # The document leg runs INSIDE this façade (before speaker/unit/
         # exchange stages) so the FK chain documents -> speakers -> units
         # never races the legacy DocumentsProjection loop.
         metadata_cast = json_cast(dialect_of(self._store), "$8")
         async with self._store.transaction(str(tenant_id)) as conn:
+            if not self._duck:
+                doc_id = await rekey_ingested_document(
+                    conn, tenant_id, payload["aggregate_id"], source
+                )
             await conn.execute(
-                f"""
-                INSERT INTO documents
-                (doc_id, tenant_id, source, source_type, file_size, file_hash,
-                 language, metadata, project_id, title, source_path, source_hash,
-                 parser_name, parser_version, doc_version)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, {metadata_cast}, $9, $10, $13, $14, $11, $12, 1)
-                ON CONFLICT (tenant_id, source) DO UPDATE SET
-                    source_type = EXCLUDED.source_type,
-                    file_hash = COALESCE(EXCLUDED.file_hash, documents.file_hash),
-                    metadata = EXCLUDED.metadata,
-                    project_id = COALESCE(EXCLUDED.project_id, documents.project_id),
-                    title = COALESCE(EXCLUDED.title, documents.title),
-                    source_hash = COALESCE(EXCLUDED.source_hash, documents.source_hash),
-                    parser_name = COALESCE(EXCLUDED.parser_name, documents.parser_name),
-                    parser_version = COALESCE(EXCLUDED.parser_version, documents.parser_version),
-                    updated_at = NOW()
-                """,
-                str(payload["aggregate_id"]),
+                DOCUMENTS_INGEST_SQL.format(metadata_cast=metadata_cast),
+                doc_id,
                 str(tenant_id),
-                str(payload.get("source", "")),
+                source,
                 str(payload.get("source_type", "text")),
                 payload.get("file_size"),
                 opt_str(payload.get("file_hash")),
@@ -79,7 +79,7 @@ class ExchangeProjector:
                 opt_str(metadata.get("title")),
                 opt_str(metadata.get("parser_name")),
                 opt_str(metadata.get("parser_version")),
-                str(payload.get("source", "")),
+                source,
                 opt_str(payload.get("file_hash")),
             )
             if payload.get("replace"):

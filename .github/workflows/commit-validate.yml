@@ -3,6 +3,11 @@ name: Validate Commit Messages
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - master
+      - develop
+      - production
 
 jobs:
   validate-commits:
@@ -14,13 +19,19 @@ jobs:
           fetch-depth: 0
       - name: Validate Conventional Commits
         run: |
-          # Use PR base/head SHAs when available, otherwise compare to origin/master
+          # Use PR base/head SHAs when available. Push events carry no PR
+          # context, so compare against the pushed branch's own upstream ref:
+          # origin/<branch>..HEAD is exactly the newly pushed commits.
           if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
           else
-            BASE="origin/master"
+            BASE="origin/${{ github.ref_name }}"
             HEAD="HEAD"
+            if ! git rev-parse --verify --quiet "${BASE}" >/dev/null 2>&1; then
+              echo "::notice::Upstream ref ${BASE} does not exist. Skip validation."
+              exit 0
+            fi
           fi
           # --no-merges: mechanical master-sync merge commits carry a generated
           # subject, not an authored conventional message.

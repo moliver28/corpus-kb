@@ -258,24 +258,23 @@ def setup(
         help="DuckDB file path or duckdb:/// DSN (with --backend duckdb)",
     ),
     build_local: bool = typer.Option(
-        False,
-        "--build-local",
-        help=(
-            "Build the Postgres image from docker/postgres/Dockerfile "
-            "instead of using the pre-built image"
-        ),
+        False, "--build-local", help="Postgres only. Build the image from the repo Dockerfile."
     ),
     skip_image_verify: bool = typer.Option(
-        False,
-        "--skip-image-verify",
-        help="Skip cosign verification of the Postgres container image",
+        False, "--skip-image-verify", help="Postgres only. Skip image cosign verification."
     ),
 ) -> int:
     """One-line setup: docker stack + database + migrations + models.
 
-    With --backend duckdb this is the no-Docker path: one local file,
-    the SQLite event sidecar, and the config pair.
-    """
+    With --backend duckdb: one local file, no Docker."""
+    from corpus_kb._setup.backend_flag_gates import refuse_pg_only_setup_flags as refuse_flags
+    from corpus_kb.errors import ConfigError
+
+    try:
+        refuse_flags(backend, build_local=build_local, skip_image_verify=skip_image_verify)
+    except ConfigError as exc:
+        typer.echo(f"ERROR: {exc}. {exc.remediation}")
+        raise typer.Exit(code=exc.cli_exit) from None
     from corpus_kb._setup.install import main as install_main
 
     argv = ["setup"]

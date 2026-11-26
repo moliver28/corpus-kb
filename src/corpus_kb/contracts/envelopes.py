@@ -32,6 +32,10 @@ INGEST_ENVELOPE = (
     "embedding_mode",
     "statements",
     "profile",
+    # W5-4 (spec s3): workspace attribution - guaranteed on every success
+    # envelope; scope is "project" or "none".
+    "project_slug",
+    "project_scope",
 )
 
 # Shared search family (QueryHandler.handle_search_with_meta serialized by
@@ -46,6 +50,9 @@ SEARCH_ENVELOPE = (
     "vector_index_mode",
     "lexical_index_mode",
     "meta_hits",
+    # W5-5 project lens - guaranteed keys (spec s3).
+    "project_scope",
+    "active_project",
 )
 
 # Issue #136 multi-query retrieval (retrieval.multi_query, default OFF):
@@ -93,6 +100,12 @@ TEXTBOOK_KEYS = frozenset({"textbook"})
 # "prompt_tokens" when the provider reported one. Extractor and reranker
 # sections stay absent until a backend reports them.
 TOKEN_KEYS = frozenset({"token_usage"})
+
+# Declared visibility (ingest_url only): the ``visibility`` key appears on
+# the aggregate envelope ONLY when the caller declared one. Value: the
+# stamped value itself ("public" or "internal"), so every surface answers
+# what the pages carry and the parity gate sees a dropped forwarder.
+VISIBILITY_KEYS = frozenset({"visibility"})
 
 # Demo-load receipt (``demo_kb.load_demo_kb``; momus F8 close-out): the
 # house top-level shape is always these two keys, on every outcome.

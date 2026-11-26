@@ -32,6 +32,12 @@ from .embedder_cache import EmbeddingCache
 DEFAULT_EMBEDDING_PROVIDER = "ollama"
 
 
+def provider_label(embedding_cfg: dict[str, Any], key: str = "provider") -> str:
+    """The provider name for ``key``; absent or non-str falls to the default."""
+    value = embedding_cfg.get(key)
+    return value if isinstance(value, str) else DEFAULT_EMBEDDING_PROVIDER
+
+
 def create_embedder(
     config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | SqlGateway | None = None,

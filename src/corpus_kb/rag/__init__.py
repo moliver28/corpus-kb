@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .embedder import FakeEmbedder, OllamaEmbedder, PgmlEmbedder
-from .embedder_factory import aembed_batch, create_embedder
+from .embedder_factory import aembed_batch, create_embedder, provider_label
 from .reranker import IdentityReranker, PgmlReranker, create_reranker
 
 __all__ = [
@@ -15,4 +15,5 @@ __all__ = [
     "aembed_batch",
     "create_embedder",
     "create_reranker",
+    "provider_label",
 ]

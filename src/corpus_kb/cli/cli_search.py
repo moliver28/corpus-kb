@@ -105,7 +105,11 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
 
 
 async def _search_flow(
-    query: str, k: int | None, source_type: str | None, json_output: bool
+    query: str,
+    k: int | None,
+    source_type: str | None,
+    scope: str | None,
+    json_output: bool,
 ) -> int:
     from corpus_kb.errors import CorpusError
     from corpus_kb.tools.search_tools import search as search_tool
@@ -113,7 +117,9 @@ async def _search_flow(
     cfg = _load_config()
     pool = await _open_pool(cfg)
     try:
-        result = await search_tool(pool, query, config=cfg, k=k, source_type=source_type)
+        result = await search_tool(
+            pool, query, config=cfg, k=k, source_type=source_type, scope=scope
+        )
     except CorpusError as exc:
         print(f"ERROR: {exc}")
         return EXIT_FAILED
@@ -136,6 +142,11 @@ def search(
         "--source-type",
         help="Filter by document type (for example text or transcript)",
     ),
+    scope: str | None = typer.Option(
+        None,
+        "--scope",
+        help="Project lens: a project slug, or all for the whole pool",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
 ) -> int:
     """Search the knowledge base (hybrid vector + full-text).
@@ -144,7 +155,7 @@ def search(
     codes: 0 answered (a degraded empty answer is still 0; the remedy
     prints), 1 the search failed, 3 the database is unreachable.
     """
-    return _run_sync(lambda: _search_flow(query, k, source_type, json_output))
+    return _run_sync(lambda: _search_flow(query, k, source_type, scope, json_output))
 
 
 async def _search_similar_flow(chunk_id: str, k: int, json_output: bool) -> int:

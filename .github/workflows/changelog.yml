@@ -1,21 +1,39 @@
-# Regenerate CHANGELOG.md from Conventional Commit history.
+# Append the released version's section to CHANGELOG.md.
 #
-# Runs Commitizen's `cz changelog` command whenever a GitHub release is
-# published. The command consumes the commit range from the most recent
-# vX.Y.Z tag (inclusive) up to the current release tag and appends the
-# rendered Markdown to CHANGELOG.md. The commit is then pushed back to
-# the default branch so the next PyPI release ships with an up-to-date
-# changelog visible at the repo root.
+# A published release starts this workflow. The release's commits are
+# rendered with commitizen (`cz changelog`) into one new Markdown
+# section. That section is inserted into CHANGELOG.md above the newest
+# existing version heading, so the hand-written release notes at the
+# top of the file stay untouched. The result rides a pull request into
+# master, the branch the release tag points at. Direct pushes are
+# blocked by branch protection (pull request required, admins
+# included), so the pull request is the only honest write path.
 #
-# Why not run on push-to-master? Generating a changelog requires a
-# release tag as the upper bound. Running on `release: published` keeps
-# the changelog tightly coupled to the artefact that PyPI is about to
-# receive.
+# Tag rules: package tags look like v1.2.3. Only those tags can be a
+# release range bound. Plugin tags (corpus-rag-v0.6.0), archive tags,
+# and any other tag shape are ignored. If no earlier package tag
+# exists, the range starts at the release tag's parent commit, so a
+# first release renders just what the tag itself brought in.
 #
-# Configuration lives in [tool.commitizen] in pyproject.toml. The
-# custom commit schema intentionally mirrors the regex enforced by
-# .github/workflows/commit-validate.yml so the two validators never
-# disagree about what counts as a release commit.
+# Why `cz changelog --start-rev` and not the other forms (proven in the
+# v0.1.1rc0 drill, run 45113664466):
+# - `cz changelog <range> --incremental` exits 20: commitizen forbids
+#   combining --incremental with a rev_range.
+# - `cz changelog --incremental` looks up the latest version heading in
+#   the changelog and matches it to a tag. This repo's latest heading
+#   (v0.1.0) has no matching tag, so commitizen exits 16
+#   (NoRevisionError). Plain --incremental cannot work here until that
+#   heading gains a real tag.
+# - A rev_range with a non-package bound crashes commitizen outright
+#   (packaging.version.InvalidVersion on 'corpus-rag-v0.6.0').
+# `--start-rev` takes any git rev, skips the tag lookup, and composes
+# with --unreleased-version. Verified against commitizen 4.18.1.
+#
+# The pull request is created with the RELEASE_PAT token. GitHub starts
+# workflow runs for events made with that token, so the PR's checks run
+# natively; a person merges when green. If the push or the pull request
+# creation fails, the workflow opens an issue that carries the rendered
+# section and the steps for a person to run.
 
 name: Changelog
 
@@ -25,10 +43,16 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: changelog
+  cancel-in-progress: false
 
 jobs:
   generate-changelog:
-    name: Regenerate CHANGELOG.md
+    name: Append release section to CHANGELOG.md
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -46,37 +70,111 @@ jobs:
       - name: Install Commitizen
         run: python -m pip install --upgrade pip "commitizen>=4.0"
 
-      - name: Determine previous tag
+      - name: Find the previous package tag
         id: prev-tag
         run: |
           set -euo pipefail
-          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
-          if [[ -n "${PREV_TAG}" ]]; then
-            echo "prev-tag=${PREV_TAG}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "prev-tag=" >> "${GITHUB_OUTPUT}"
-          fi
+          PREV_TAG="$(git tag --sort=-creatordate --merged "${GITHUB_REF_NAME}^" --list 'v[0-9]*' | head -n 1 || true)"
+          echo "prev-tag=${PREV_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Previous package tag: ${PREV_TAG:-<none, first package release>}"
 
-      - name: Regenerate CHANGELOG.md
+      - name: Render the release section
         env:
           PREV_TAG: ${{ steps.prev-tag.outputs.prev-tag }}
           NEW_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ -n "${PREV_TAG}" ]]; then
-            cz changelog "${PREV_TAG}..${NEW_TAG}" --incremental
-          else
-            cz changelog --incremental --unreleased-version "${NEW_TAG}"
-          fi
+          START_REV="${PREV_TAG:-${NEW_TAG}^}"
+          echo "Start rev: ${START_REV}"
+          cz changelog --start-rev "${START_REV}" --unreleased-version "${NEW_TAG}" --dry-run > /tmp/section.md
+          # Keep from the first version heading on, so any file header
+          # commitizen renders does not leak into our file.
+          sed -n '/^## v[0-9]/,$p' /tmp/section.md > /tmp/release-section.md
+          test -s /tmp/release-section.md
 
-      - name: Commit updated CHANGELOG.md
+      - name: Insert the section into CHANGELOG.md
         run: |
+          set -euo pipefail
+          [[ -f CHANGELOG.md ]] || touch CHANGELOG.md
+          awk '
+            !done && /^## v[0-9]/ {
+              while ((getline line < "/tmp/release-section.md") > 0) print line
+              print ""
+              done = 1
+            }
+            { print }
+            END {
+              if (!done) {
+                print ""
+                while ((getline line < "/tmp/release-section.md") > 0) print line
+              }
+            }
+          ' CHANGELOG.md > CHANGELOG.md.next
+          mv CHANGELOG.md.next CHANGELOG.md
+
+      - name: Open a pull request with the changelog update
+        env:
+          NEW_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/changelog-${NEW_TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
           git add CHANGELOG.md
           if git diff --cached --quiet; then
-            echo "No changelog updates to commit"
+            echo "CHANGELOG.md already covers ${NEW_TAG}. Nothing to do."
             exit 0
           fi
-          git commit -m "chore(release): regenerate CHANGELOG.md for ${GITHUB_REF_NAME}"
-          git push
+          git commit -m "chore(release): update CHANGELOG.md for ${NEW_TAG}"
+          mkdir -p /tmp/changelog-pr
+          cat > /tmp/changelog-pr/body.md <<BODY
+          ## Automated changelog update: ${NEW_TAG}
+
+          This pull request adds the ${NEW_TAG} section to CHANGELOG.md.
+          Commitizen rendered the section from the release commit range.
+
+          The checks run natively on this pull request: the release token
+          (RELEASE_PAT) created it, and GitHub starts workflow runs for
+          events made with that token. Review the diff, then squash-merge
+          when green.
+          BODY
+          ISSUE_REASON=""
+          if ! git push origin "HEAD:refs/heads/${BRANCH}"; then
+            ISSUE_REASON="git push failed (branch may already exist)"
+          elif ! PR_URL="$(gh pr create --base master --head "${BRANCH}" --title "Changelog: add the ${NEW_TAG} section" --body-file /tmp/changelog-pr/body.md)"; then
+            ISSUE_REASON="pull request creation failed"
+          fi
+          if [[ -n "${ISSUE_REASON}" ]]; then
+            echo "Push or pull request failed: ${ISSUE_REASON}. Falling back to an issue."
+            cat > /tmp/changelog-pr/issue.md <<ISSUE
+          ## Changelog update needed for ${NEW_TAG}
+
+          The release workflow could not open the changelog pull request
+          itself. Reason: ${ISSUE_REASON}.
+
+          The rendered ${NEW_TAG} section is at the bottom of this issue.
+          To finish the update:
+
+          1. Create a branch from the ${NEW_TAG} tag.
+          2. Insert the section into CHANGELOG.md above the newest
+             "## v" version heading.
+          3. Commit, push, and open a pull request into master.
+          4. Review the diff, then squash-merge.
+
+          The rendered section:
+
+          ISSUE
+            printf '```markdown\n' >> /tmp/changelog-pr/issue.md
+            cat /tmp/release-section.md >> /tmp/changelog-pr/issue.md
+            printf '```\n' >> /tmp/changelog-pr/issue.md
+            ISSUE_URL="$(gh issue create --title "Changelog update needed for ${NEW_TAG}" --body-file /tmp/changelog-pr/issue.md)"
+            echo "Hand-off issue opened: ${ISSUE_URL}"
+            exit 0
+          fi
+          PR_NUM="$(gh pr view --json number --jq .number "${PR_URL}")"
+          sed -i "s/<NUMBER>/${PR_NUM}/g" /tmp/changelog-pr/body.md
+          gh pr edit "${PR_NUM}" --body-file /tmp/changelog-pr/body.md
+          echo "Pull request ${PR_URL} is ready for a person to review and merge."

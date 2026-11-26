@@ -106,15 +106,51 @@ corpus-kb ingest path/to/notes.md
 `run_pipeline` resolves the ingestion strategy once at entry, in this order:
 
 1. An explicit `--source-type` override on the CLI/MCP/HTTP ingest calls.
-2. The `ingestion.strategies[source_type]` map in `config.yaml`.
-3. Content detection: every registered strategy's `detect()` scores the
-   input (filename + text head); the highest-confidence match wins.
-4. `ingestion.default` (built-in: `default`).
+2. The active profile's `strategies[source_type]` mapping, when a profile
+   is loaded.
+3. The `ingestion.strategies[source_type]` map in `config.yaml`.
+4. Content detection: every registered strategy's `detect()` scores the
+   input (filename + text head). The top match wins when its confidence
+   is at least `DETECT_ADOPT_CONFIDENCE`.
+5. The typed source registry: a canonical name or alias resolves to the
+   strategy its `source_types` spec declares (table below).
+6. `ingestion.default` (built-in: `default`).
 
 The resolution is printed at ingest, for example
 `detected: transcript (0.92, moderator-pattern) → strategy transcript`, and
 recorded in the pipeline result. See
 [Ingestion strategies](#ingestion-strategies) for the extension guide.
+
+### Typed source registry
+
+Typed sources give ingest a stable vocabulary. The registry lives in
+`src/corpus_kb/ingestion/source_types.py`; it maps every accepted name to a
+canonical name, a strategy, and metadata keys.
+
+| Canonical name | Strategy | Aliases | Text ingest |
+|---|---|---|---|
+| `participant-session` | `transcript` | `transcript` | yes |
+| `internal-meeting` | `markdown_sections` | (none) | yes |
+| `external-site` | `web_structure` | `web` | no |
+
+`ingest-text` accepts `code`, `markdown`, `text`, `participant-session`,
+`internal-meeting`, and the `transcript` alias. `ingest-url` types pages as
+`external-site`; `web` stays an ingest-url concern. Unknown names return an
+error envelope that lists the accepted names.
+
+The registry stores the canonical name on each new document. Documents stored
+before this change keep their legacy values; pass those values to filters
+unchanged. Generic names (`text`, `code`, `markdown`) and strategy overrides
+(such as `pptx_structure`) also store verbatim.
+
+The `ingest_url` tool takes `visibility`: `public` or `internal`. The value
+stamps into each page's document metadata; callers can filter on it later.
+The aggregate result echoes the value, so a surface that drops it is
+visible. A changed declaration on unchanged text re-ingests (the unchanged
+probe folds the declaration in), so the new stamp always lands.
+
+A future type joins with no migration: one `corpus_kb.source_types`
+entry-point entry, plus one alias entry in its `SourceTypeSpec`.
 
 ### Stage 1: Partition
 
@@ -787,9 +823,11 @@ The strategy for an ingest is resolved once, in this order:
 | Precedence | Source | Example |
 |------------|--------|---------|
 | 1 | explicit `--source-type` override | `corpus-kb ingest call.txt --source-type transcript` |
-| 2 | `ingestion.strategies[source_type]` config map | the Ladder-1 YAML above |
-| 3 | content detection | each registered strategy's `detect()` scores the input; highest confidence wins |
-| 4 | `ingestion.default` | `default` |
+| 2 | the active profile's `strategies[source_type]` map | the profile's `strategies:` block |
+| 3 | `ingestion.strategies[source_type]` config map | the Ladder-1 YAML above |
+| 4 | content detection | each registered strategy's `detect()` scores the input; the winner needs confidence at or above `DETECT_ADOPT_CONFIDENCE` |
+| 5 | the typed source registry | `participant-session` resolves its declared `transcript` strategy |
+| 6 | `ingestion.default` | `default` |
 
 The resolved choice (strategy, confidence, reason) is printed at ingest and
 recorded in the pipeline result. Every document therefore carries its detection
@@ -909,17 +947,6 @@ Notes on the example:
 - **Test with the conformance suite.** Run your strategy through the same
   invariant checks the built-ins pass before you ship the entry point.
 
-### Why `retrieval.qa_context_in_fts` defaults to false
-
-Transcript chunks carry `qa_context` (the question, participants, exchange
-id). Including that text in the shared full-text index is **opt-in**
-(`retrieval.qa_context_in_fts: true`). The reason: Postgres `ts_rank` has no
-IDF. Question phrasing repeats across nearly every exchange. So question
-text in the shared FTS index systematically skews ranking toward transcript
-boilerplate. Keep it off until you have evaluated retrieval quality on your
-own corpus with it on. The `qa_context` columns and GIN index are available
-either way for structured access.
-
 ### Pick settings with data, not guesswork
 
 Chunking and retrieval settings interact. The calibrate sweep measures
@@ -982,19 +1009,17 @@ cleanly.
 | `embedding.model` | `qwen3-embedding:4b` | Embedding model (Ollama) |
 | `embedding.dimensions` | `2560` | Vector dimensions (must equal the schema width) |
 | `embedding.base_url` | `http://localhost:11434` | Ollama API URL |
-| `storage.vector_type` | `halfvec` | Embedding column type (HNSW caps `vector` at 2000 dims) |
 | `retrieval.mode` | `hybrid_rrf` | Retrieval strategy (single supported value today) |
 | `retrieval.vector_candidates` | `150` | Live vector-arm depth (effective limit: max(candidates, k * 2)) |
 | `retrieval.lexical_candidates` | `150` | Live FTS-arm depth (same floor rule) |
 | `retrieval.rrf_k` | `60` | RRF rank constant |
 | `retrieval.expand_to_parent` | `true` | Post-fusion small-to-big parent expansion |
 | `retrieval.exclude_degraded` | `true` | Exclude degraded (zero-vector) chunks from vector-search candidates |
-| `retrieval.qa_context_in_fts` | `false` | Include transcript `qa_context` in the FTS index (opt-in — the Ingestion strategies section explains why this is off by default) |
 | `retrieval.exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for the filtered exact scan |
 | `retrieval.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
 | `retrieval.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
 | `retrieval.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
-| `retrieval.self_query.enabled` | `true` | Enable self-query filter extraction |
+| `retrieval.self_query.enabled` | `false` | Enable self-query filter extraction (opt-in) |
 | `retrieval.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
 | `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
 | `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |

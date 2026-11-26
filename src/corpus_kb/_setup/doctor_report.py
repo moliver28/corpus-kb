@@ -58,15 +58,22 @@ def _print_doctor_system_lines(info: dict[str, Any]) -> str:
 
 
 def _print_doctor_config_block(env_check: Any, info: dict[str, Any]) -> None:
-    """The configuration block: env check, config file, and overlay paths."""
-    if env_check is None:
+    """The configuration block: env + config-key checks, file, overlays.
+
+    ``env_check`` is one check or a list of checks (the env row and the
+    PR-9 config-keys row); ``None`` entries are skipped.
+    """
+    checks = env_check if isinstance(env_check, list) else [env_check]
+    checks = [check for check in checks if check is not None]
+    if not checks:
         return
     print("\nConfiguration:")
-    print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
-    if env_check.fix:
-        print(f"    fix: {env_check.fix}")
-    if env_check.doc:
-        print(f"    docs: {env_check.doc}")
+    for check in checks:
+        print(f"  {check.name}: {check.status.upper()} - {check.detail}")
+        if check.fix:
+            print(f"    fix: {check.fix}")
+        if check.doc:
+            print(f"    docs: {check.doc}")
     # Issue #348: report the config file and the overlay paths, so a
     # client never has to parse config.yaml to know what is in force.
     print(f"  Config file: {info.get('config_file', 'packaged default')}")
@@ -108,6 +115,7 @@ def print_doctor_report(
     env_check: Any | None = None,
     storage: list[Any] | None = None,
     journey: list[Any] | None = None,
+    master: list[Any] | None = None,
 ) -> None:
     """Print read-only diagnostic report."""
     backend = _print_doctor_system_lines(info)
@@ -129,6 +137,10 @@ def print_doctor_report(
         from corpus_kb._setup.doctor_journey import print_journey_checks
 
         print_journey_checks(journey)
+    if master:
+        print("\nMaster topology:")
+        for check in master:
+            print(f"  [{check.status.upper():<7}] {check.name}: {check.detail}")
     print("\nRecommended commands (drop --dry-run to execute setup):")
     for index, command in enumerate(_recommended_setup_commands(info), start=1):
         print(f"  {index}. {command}")
@@ -194,6 +206,7 @@ def doctor_json_report(
     config: dict[str, Any],
     conn_str: str,
     journey: list[Any] | None = None,
+    master: list[Any] | None = None,
 ) -> dict[str, Any]:
     """The machine-readable doctor report (issue #348).
 
@@ -231,8 +244,10 @@ def doctor_json_report(
     if not info["ollama_ok"]:
         checks[-1]["fix"] = "install Ollama, then run: ollama serve"
     if env_check is not None:
-        checks.append(_check_entry(env_check))
-    for group in (research, storage, journey):
+        # One check or a list (the env row + the PR-9 config-keys row).
+        env_area = env_check if isinstance(env_check, list) else [env_check]
+        checks.extend(_check_entry(check) for check in env_area if check is not None)
+    for group in (research, storage, journey, master):
         for check in group or []:
             checks.append(_check_entry(check))
     return {

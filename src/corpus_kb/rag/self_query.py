@@ -145,18 +145,31 @@ def build_filter_sql(predicates: list[Predicate], start_index: int) -> tuple[str
         if pred.target == "tag":
             clauses.append(
                 f"EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON dt.tag_id = t.tag_id "
-                f"WHERE dt.doc_id = c.doc_id AND t.name = ${idx})"
+                f"WHERE dt.doc_id = chunks.doc_id AND t.name = ${idx})"
             )
             params.append(pred.value)
             idx += 1
         elif pred.target == "metadata":
             clauses.append(
-                f"EXISTS (SELECT 1 FROM metadata m WHERE m.doc_id = c.doc_id "
+                f"EXISTS (SELECT 1 FROM metadata m WHERE m.doc_id = chunks.doc_id "
                 f"AND m.key = ${idx} AND m.value = ${idx + 1})"
             )
             params.append(pred.key or "")
             params.append(pred.value)
             idx += 2
+        elif pred.target == "project":
+            # W5-5 project lens (pipeline-internal only; the parser never
+            # emits it — see SPECIAL_TARGETS/ALLOWED_COLUMNS). Tenant is
+            # matched INSIDE the subquery on top of the gateway's outer
+            # tenant GUC; correlated on the outer chunks.doc_id.
+            clauses.append(
+                f"EXISTS (SELECT 1 FROM documents lens_docs "
+                f"JOIN project_claims pc ON pc.doc_id = lens_docs.doc_id "
+                f"AND pc.tenant_id = lens_docs.tenant_id "
+                f"WHERE lens_docs.doc_id = chunks.doc_id AND pc.project_id = ${idx})"
+            )
+            params.append(pred.value)
+            idx += 1
         elif pred.target in ALLOWED_COLUMNS and pred.op in cast(
             set, ALLOWED_COLUMNS[pred.target]["ops"]
         ):
