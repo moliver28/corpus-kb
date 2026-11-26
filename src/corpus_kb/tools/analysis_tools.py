@@ -1,23 +1,11 @@
 """MCP/HTTP/socket/CLI handlers for the analysis ops (analysis program).
 
-One handler per operation, shared by every surface — the
-``tools/topics_tools.py`` pattern:
-
-  * :func:`analysis_backfill_dates` — the one-shot, idempotent
-    ``documents.document_date`` backfill (migration 027's rule,
-    callable after new ingests; no-op on already-dated documents).
-  * :func:`analyze_run` — the composed analysis run (WP-5): four
-    sections in fixed order (dates-coverage, labeling, classification,
-    trends), each DELEGATING to its one handler in
-    ``tools/{labeling,classification,topics}_tools.py``. The section
-    rows, the composer and the artifact writer live in
-    ``analysis/report.py``. One failing section never fails the run.
-
-Envelope: ``{status, documents_scanned, documents_dated}`` for the
-backfill, ``{status, sections}`` for the composed run — guaranteed on
-every outcome, so the parity gate holds on the disabled path too. The
-dormant default keeps the wave-0 stub envelope exactly; success gains
-``report_path`` when an output path was requested.
+One handler per operation, shared by every surface. ``analyze_run``
+composes the four sections (dates-coverage, labeling, classification,
+trends), each delegating to its one handler; the section rows, the
+composer, and the artifact writer live in ``analysis/report.py``. One
+failing section never fails the run. Success gains ``report_path`` when
+an output path was requested.
 """
 
 from __future__ import annotations
@@ -116,6 +104,16 @@ async def analyze_run(
         )
     ):
         return _disabled_run()
+    # W5-5 activity stamp: the analysis op touches the CACHED active project
+    # (cheap read, no recompute) so the active-state rule sees lensed
+    # analysis, not only ingests and queries (spec s3).
+    from datetime import UTC, datetime
+
+    from corpus_kb.master.state_store import stamp_project_touch
+
+    await stamp_project_touch(
+        pg_pool, load_config_or_pass(config), tenant_id, "analysis", datetime.now(UTC)
+    )
     sections = [
         await _dates_section(pg_pool, config, tenant_id, settings),
         await _labeling_section(pg_pool, config, tenant_id, settings),

@@ -194,7 +194,14 @@ async def test_search_schema_matches_catalogue_params() -> None:
     server = _make_server()
     tools = {tool.name: tool for tool in await server.list_tools()}
     schema = tools["search"].input_schema
-    assert set(schema["properties"]) == {"query", "k", "source_type", "self_query", "tenant_id"}
+    assert set(schema["properties"]) == {
+        "query",
+        "k",
+        "source_type",
+        "self_query",
+        "scope",
+        "tenant_id",
+    }
     assert schema["required"] == ["query"]
     # W3: the catalogue default k mirrors reranking.return_top_k (20).
     assert schema["properties"]["k"]["default"] == 20
@@ -263,6 +270,8 @@ async def test_round_trip_search(monkeypatch: pytest.MonkeyPatch) -> None:
         "status",
         "result",
         "degraded_excluded",
+        "project_scope",
+        "active_project",
         "vector_index_mode",
         "lexical_index_mode",
         "meta_hits",

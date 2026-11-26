@@ -133,6 +133,7 @@ class QueryHandler:
             query=query,
             multi_query_settings=self._multi_query_settings,
             rewriter=self._rewriter,
+            config=self._config,
         )
 
     def _resolve_default_k(self, query: SearchQuery) -> SearchQuery:

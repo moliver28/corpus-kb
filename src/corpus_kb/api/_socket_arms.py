@@ -149,6 +149,7 @@ async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         k=opt_int(params.get("k"), None, name="k"),
         source_type=params.get("source_type"),
         self_query=params.get("self_query"),
+        scope=params.get("scope"),
     )
     envelope = await get_query_handler().handle_search_with_meta(query)
     # Same additive envelope as POST /api/search (parity contract).
