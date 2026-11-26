@@ -52,7 +52,11 @@ _RAW: list[str] = [
     "cache.inductive_enabled|honored|research/exact_cache.py|Inductive exact-cache gate|"
     "inductive_enabled|",
     "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
-    "coding.model llm.base_url llm.model|honored|coding/coder_client.py||base_url|",
+    'coding.model|honored|server_wiring.py|Coder model, wired at startup|coding_cfg.get("model"|',
+    "llm.base_url|honored|handlers/llm_handler.py|Ollama host for the answer LLM|"
+    '_str_or_default(llm, "base_url"|',
+    "llm.model|honored|api/routes_v1.py|Default answer model for /v1 endpoints|"
+    'llm_section.get("model"|',
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
     "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",
     "database.backend database.connection_string routing.enabled retrieval.self_query.enabled "
