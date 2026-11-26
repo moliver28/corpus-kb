@@ -1,4 +1,4 @@
-"""Command-level behavior for the 13 ``corpus-rag uxr`` commands (issue #355).
+"""Command-level behavior for the ``corpus-rag uxr`` commands (issue #355).
 
 The commands run through the real ``cli_spec`` parser and handler map,
 so wiring and behavior get tested together. No test calls the network
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -341,6 +342,46 @@ def test_import_without_legacy_data_stays_clean(tmp_path: Path, monkeypatch) -> 
 
 
 # ---------------------------------------------------------------------------
+# The deprecated 'migrate' alias for 'uxr import' (#510)
+# ---------------------------------------------------------------------------
+
+
+def test_migrate_alias_prints_pointer_and_imports(tmp_path: Path, monkeypatch) -> None:
+    setup_study(tmp_path, monkeypatch)
+    run(["uxr", "ingest-plan", "--spec", "UX1-275.spec.json"])
+    legacy = [
+        {
+            "session": "p1",
+            "unit_id": "H1",
+            "stance": "Supports",
+            "quote": "export button worked",
+            "quote_class": "exact",
+            "rationale": "0.6.0 said so",
+        }
+    ]
+    monkeypatch.setattr(uxr_commands, "fetch_legacy_rows", lambda slug: legacy)
+    code, out = run(["uxr", "migrate"])
+    assert code == 0
+    assert "migrate" in out and "import" in out
+    conn = uxr_store.connect("ux1")
+    assert len(uxr_store.rows(conn)) == 1
+    assert uxr_store.imported(conn) is True
+
+
+def test_migrate_help_names_import() -> None:
+    cli = Path(__file__).resolve().parents[1] / "bin" / "corpus-rag"
+    result = subprocess.run(
+        [sys.executable, str(cli), "uxr", "migrate", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "import" in result.stdout
+
+
+# ---------------------------------------------------------------------------
 # write-themes and apply-summary commands
 # ---------------------------------------------------------------------------
 
@@ -397,10 +438,10 @@ def test_apply_summary_command_writes_blocks(tmp_path: Path, monkeypatch) -> Non
     [
         "consent", "ingest-plan", "classify", "confirm-classes", "stubs",
         "check-quote", "validate-rows", "rollup", "contract-test",
-        "write-themes", "apply-summary", "insights", "import",
+        "write-themes", "apply-summary", "insights", "import", "migrate",
     ],
 )
-def test_all_thirteen_commands_parse(command: str) -> None:
+def test_all_commands_parse(command: str) -> None:
     minimal = {
         "ingest-plan": ["--spec", "UX1-275.spec.json"],
         "confirm-classes": ["[]"],

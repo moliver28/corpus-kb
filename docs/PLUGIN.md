@@ -33,6 +33,7 @@ One tag, `corpus-rag-v<version>`, marks the engine commit for each release.
 - [Guided folder setup](#guided-folder-setup)
 - [The ingest queue](#the-ingest-queue)
 - [UX research studies](#ux-research-studies)
+- [Cutover from the private plugin](#cutover-from-the-private-plugin)
 - [Hook state files](#hook-state-files)
 - [ZCode notes](#zcode-notes)
 - [Development](#development)
@@ -505,6 +506,22 @@ file that holds the JSON. Exit 1 means the report must not be written.
 `consent` reads the setup answer from the gate state (issue #353).
 `local_only` blocks every cloud-model path in the `corpus-uxr` skill: no
 transcript text goes to a cloud model.
+
+## Cutover from the private plugin
+
+Move from `corpus-rag@moliver-plugins` (0.6.0) to `corpus-rag@corpus-kb`
+in four steps:
+
+1. Disable `corpus-rag@moliver-plugins`. Enable `corpus-rag@corpus-kb`.
+   Both plugins ship `bin/corpus-rag`, so only one may be enabled at a
+   time.
+2. Restart your agent, so hooks and skills reload.
+3. Set the DSN `userConfig` keys when the plugin asks: `app_dsn_template`
+   (the study database DSN, with `{database}` in it) and `superuser_dsn`
+   (for provision, migrate, and backup).
+4. Run `corpus-rag plugin-doctor` and then `corpus-rag list`. The doctor
+   must report the plugin as healthy. `list` shows your imported studies;
+   the 0.6.0 `projects.json` imports into the new registry on first use.
 
 ## Hook state files
 

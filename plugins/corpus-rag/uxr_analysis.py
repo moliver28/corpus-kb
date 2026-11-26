@@ -134,6 +134,12 @@ def _evidence(args, payload: dict) -> tuple[dict | None, bool]:
         return None
 
 
+def cmd_uxr_migrate(args) -> int:
+    """The deprecated ``uxr migrate`` alias; one pointer line, then import."""
+    print("note: 'migrate' is deprecated. The command is 'uxr import'; running it.")
+    return uxr_summaries.cmd_uxr_import(args)
+
+
 UXR_HANDLERS = {
     "consent": uxr_commands.cmd_uxr_consent,
     "ingest-plan": uxr_commands.cmd_uxr_ingest_plan,
@@ -148,6 +154,7 @@ UXR_HANDLERS = {
     "apply-summary": uxr_summaries.cmd_uxr_apply_summary,
     "insights": uxr_summaries.cmd_uxr_insights,
     "import": uxr_summaries.cmd_uxr_import,
+    "migrate": cmd_uxr_migrate,
     "post-search": uxr_summaries.cmd_uxr_post_search,
 }
 

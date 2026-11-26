@@ -222,3 +222,92 @@ def test_mutate_registry_sees_the_previous_writers_change() -> None:
     study_registry.mutate_registry(mark_pid)
     loaded = study_registry.load_registry()
     assert loaded["studies"]["alpha"]["pid"] == 42
+
+
+# ---------------------------------------------------------------------------
+# Cutover parity: the 0.6.0 import keeps DSNs, active, and paradigm (#510)
+# ---------------------------------------------------------------------------
+
+# The sanitized 0.6.0 shape: 13 studies, mixed postgres and duckdb, one
+# ``paradigm: codebook``, an ``active`` mark, and null ``pid`` rows.
+LEGACY_STUDIES: list[tuple[str, str, str | None]] = [
+    ("discovery", "postgres", None),
+    ("pricing_rounds", "postgres", "codebook"),
+    ("onboarding_2026", "postgres", None),
+    ("churn_interviews", "postgres", None),
+    ("support_tickets", "postgres", None),
+    ("sales_calls", "postgres", None),
+    ("usability_lab", "postgres", None),
+    ("advisory_board", "postgres", None),
+    ("partner_feedback", "postgres", None),
+    ("field_notes", "postgres", None),
+    ("local_notes", "duckdb", None),
+    ("local_pricing", "duckdb", None),
+    ("local_survey", "duckdb", None),
+]
+
+
+def _legacy_row(slug: str, backend: str) -> dict:
+    return {
+        "db": f"corpus_kb_{slug}",
+        "port": None,
+        "pid": None,
+        "backend": backend,
+    }
+
+
+def _write_legacy_file(active: str | None = None) -> bytes:
+    legacy = study_registry.legacy_path()
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    projects = {
+        slug: _legacy_row(slug, backend) | {"port": 8020 + index}
+        for index, (slug, backend, _paradigm) in enumerate(LEGACY_STUDIES)
+    }
+    for slug, _backend, paradigm in LEGACY_STUDIES:
+        if paradigm:
+            projects[slug]["paradigm"] = paradigm
+    data: dict = {"projects": projects}
+    if active:
+        data["active"] = active
+    payload = json.dumps(data).encode("utf-8")
+    legacy.write_bytes(payload)
+    return payload
+
+
+def test_legacy_import_keeps_dsn_active_and_paradigm(tmp_path: Path) -> None:
+    old_bytes = _write_legacy_file(active="discovery")
+    registry = study_registry.load_registry()
+    studies = registry["studies"]
+    assert set(studies) == {slug for slug, _b, _p in LEGACY_STUDIES}
+    assert registry["active"] == "discovery"
+    for slug, backend, paradigm in LEGACY_STUDIES:
+        study = studies[slug]
+        assert study["port"] == 8020 + [s for s, _b, _p in LEGACY_STUDIES].index(slug)
+        assert study["backend"] == backend
+        assert study["pid"] is None
+        if backend == "postgres":
+            assert study["database_url"].startswith("postgresql://")
+            assert study["database_url"].endswith(f"/corpus_kb_{slug}")
+        else:
+            expected = "duckdb:///" + str(study_registry.duckdb_file(slug))
+            assert study["database_url"] == expected
+        if paradigm:
+            assert study["paradigm"] == paradigm
+        else:
+            assert "paradigm" not in study
+    # The 0.6.0 file stays untouched.
+    assert study_registry.legacy_path().read_bytes() == old_bytes
+    # The registry file now exists, so a second load reads it and never
+    # re-imports: no duplicate rows.
+    assert study_registry.registry_path().is_file()
+    again = study_registry.load_registry()
+    assert again["studies"] == studies
+    assert again["active"] == "discovery"
+
+
+def test_legacy_import_ignores_unknown_active(tmp_path: Path) -> None:
+    _write_legacy_file(active="ghost_study")
+    registry = study_registry.load_registry()
+    assert registry["active"] is None
+    assert registry["studies"]
+    assert study_registry.legacy_path().is_file()

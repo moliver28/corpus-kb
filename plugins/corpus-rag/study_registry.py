@@ -31,7 +31,7 @@ from pathlib import Path
 
 import registry_io
 from engine_paths import plugin_data_dir, state_dir
-from study_config import base_port
+from study_config import base_port, study_dsn
 
 REGISTRY_FILENAME = "studies.json"
 LEGACY_FILENAME = "projects.json"
@@ -124,16 +124,31 @@ def _import_legacy() -> dict | None:
     for slug, row in projects.items():
         if not isinstance(row, dict):
             continue
-        studies[str(slug)] = {
-            "database_url": row.get("db", ""),
+        slug_text = str(slug)
+        backend = row.get("backend") or "postgres"
+        db = str(row.get("db", "") or "")
+        if backend == "duckdb":
+            database_url = f"duckdb:///{duckdb_file(slug_text)}"
+        elif "://" in db:
+            database_url = db
+        else:
+            database_url = study_dsn(db)
+        studies[slug_text] = {
+            "database_url": database_url,
             "port": row.get("port"),
-            "backend": row.get("backend", "postgres"),
+            "backend": backend,
             "pid": row.get("pid"),
         }
+        paradigm = row.get("paradigm")
+        if paradigm:
+            studies[slug_text]["paradigm"] = str(paradigm)
     if not studies:
         return None
     registry = empty_registry()
     registry["studies"] = studies
+    active = data.get("active")
+    if isinstance(active, str) and active in studies:
+        registry["active"] = active
     return registry
 
 
