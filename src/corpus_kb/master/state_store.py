@@ -14,28 +14,21 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from corpus_kb.master.active import (
     DEFAULT_IDLE_WINDOW_S,
     DEFAULT_SWITCH_WINDOW_S,
-    ActiveSignals,
     aware_utc,
     compute_active_state,
     pick_challenger,
     pick_incumbent,
-    signals_from_stamps,
 )
+from corpus_kb.master.attribution import master_cfg
 from corpus_kb.storage.gateway import SqlGateway, as_gateway
 
 SIDECAR_FILENAME = "master_state.json"
 _ACTIVITY_KINDS = frozenset({"ingest", "query", "analysis"})
-
-
-def _master_cfg(cfg: dict[str, Any] | None) -> dict[str, Any]:
-    """The ``master`` block of a config dict, tolerating absent trees."""
-    node = (cfg or {}).get("master")
-    return cast(dict[str, Any], node) if isinstance(node, dict) else {}
 
 
 def sidecar_path(cfg: dict[str, Any] | None) -> Path:
@@ -69,16 +62,26 @@ async def project_id_for_slug(gateway: SqlGateway | Any, tenant_id: str, slug: s
         )
         if row is not None:
             return str(row["project_id"])
-        project_id = str(uuid.uuid4())
+        # ON CONFLICT + re-select: ingest fans files out concurrently, so
+        # two workers can race the same fresh slug; the loser re-selects
+        # the winner's row instead of dying on the unique index.
+        fresh = str(uuid.uuid4())
         await tx.execute(
             "INSERT INTO research_projects (project_id, tenant_id, name, slug)"
-            " VALUES ($1, $2, $3, $4)",
-            project_id,
+            " VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, slug) DO NOTHING",
+            fresh,
             tenant_id,
             slug,
             slug,
         )
-        return project_id
+        row = await tx.fetchval(
+            "SELECT project_id FROM research_projects WHERE tenant_id = $1 AND slug = $2",
+            tenant_id,
+            slug,
+        )
+        if row is None:
+            raise LookupError(f"project row missing after registration: {slug}")
+        return str(row)
 
 
 async def project_id_only(gateway: SqlGateway | Any, tenant_id: str, slug: str) -> str | None:
@@ -152,10 +155,10 @@ async def resolve_lens(
     ``(None, None)`` without touching the gateway. The windows come
     from ``master.idle_window_s`` and ``master.switch_window_s``.
     """
-    if not _master_cfg(cfg).get("workspace_root"):
+    if not master_cfg(cfg).get("workspace_root"):
         return None, None
     gw = as_gateway(gateway)
-    master = _master_cfg(cfg)
+    master = master_cfg(cfg)
     switch = int(master.get("switch_window_s", DEFAULT_SWITCH_WINDOW_S))
     idle = int(master.get("idle_window_s", DEFAULT_IDLE_WINDOW_S))
     async with gw.transaction(tenant_id) as tx:
@@ -163,9 +166,6 @@ async def resolve_lens(
         incumbent_id, incumbent_ts = pick_incumbent(cached_id, since_ts, by_project)
         challenger_id, challenger_signals = pick_challenger(by_project, incumbent_id)
         state = compute_active_state(
-            signals_from_stamps(by_project.get(incumbent_id, {}))
-            if incumbent_id
-            else ActiveSignals(),
             incumbent_id,
             incumbent_ts,
             challenger_id,
@@ -218,7 +218,7 @@ async def stamp_project_touch(
     gateway: SqlGateway | Any, cfg: dict[str, Any] | None, tenant_id: str, kind: str, now: datetime
 ) -> None:
     """Stamp the CACHED active project only — a cheap read, no recompute."""
-    if not _master_cfg(cfg).get("workspace_root"):
+    if not master_cfg(cfg).get("workspace_root"):
         return
     if kind not in _ACTIVITY_KINDS:
         raise ValueError(f"unknown activity kind: {kind}")

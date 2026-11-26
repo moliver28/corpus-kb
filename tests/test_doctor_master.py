@@ -8,7 +8,7 @@ import pytest
 
 pytest.importorskip("duckdb")
 
-from corpus_kb._setup.doctor_master import check_master
+from corpus_kb._setup.doctor_master import check_master, master_section
 from corpus_kb._setup.doctor_research import STATUS_INFO, STATUS_SKIPPED
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.master.state_store import note_activity, project_id_for_slug, resolve_lens
@@ -30,6 +30,20 @@ async def _migrated(tmp_path: Path, name: str) -> Path:
     path = tmp_path / name
     await run_migrations(duckdb_path_to_conn_string(path))
     return path
+
+
+async def test_master_section_skips_unmigrated_store(tmp_path) -> None:
+    """An unmigrated store lacks the 048/049 tables: skipped, not dead."""
+    path = tmp_path / "doctor-unmigrated.duckdb"
+    gateway = await DuckDbGateway.connect(str(path))
+    await gateway.close()
+    section = await master_section(
+        {"database": {"backend": "duckdb"}, "master": CFG_ON["master"]},
+        duckdb_path_to_conn_string(path),
+    )
+    by_name = {c.name: c for c in section}
+    assert by_name["Master workspace"].status == "ok"
+    assert by_name["Master state"].status == STATUS_SKIPPED
 
 
 async def test_master_checks_skip_without_db() -> None:

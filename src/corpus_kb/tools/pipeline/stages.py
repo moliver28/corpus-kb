@@ -24,6 +24,7 @@ orchestrator (the legacy keyword seam was removed — PR 280 F2).
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -106,16 +107,22 @@ async def _run_document_stages(
     # names its project; an unknown slug auto-registers the row. Storage never
     # moves and the link can never fail the ingest — same best-effort posture
     # as the project_id link below. The keys ride every envelope branch.
-    from corpus_kb.master.attribution import slug_from_path
+    from corpus_kb.master.attribution import master_cfg, slug_from_path
     from corpus_kb.master.state_store import note_activity, project_id_for_slug
 
     now = datetime.now(UTC)
-    slug = slug_from_path(doc.path, str((config.get("master") or {}).get("workspace_root", "")))
-    if slug and not project_id:
-        project_id = await project_id_for_slug(pg_pool, tenant_id, slug)
+    had_explicit = project_id is not None
+    slug: str | None = None
+    try:
+        slug = slug_from_path(doc.path, str(master_cfg(config).get("workspace_root", "")))
+        if slug and not had_explicit:
+            project_id = await project_id_for_slug(pg_pool, tenant_id, slug)
+    except Exception:
+        slug = None
     if project_id:
-        await note_activity(pg_pool, tenant_id, project_id, "ingest", now)
-    scope = "project" if slug else "none"
+        with contextlib.suppress(Exception):
+            await note_activity(pg_pool, tenant_id, project_id, "ingest", now)
+    scope = "project" if (slug and not had_explicit) else "none"
 
     # Hash-first dedupe (W4, F-06): the hash probe answers across path
     # spellings; the path probe stays as the fallback (subsumed, harmless).

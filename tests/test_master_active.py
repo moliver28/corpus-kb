@@ -22,7 +22,6 @@ def _ago(seconds: float) -> datetime:
 
 def test_incumbent_stays_within_idle_window() -> None:
     state = compute_active_state(
-        ActiveSignals(ingest_ts=_ago(3600)),
         INC,
         _ago(3600),
         None,
@@ -35,7 +34,6 @@ def test_incumbent_stays_within_idle_window() -> None:
 
 def test_challenger_takes_over_when_strictly_newer() -> None:
     state = compute_active_state(
-        ActiveSignals(ingest_ts=_ago(3600)),
         INC,
         _ago(3600),
         CHL,
@@ -50,7 +48,6 @@ def test_equal_timestamps_keep_incumbent() -> None:
     """Review focus 3: same age, same stamp — the challenger is not strictly newer."""
     ts = _ago(100)
     state = compute_active_state(
-        ActiveSignals(query_ts=ts),
         INC,
         ts,
         CHL,
@@ -70,7 +67,6 @@ def test_folder_signal_never_outranks_store() -> None:
 def test_no_fresh_signals_answers_none() -> None:
     """Incumbent past the idle window and the challenger past the switch window."""
     state = compute_active_state(
-        ActiveSignals(ingest_ts=_ago(9000)),
         INC,
         _ago(9000),
         CHL,

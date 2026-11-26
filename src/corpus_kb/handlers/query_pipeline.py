@@ -11,6 +11,7 @@ connection-level acquisition and result assembly live in
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -147,6 +148,9 @@ async def search_with_meta(
     primary outcome and their rows fuse with it; the envelope then carries
     ``query_rewrites``. Off or degraded, the path is the single-query
     pipeline with no extra envelope key.
+
+    The project lens is best effort: a store failure or a failed activity
+    stamp degrades to the pool-wide stamp and never fails the search.
     """
     with span(SPAN_QUERY):
         query = resolve_default_k(query, rerank_settings)
@@ -176,18 +180,25 @@ async def search_with_meta(
             tenant = str(query.tenant_id)
             now = datetime.now(UTC)
             lens_id: str | None = None
-            if query.scope:
-                lens_id = await project_id_only(pool, tenant, query.scope)
-                if lens_id is not None:
-                    active_slug = query.scope
-            else:
-                lens_id, active_slug = await resolve_lens(pool, config, tenant, now)
+            # Best effort (W5): a store failure or a failed stamp degrades
+            # the search to the honest pool-wide stamp, never fails it.
+            try:
+                if query.scope:
+                    lens_id = await project_id_only(pool, tenant, query.scope)
+                    if lens_id is not None:
+                        active_slug = query.scope
+                else:
+                    lens_id, active_slug = await resolve_lens(pool, config, tenant, now)
+            except Exception:
+                lens_id = None
+                active_slug = None
             if lens_id is not None:
                 from corpus_kb.rag.self_query import Predicate
 
                 dynamic_predicates.append(Predicate(target="project", op="=", value=lens_id))
                 scope_used = active_slug or "project"
-                await note_activity(pool, tenant, lens_id, "query", now)
+                with contextlib.suppress(Exception):
+                    await note_activity(pool, tenant, lens_id, "query", now)
         over_retrieve = over_retrieve_n(reranker, rerank_settings)
         run = ArmRun(
             query=query,

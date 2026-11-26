@@ -114,6 +114,18 @@ async def master_section(config: dict[str, Any], conn_str: str) -> list[Research
         return await check_master(None, config)
     try:
         return await check_master(gateway, config)
+    except Exception:
+        # An unmigrated store lacks the 048/049 tables; the section answers
+        # a skipped row instead of dying (the docstring promise, and the
+        # doctor_research.py pattern for its own DB reads).
+        return [
+            workspace_check(str((config.get("master") or {}).get("workspace_root", ""))),
+            ResearchCheck(
+                name="Master state",
+                status=STATUS_SKIPPED,
+                detail="Store tables missing; run corpus-kb setup first.",
+            ),
+        ]
     finally:
         closer = getattr(gateway, "close", None)
         if closer is not None:

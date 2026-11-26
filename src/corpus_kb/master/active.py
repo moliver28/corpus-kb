@@ -60,7 +60,6 @@ def last_activity(signals: ActiveSignals) -> datetime | None:
 
 
 def compute_active_state(
-    signals: ActiveSignals,
     incumbent_id: str | None,
     incumbent_ts: datetime | None,
     challenger_id: str | None,

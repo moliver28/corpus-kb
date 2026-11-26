@@ -160,6 +160,11 @@ async def test_scope_default_rides_active_project(
         project_preds = [p for p in captured["predicates"] if p.target == "project"]
         assert [p.value for p in project_preds] == [pid]
         assert captured["scope"] == "alpha"
+        # Unknown slug: pool-wide with the honest "all" stamp (the promise
+        # in the query_pipeline comment; ProjectNotFoundError is spec s11).
+        await run_search("does-not-exist")
+        assert [p for p in captured["predicates"] if p.target == "project"] == []
+        assert captured["scope"] == "all"
     finally:
         await gateway.close()
         for suffix in ("", ".wal"):

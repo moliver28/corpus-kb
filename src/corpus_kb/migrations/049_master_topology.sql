@@ -11,6 +11,9 @@ ALTER TABLE research_projects ADD COLUMN IF NOT EXISTS slug TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_research_projects_slug
     ON research_projects (tenant_id, slug);
 
+-- No security_invoker on the view: today every base table is FORCE RLS
+-- with the session GUC, the view stays tenant-scoped. If a future
+-- migration feeds it a non-forced table, add security_invoker = true.
 CREATE OR REPLACE VIEW master_project_index AS
 SELECT p.tenant_id,
        p.project_id,

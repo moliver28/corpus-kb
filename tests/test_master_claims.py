@@ -92,6 +92,8 @@ async def test_claim_flow_pg(pg_pool, monkeypatch: pytest.MonkeyPatch) -> None:
         "document_id",
         "path",
         "source_type",
+        "project_scope",
+        "project_slug",
         "reason",
         "source_project_id",
         "errors",

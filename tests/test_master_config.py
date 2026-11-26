@@ -32,5 +32,8 @@ def test_master_backup_defaults() -> None:
     }
 
 
-def test_master_adopt_env_var_registered() -> None:
-    assert "CORPUS_KB_MASTER_ADOPT" in KNOWN_CORPUS_KB_ENV_VARS
+def test_master_adopt_env_var_not_yet_mapped() -> None:
+    # adopt_on_start gets a reader in W8; no env mapping until then (the
+    # no-dead-mappings rule). The matrix rows stay: they are the
+    # known-key inventory validate_configs accepts.
+    assert "CORPUS_KB_MASTER_ADOPT" not in KNOWN_CORPUS_KB_ENV_VARS

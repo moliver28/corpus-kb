@@ -131,7 +131,6 @@ _ENV_OVERRIDES: dict[tuple[str, str], str] = {
     ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
     ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
     ("telemetry", "enabled"): "CORPUS_KB_TELEMETRY_ENABLED",
-    ("master", "adopt_on_start"): "CORPUS_KB_MASTER_ADOPT",
 }
 
 
@@ -430,8 +429,6 @@ def get_default_config() -> dict[str, object]:
     # module merge stays here so its imports stay lazy (validate_configs,
     # the installer, and other tool paths load config.py first).
     config = copy.deepcopy(DEFAULT_CONFIG)
-    _apply_typed_module_defaults(config)
-    return config
     _apply_typed_module_defaults(config)
     return config
 
