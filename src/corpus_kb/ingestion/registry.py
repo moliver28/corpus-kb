@@ -2,13 +2,15 @@
 
 Resolution precedence (plan Section 0, pinned):
   1. EXPLICIT override (CLI --source-type / MCP tool param — a strategy name)
-  2. project config mapping ``ingestion.strategies[source_type]``
-  3. content detection (each registered strategy's detect() on the head)
-  4. ``ingestion.default`` (a strategy name, default "default")
+  2. the active profile's ``strategies[source_type]`` mapping
+  3. project config mapping ``ingestion.strategies[source_type]``
+  4. content detection (each registered strategy's detect() on the head) at
+     confidence >= DETECT_ADOPT_CONFIDENCE
+  5. the typed source_types registry (the spec's declared strategy)
+  6. ``ingestion.default`` (a strategy name, default "default")
 
-Built-ins register directly in code (see :func:`_ensure_ready`); third-party
-strategies load ONCE via the ``corpus_kb.ingestion_strategies`` entry-point
-group; a broken plugin logs a warning, is skipped, never crashes ingest.
+Built-ins register in code (see ``_ensure_ready``); third-party strategies load once via the
+entry-point group; a broken plugin logs a warning, is skipped, never crashes ingest.
 """
 
 from __future__ import annotations
@@ -18,12 +20,8 @@ from dataclasses import dataclass
 
 from corpus_kb.errors import ValidationError
 
-from .base import (
-    DEFAULT_STRATEGY_NAME,
-    DETECT_ADOPT_CONFIDENCE,
-    DetectResult,
-    IngestionStrategy,
-)
+from .base import DEFAULT_STRATEGY_NAME, DETECT_ADOPT_CONFIDENCE, DetectResult, IngestionStrategy
+from .source_types import resolve_source_type
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +37,7 @@ _ready = False
 
 
 def register_strategy(strategy: IngestionStrategy) -> None:
-    """Register a strategy instance under its ``name`` (idempotent overwrite).
-
-    Ladders: in-process #2 (scripts/power users), entry points #3, config #1.
-    """
+    """Register under ``name`` (idempotent overwrite); the ladder order stays fixed."""
     name = getattr(strategy, "name", None)
     if not isinstance(name, str) or not name:
         raise ValidationError("Ingestion strategy must expose a non-empty string 'name'")
@@ -64,12 +59,11 @@ def strategy_names() -> list[str]:
 def get_strategy(name: str) -> IngestionStrategy:
     """Look up a registered strategy; unknown names raise with the valid set."""
     _ensure_ready()
-    strategy = _REGISTRY.get(name)
-    if strategy is None:
+    if name not in _REGISTRY:
         raise UnknownStrategyError(
             f"Unknown ingestion strategy '{name}'. Valid strategies: {', '.join(sorted(_REGISTRY))}"
         )
-    return strategy
+    return _REGISTRY[name]
 
 
 def _ensure_ready() -> None:
@@ -88,23 +82,24 @@ def _ensure_ready() -> None:
     from .strategies.web import WebStructureStrategy
 
     # Registration order breaks detection ties (first wins, per _detect_best).
-    register_strategy(DefaultStrategy())
-    register_strategy(PptxStructureStrategy())
-    register_strategy(TranscriptStrategy())
-    register_strategy(WebStructureStrategy())
-    register_strategy(CodeStrategy())
-    register_strategy(MarkdownSectionsStrategy())
-    register_strategy(SurveyStrategy())
-    register_strategy(TextbookStrategy())
+    for strategy in (
+        DefaultStrategy(),
+        PptxStructureStrategy(),
+        TranscriptStrategy(),
+        WebStructureStrategy(),
+        CodeStrategy(),
+        MarkdownSectionsStrategy(),
+        SurveyStrategy(),
+        TextbookStrategy(),
+    ):
+        register_strategy(strategy)
     _discover_entry_points()
 
 
 def _discover_entry_points() -> list[str]:
     """Load third-party strategies from the entry-point group (error-tolerant).
 
-    Returns the names successfully registered. Import/loading failures are
-    logged as warnings and skipped: a broken third-party plugin must never
-    take ingest down.
+    Returns the registered names; a broken plugin logs a warning and is skipped.
     """
     loaded: list[str] = []
     try:
@@ -129,12 +124,11 @@ def _discover_entry_points() -> list[str]:
 class StrategyResolution:
     """The ONE strategy chosen for a document, with full provenance.
 
-    ``detected`` names the strategy that won content detection regardless of
-    which basis actually decided (detection always runs once, for provenance).
+    ``detected`` names the strategy that won detection, whatever basis decided.
     """
 
     strategy: IngestionStrategy
-    basis: str  # "explicit" | "profile" | "config" | "detection" | "default"
+    basis: str  # "explicit" | "profile" | "config" | "detection" | "registry" | "default"
     detection: DetectResult | None = None
     detected: str | None = None
     mapped_source_type: str | None = None
@@ -148,17 +142,12 @@ def resolve_strategy(
     strategy_override: str | None = None,
     profile: object | None = None,
 ) -> StrategyResolution:
-    """Resolve ONE strategy for one document (precedence pinned in Section 0).
+    """Resolve ONE strategy for one document (precedence pinned above).
 
-    Precedence: explicit override > profile mapping > config mapping >
-    content detection > default (the profile's default wins over the
-    config's when a profile is active). ``profile`` is a
-    :class:`corpus_kb.profiles.IngestionProfile` (typed loosely so the
-    registry never imports the profiles package).
-
-    Raises :class:`UnknownStrategyError` for an unknown explicit override or
-    an unknown config-mapped strategy name (loud, never a silent fallback —
-    the house pattern from extract_with_fallback).
+    The profile's default beats the config's default. ``profile`` is a
+    :class:`corpus_kb.profiles.IngestionProfile` (typed loosely so the registry
+    never imports the profiles package). Unknown override or config-mapped
+    names raise :class:`UnknownStrategyError` — loud, never a silent fallback.
     """
     _ensure_ready()
     detected_strategy, detection = _detect_best(source_type, filename, raw_head)
@@ -183,6 +172,10 @@ def resolve_strategy(
         and detection.confidence >= DETECT_ADOPT_CONFIDENCE
     ):
         return StrategyResolution(detected_strategy, "detection", detection, detected_name)
+    if (spec := resolve_source_type(source_type)) is not None:
+        return StrategyResolution(
+            get_strategy(spec.strategy), "registry", detection, detected_name, source_type
+        )
     return StrategyResolution(
         get_strategy(_default_strategy_name(config, profile)), "default", detection, detected_name
     )
@@ -190,8 +183,6 @@ def resolve_strategy(
 
 def _profile_strategy_name(source_type: str, profile: object | None) -> str | None:
     """The strategy name the active profile maps for this source type."""
-    if profile is None:
-        return None
     raw = getattr(profile, "strategies", None)
     if not isinstance(raw, dict):
         return None
@@ -204,8 +195,7 @@ def _detect_best(
 ) -> tuple[IngestionStrategy | None, DetectResult | None]:
     """Run every strategy's detect(); return the highest-confidence claim.
 
-    A detect() that raises is logged and skipped — detection is best-effort
-    provenance, never a failure path.
+    A raising detect() is logged and skipped — detection is provenance, never a failure path.
     """
     best: tuple[float, IngestionStrategy, DetectResult] | None = None
     for name, strategy in _REGISTRY.items():
@@ -216,9 +206,7 @@ def _detect_best(
             continue
         if best is None or result.confidence > best[0]:
             best = (result.confidence, strategy, result)
-    if best is None:
-        return None, None
-    return best[1], best[2]
+    return (best[1], best[2]) if best is not None else (None, None)
 
 
 def _ingestion_config(config: dict[str, object]) -> dict[str, object]:

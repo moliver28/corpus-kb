@@ -31,6 +31,7 @@ from typing import Any
 
 import asyncpg
 
+from ...ingestion.source_types import VISIBILITY_VALUES
 from ...storage.gateway import SqlGateway
 from ...storage.rag_backend import RagBackend
 from ._facade import _ic
@@ -47,7 +48,7 @@ __all__ = ["_run_document_stages"]
 def _declared_visibility(config: dict[str, Any]) -> str | None:
     """The caller-declared visibility for typed external-site ingests."""
     value = ((config or {}).get("document") or {}).get("visibility")
-    return value if value in {"public", "internal"} else None
+    return value if value in VISIBILITY_VALUES else None
 
 
 def _book_title(config: dict[str, Any]) -> str | None:
@@ -125,10 +126,11 @@ async def _run_document_stages(
     scope = "project" if (slug and not had_explicit) else "none"
 
     # Hash-first dedupe (W4, F-06): the hash probe answers across path
-    # spellings; the path probe stays as the fallback (subsumed, harmless).
-    unchanged_doc = await ingest_sink.unchanged_hash_doc_id(doc.file_hash)
+    # spellings; the path probe stays as the fallback. The declared visibility
+    # folds into BOTH probes, so a changed stamp re-ingests (P2).
+    unchanged_doc = await ingest_sink.unchanged_hash_doc_id(doc.file_hash, declared)
     if unchanged_doc is None:
-        unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash)
+        unchanged_doc = await ingest_sink.unchanged_doc_id(doc.path, doc.file_hash, declared)
     if unchanged_doc is not None:
         origin = await ingest_store.document_origin_project(unchanged_doc)
         if project_id and origin != project_id:
@@ -158,7 +160,12 @@ async def _run_document_stages(
         await _commit_document(ingest_sink, doc, errors)
 
         stages = _ledger_stages(
-            artifacts, errors, validation_report, validation_mode, calibration_summary
+            artifacts,
+            errors,
+            validation_report,
+            validation_mode,
+            calibration_summary,
+            declared_visibility=declared,
         )
 
         # Close the ledger LAST — completed only when no stage recorded an

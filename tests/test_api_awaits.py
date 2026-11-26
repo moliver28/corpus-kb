@@ -349,6 +349,7 @@ async def test_socket_ingest_url_awaits_tool(monkeypatch: Any) -> None:
         crawl: bool = False,
         source_type: str | None = None,
         validate: str = "off",
+        visibility: str | None = None,
     ) -> dict[str, object]:
         seen.append((url, crawl))
         return {"status": "success", "handler": "ingest_url"}

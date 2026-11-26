@@ -101,6 +101,12 @@ TEXTBOOK_KEYS = frozenset({"textbook"})
 # sections stay absent until a backend reports them.
 TOKEN_KEYS = frozenset({"token_usage"})
 
+# Declared visibility (ingest_url only): the ``visibility`` key appears on
+# the aggregate envelope ONLY when the caller declared one. Value: the
+# stamped value itself ("public" or "internal"), so every surface answers
+# what the pages carry and the parity gate sees a dropped forwarder.
+VISIBILITY_KEYS = frozenset({"visibility"})
+
 # Demo-load receipt (``demo_kb.load_demo_kb``; momus F8 close-out): the
 # house top-level shape is always these two keys, on every outcome.
 DEMO_ENVELOPE = ("status", "result")

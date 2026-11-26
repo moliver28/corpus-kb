@@ -11,7 +11,10 @@ edit here.
 Behaviors carry the designed deltas (G27): the DuckDB query arm runs
 exact-scan + BM25 FTS index modes with a disjunctive-only lexical arm and
 zero-vector sentinel ordering, and row-level security is Postgres-only by
-design. PR-10 generates the published matrix doc from these rows.
+design. The rows feed the config-backend parity gate and the live matrix
+(``scripts/duck_live_matrix.py`` derives its op list from
+:func:`declared_ops`); the published matrix doc
+(``docs/research/duckdb-parity-matrix.md``) is hand-checked against them.
 
 Split note: the planner pre-authorized ``config_backend_matrix.py``
 (config keys) + ``ops_backend_matrix.py`` (ops) so each module stays
@@ -83,11 +86,6 @@ OPS_DELTA_ROWS: tuple[OpsBackendRow, ...] = tuple(
 )
 
 
-def ops_rows() -> tuple[OpsBackendRow, ...]:
-    """Every op declaration row, in declaration order."""
-    return OPS_DELTA_ROWS
-
-
 def declared_ops() -> tuple[str, ...]:
     """Every declared op name."""
     return tuple(row.op for row in OPS_DELTA_ROWS)
@@ -100,5 +98,4 @@ __all__ = [
     "POSTGRES",
     "OpsBackendRow",
     "declared_ops",
-    "ops_rows",
 ]

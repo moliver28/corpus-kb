@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
 from corpus_kb.api._socket_rows_reingest import REINGEST_SPECS
-from corpus_kb.api._socket_specs import _Opt, _Spec
+from corpus_kb.api._socket_specs import _INGEST_URL_OPTS, _Opt, _Spec
 
 # Lazy-import targets for the spec rows (one short name per tool module).
 _INGEST = "corpus_kb.tools.ingest_tools"
@@ -54,7 +54,7 @@ _SPECS: dict[str, _Spec] = {
         "ingest_url",
         pool_pos=1,
         positional=(_Opt("url", "req"),),
-        opts=(_Opt("crawl", "bool", False), _Opt("source_type", "raw"), _Opt("validate", "str")),
+        opts=_INGEST_URL_OPTS,
     ),
     "ingest_status": _Spec(
         _INGEST_S, "ingest_status", opts=(_Opt("limit", "int", 20), _Opt("project_id", "str"))

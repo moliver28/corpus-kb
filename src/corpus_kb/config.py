@@ -22,7 +22,8 @@ import yaml
 
 # Re-exports (graph_factory and tests import these from corpus_kb.config).
 # The ``x as x`` spelling marks each name as an intentional re-export, so
-# one string bank can serve both import surfaces (ruff isort splits them).
+# one string bank can serve both import surfaces (ruff isort keeps
+# them as one import per statement).
 from corpus_kb.backend_gates import (
     AGE_ON_DUCKDB_ERROR as AGE_ON_DUCKDB_ERROR,
 )
@@ -64,6 +65,12 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
+def _load_yaml_mapping(path: Path) -> dict[str, object]:
+    """One YAML file as a mapping; an empty file yields ``{}``."""
+    with path.open() as f:
+        return cast(dict[str, object], yaml.safe_load(f) or {})
+
+
 # The verify badge's "verified" bar (UI SPA program Task 3): at or above this
 # groundedness the judge entailed every claim it checked; below it the answer
 # is "partial". Hoisted from ui/view_models.py BEFORE that file's deletion so
@@ -73,6 +80,22 @@ VERIFY_FULL_GROUNDEDNESS = 0.99
 # ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount)
 # moved to config_defaults_features.py with the defaults tree (W5-1 split);
 # they are imported above and re-exported for the SPA module and tools.
+
+
+#: One row per checked ui.spa.* value: key, default, low, high, a
+#: whole-number flag, and the plain-English unit note the refusal names.
+_SPA_VALUE_RULES: tuple[tuple[str, float, float, float, bool, str], ...] = (
+    ("poll_ms", SPA_POLL_MS_DEFAULT, 100, 60000, True, "milliseconds between status polls"),
+    (
+        "request_timeout_s",
+        SPA_REQUEST_TIMEOUT_S_DEFAULT,
+        0.1,
+        600,
+        False,
+        "seconds one API call waits",
+    ),
+    ("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT, 1, 2048, True, "megabytes per file"),
+)
 
 
 def ui_spa_settings_error(config: dict[str, object]) -> str | None:
@@ -88,25 +111,15 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
         return None
     if not isinstance(spa, dict):
         return f"ui.spa: must be a settings block; got {spa!r}"
-    poll = spa.get("poll_ms", SPA_POLL_MS_DEFAULT)
-    if not isinstance(poll, int) or isinstance(poll, bool) or not 100 <= poll <= 60000:
-        return (
-            "ui.spa.poll_ms: must be a whole number from 100 to 60000 "
-            "(milliseconds between status polls)."
-        )
-    timeout = spa.get("request_timeout_s", SPA_REQUEST_TIMEOUT_S_DEFAULT)
-    if (
-        not isinstance(timeout, (int, float))
-        or isinstance(timeout, bool)
-        or not 0.1 <= timeout <= 600
-    ):
-        return (
-            "ui.spa.request_timeout_s: must be a number from 0.1 to 600 "
-            "(seconds one API call waits)."
-        )
-    upload = spa.get("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT)
-    if not isinstance(upload, int) or isinstance(upload, bool) or not 1 <= upload <= 2048:
-        return "ui.spa.max_upload_mb: must be a whole number from 1 to 2048 (megabytes per file)."
+    for key, default, low, high, whole_number, note in _SPA_VALUE_RULES:
+        value = spa.get(key, default)
+        if whole_number:
+            well_typed = isinstance(value, int) and not isinstance(value, bool)
+        else:
+            well_typed = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not well_typed or not low <= value <= high:
+            kind = "a whole number" if whole_number else "a number"
+            return f"ui.spa.{key}: must be {kind} from {low} to {high} ({note})."
     return None
 
 
@@ -220,31 +233,27 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     """
     config = get_default_config()
 
-    config_path: Path | None = None
+    # Candidate list, in discovery order: the explicit path (or the
+    # CORPUS_KB_CONFIG path), then ./config.yaml in the working directory.
+    # The packaged default is the last resort, so the first EXISTING
+    # candidate wins.
+    first_choice: Path | None = None
     if path:
-        config_path = Path(path)
-    else:
-        env_path = os.environ.get("CORPUS_KB_CONFIG")
-        if env_path:
-            config_path = Path(env_path)
-
-    if config_path is not None and config_path.exists():
-        with config_path.open() as f:
-            file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-        _deep_update(config, file_config)
-    elif (Path.cwd() / "config.yaml").exists():
-        cwd_config = Path.cwd() / "config.yaml"
-        with cwd_config.open() as f:
-            file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-        _deep_update(config, file_config)
-    else:
+        first_choice = Path(path)
+    elif env_path := os.environ.get("CORPUS_KB_CONFIG"):
+        first_choice = Path(env_path)
+    file_config: dict[str, object] | None = None
+    for candidate in (p for p in (first_choice, Path.cwd() / "config.yaml") if p is not None):
+        if candidate.exists():
+            file_config = _load_yaml_mapping(candidate)
+            break
+    if file_config is None:
         import importlib.resources as resources
 
         ref = resources.files("corpus_kb") / "config.yaml"
         with resources.as_file(ref) as packaged_path:
-            with Path(packaged_path).open() as f:
-                file_config = cast(dict[str, object], yaml.safe_load(f) or {})
-            _deep_update(config, file_config)
+            file_config = _load_yaml_mapping(Path(packaged_path))
+    _deep_update(config, file_config)
 
     # Issue #348 overlays: deep-merge IN ORDER after the main file, before
     # the alias and env layers. `file_config` stays the MAIN file's tree —
@@ -256,8 +265,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 f"Config overlay file not found: {overlay_path}. "
                 "Fix the path in CORPUS_KB_CONFIG_OVERLAY."
             )
-        with overlay_path.open() as f:
-            overlay_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        overlay_config = _load_yaml_mapping(overlay_path)
         if not isinstance(overlay_config, dict):
             raise ConfigError(
                 f"Config overlay {overlay_path} must hold a YAML mapping of settings."
@@ -439,8 +447,10 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     research.release.* + the measurement blocks, ingest.chunking.*,
     retrieval.hnsw.* come from the owning modules so the defaults in
     config.py, both config.yaml files and the typed readers cannot drift.
-    Imported lazily: config.py is loaded before the package is fully
-    importable in some tool paths (validate_configs, installer).
+    (ui.spa.* and telemetry.* are literals in get_default_config, so they
+    need no setdefault here.) Imported lazily: config.py is loaded before
+    the package is fully importable in some tool paths (validate_configs,
+    installer).
     """
     from corpus_kb.chunking.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
@@ -474,25 +484,9 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # Wave 4 topics layer (topics/settings.py is the typed reader): the
     # opt-in BERTopic block, dormant behind topics.enabled: false.
     config.setdefault("topics", _detached_defaults(TOPICS_CONFIG_DEFAULTS))
-    # UI SPA browser UI (ui/spa.py reads ui.spa.* with defaults): the
-    # block MUST exist here or the setup write-back would silently drop
-    # ui.spa.* keys from user configs (the same passthrough rule as
-    # research above).
-    config.setdefault(
-        "ui",
-        _detached_defaults(
-            {
-                "spa": {
-                    "poll_ms": SPA_POLL_MS_DEFAULT,
-                    "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
-                    "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
-                }
-            }
-        ),
-    )
     # UX Wave 6 notebooks console (notebooks/settings.py is the typed
     # reader): the marimo console block, mounted at /notebooks behind the
-    # [notebook] extra. Same passthrough rule as ui above.
+    # [notebook] extra. Same passthrough rule as research/ui above.
     from corpus_kb.notebooks.settings import NOTEBOOKS_CONFIG_DEFAULTS
 
     config.setdefault("notebooks", _detached_defaults(NOTEBOOKS_CONFIG_DEFAULTS))
@@ -502,10 +496,6 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.analysis.settings import ANALYSIS_CONFIG_DEFAULTS
 
     config.setdefault("analysis", _detached_defaults(ANALYSIS_CONFIG_DEFAULTS))
-    # Opt-in telemetry (issue #442; telemetry/settings.py is the typed reader).
-    from corpus_kb.telemetry.settings import TELEMETRY_CONFIG_DEFAULTS
-
-    config.setdefault("telemetry", _detached_defaults(TELEMETRY_CONFIG_DEFAULTS))
     from corpus_kb.ask.ask_settings import ASK_CONFIG_DEFAULTS  # issue #540
 
     config.setdefault("ask", _detached_defaults(ASK_CONFIG_DEFAULTS))

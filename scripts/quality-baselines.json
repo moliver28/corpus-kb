@@ -49,7 +49,7 @@
     "src/corpus_kb/coding/confidence_calibration.py": 308,
     "src/corpus_kb/coding/inductive_cluster.py": 323,
     "src/corpus_kb/coding/structured_output.py": 271,
-    "src/corpus_kb/config.py": 528,
+    "src/corpus_kb/config.py": 518,
     "src/corpus_kb/contracts/catalogue_analysis.py": 410,
     "src/corpus_kb/contracts/catalogue_research.py": 379,
     "src/corpus_kb/domain/codebook.py": 428,

@@ -29,12 +29,11 @@
 # `--start-rev` takes any git rev, skips the tag lookup, and composes
 # with --unreleased-version. Verified against commitizen 4.18.1.
 #
-# A pull request created with the workflow token reports no checks:
-# GitHub skips events that the token triggers. The pull request body
-# carries a re-arm command; a person runs it once, and all required
-# contexts report. If the push or the pull request creation fails, the
-# workflow opens an issue that carries the rendered section and the
-# same steps for a person to run.
+# The pull request is created with the RELEASE_PAT token. GitHub starts
+# workflow runs for events made with that token, so the PR's checks run
+# natively; a person merges when green. If the push or the pull request
+# creation fails, the workflow opens an issue that carries the rendered
+# section and the steps for a person to run.
 
 name: Changelog
 
@@ -116,7 +115,7 @@ jobs:
       - name: Open a pull request with the changelog update
         env:
           NEW_TAG: ${{ github.ref_name }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -137,16 +136,10 @@ jobs:
           This pull request adds the ${NEW_TAG} section to CHANGELOG.md.
           Commitizen rendered the section from the release commit range.
 
-          GitHub skips workflow runs that the workflow token triggers, so
-          this pull request starts with no checks. The branch protection
-          rules require checks and a review before merge. A person must do
-          two things:
-
-          1. Re-arm the checks. Close and reopen this pull request once:
-
-                 gh pr close <NUMBER> --repo moliver28/corpus-kb && gh pr reopen <NUMBER> --repo moliver28/corpus-kb
-
-          2. Review the diff, then squash-merge.
+          The checks run natively on this pull request: the release token
+          (RELEASE_PAT) created it, and GitHub starts workflow runs for
+          events made with that token. Review the diff, then squash-merge
+          when green.
           BODY
           ISSUE_REASON=""
           if ! git push origin "HEAD:refs/heads/${BRANCH}"; then
@@ -169,12 +162,7 @@ jobs:
           2. Insert the section into CHANGELOG.md above the newest
              "## v" version heading.
           3. Commit, push, and open a pull request into master.
-          4. The pull request starts without checks (GitHub skips runs the
-             workflow token triggers). Close and reopen it once:
-
-                 gh pr close <NUMBER> --repo moliver28/corpus-kb && gh pr reopen <NUMBER> --repo moliver28/corpus-kb
-
-          5. Review the diff, then squash-merge.
+          4. Review the diff, then squash-merge.
 
           The rendered section:
 
@@ -189,4 +177,4 @@ jobs:
           PR_NUM="$(gh pr view --json number --jq .number "${PR_URL}")"
           sed -i "s/<NUMBER>/${PR_NUM}/g" /tmp/changelog-pr/body.md
           gh pr edit "${PR_NUM}" --body-file /tmp/changelog-pr/body.md
-          echo "Pull request ${PR_URL} is ready for a person to re-arm and merge."
+          echo "Pull request ${PR_URL} is ready for a person to review and merge."

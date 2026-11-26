@@ -100,10 +100,14 @@ class _InsertingStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         del pool, tenant_id
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:

@@ -233,10 +233,14 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         self.unchanged: str | None = None
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return self.unchanged
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
@@ -278,8 +282,7 @@ class _SavedAggregate:
     """Stand-in eventsourcing app: records saves, reports no history.
 
     ``repository.get`` answers empty, so the delete audit finds no
-    event-store history and attaches no keys — the same envelope the bare
-    tool leg returns.
+    event-store history and attaches no keys — the same envelope the bare tool leg returns.
     """
 
     def __init__(self) -> None:
@@ -587,8 +590,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         lambda: coding_handler_module.CodingHandler(_FakePool()),
     )
 
-    # Research transcript + path ingest: stub the handler + the projection
-    # catch-up.
+    # Research transcript + path ingest: stub the handler + the projection catch-up.
     monkeypatch.setattr(
         research_tools_module,
         "get_research_handler",
@@ -827,8 +829,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     file_path.write_text(TEXT_BODY, encoding="utf-8")
 
     # Wave 4A: one registry-generated MCP server over the SAME stubbed pool
-    # and config — the mcp leg proves the generated tools return the shared
-    # envelope.
+    # and config — the mcp leg proves the generated tools return the shared envelope.
     from corpus_kb.mcp_server import build_mcp_server
 
     yield {
@@ -861,8 +862,7 @@ def test_catalogue_and_legs_agree() -> None:
         # Declared surface parity: every operation carries a leg for each
         # surface KIND its row declares. A row may declare a reduced set
         # (the multipart upload is HTTP-only by nature); the exemption
-        # lives in the row, so a missing non-declared leg is declared-
-        # exempt, never a silent skip.
+        # lives in the row, so a missing non-declared leg is declared-exempt, never a silent skip.
         kinds = {surface.kind for surface in op.surfaces}
         assert kinds <= declared_kinds, (
             f"{op.name} declares unknown surface kinds {sorted(kinds - declared_kinds)}"

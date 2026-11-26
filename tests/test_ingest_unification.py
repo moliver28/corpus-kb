@@ -93,7 +93,9 @@ class _StubStore:
     def __init__(self, pool: Any, tenant_id: str = "t") -> None:
         _StubStore.last = self
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def document_origin_project(self, doc_id: str) -> str | None:
@@ -104,7 +106,9 @@ class _StubStore:
     ) -> bool:
         return True
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:

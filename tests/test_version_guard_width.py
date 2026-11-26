@@ -10,19 +10,16 @@ from __future__ import annotations
 
 import duckdb
 import pytest
+from duck_store_migrations import migrated_duck_store
 
-from corpus_kb._setup.migrate import run_migrations
 from corpus_kb._setup.version_guard import assert_store_supported
 from corpus_kb.errors import ConfigError
-from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 
 
 async def test_reopening_with_other_width_refuses(tmp_path, monkeypatch) -> None:
     """Migrate at 2560, reopen at 1024: ConfigError with the R5 message."""
     monkeypatch.delenv("CORPUS_KB_EMBEDDING_DIMENSIONS", raising=False)
-    path = tmp_path / "store2560.duckdb"
-    dsn = duckdb_path_to_conn_string(path)
-    await run_migrations(dsn)
+    _, dsn = await migrated_duck_store(tmp_path, "store2560.duckdb")
     monkeypatch.setenv("CORPUS_KB_EMBEDDING_DIMENSIONS", "1024")
     with pytest.raises(ConfigError) as excinfo:
         await assert_store_supported(dsn, "duckdb")
@@ -34,9 +31,7 @@ async def test_reopening_with_other_width_refuses(tmp_path, monkeypatch) -> None
 async def test_pre_meta_store_treated_as_2560(tmp_path, monkeypatch) -> None:
     """A store without a meta row passes at 2560 and gets the row backfilled."""
     monkeypatch.delenv("CORPUS_KB_EMBEDDING_DIMENSIONS", raising=False)
-    path = tmp_path / "legacy.duckdb"
-    dsn = duckdb_path_to_conn_string(path)
-    await run_migrations(dsn)
+    path, dsn = await migrated_duck_store(tmp_path, "legacy.duckdb")
     con = duckdb.connect(str(path))
     con.execute("DELETE FROM meta WHERE key = 'embedding_width'")
     con.close()
@@ -58,9 +53,7 @@ async def test_guard_reads_a_runner_migrated_store(tmp_path, monkeypatch) -> Non
     the PG name set (ends at 047) read as "newer" and refused in error.
     """
     monkeypatch.delenv("CORPUS_KB_EMBEDDING_DIMENSIONS", raising=False)
-    path = tmp_path / "tracked.duckdb"
-    dsn = duckdb_path_to_conn_string(path)
-    await run_migrations(dsn)
+    _, dsn = await migrated_duck_store(tmp_path, "tracked.duckdb")
     report = await assert_store_supported(dsn, "duckdb")
     assert report is not None
     assert report.store_head == "050_master_topology.sql"

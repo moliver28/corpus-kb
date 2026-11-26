@@ -140,8 +140,7 @@ _TRANSCRIPT = {
 }
 _ASK = {"status": "answer", "sentences": ["parity sentence."], "evidence": [], "llm_calls": 1}
 
-# Canned envelopes for the promoted research ops: the key sets the
-# shared tool layer really returns.
+# Canned envelopes for the promoted research ops (key = to_payload() result).
 _INGEST_PATH = {
     "status": "success",
     "files_found": 1,
@@ -339,7 +338,7 @@ async def _shared_delete_document(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_ingest_url(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.ingest_url_tools import ingest_url
 
-    return await ingest_url("https://parity.example.com", ctx["pool"], config=ctx["config"])
+    return await ingest_url(_URL, ctx["pool"], config=ctx["config"], visibility="internal")
 
 
 async def _shared_ingest_status(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1066,6 +1065,7 @@ def _mcp(args: dict[str, Any]) -> Any:
 
 _FILE_PATH = "file_path"
 _DIR_PATH = "dir_path"
+_URL = "https://parity.example.com"  # the pinned parity ingest target
 _GOLD_PATH = "gold_path"
 DOC_ID = "00000000-0000-0000-0000-00000000000d"
 _QUEUE_ID = "00000000-0000-0000-0000-0000000000e1"
@@ -1104,9 +1104,9 @@ LEGS: dict[str, _Leg] = {
     ),
     "ingest_url": _Leg(
         _shared_ingest_url,
-        _post("/api/ingest/url", {"url": "https://parity.example.com"}),
-        _sock("ingest_url", {"url": "https://parity.example.com"}),
-        _mcp({"url": "https://parity.example.com"}),
+        _post("/api/ingest/url", {"url": _URL, "visibility": "internal"}),
+        _sock("ingest_url", {"url": _URL, "visibility": "internal"}),
+        _mcp({"url": _URL, "visibility": "internal"}),
     ),
     # Multipart upload (ruling 4a): HTTP only, so the leg pair is
     # shared + http alone; the missing legs are DECLARED-EXEMPT, not skips.

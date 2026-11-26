@@ -1015,7 +1015,9 @@ class _TitleCaptureStore:
     def __init__(self) -> None:
         self.begun: list[Document] = []
 
-    async def unchanged_hash_doc_id(self, file_hash: str) -> str | None:
+    async def unchanged_hash_doc_id(
+        self, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def document_origin_project(self, doc_id: str) -> str | None:
@@ -1026,7 +1028,9 @@ class _TitleCaptureStore:
     ) -> bool:
         return True
 
-    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+    async def unchanged_doc_id(
+        self, source: str, file_hash: str, declared_visibility: str | None = None
+    ) -> str | None:
         return None
 
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
