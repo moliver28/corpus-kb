@@ -119,16 +119,18 @@ async def wired_store(
                 "The Postgres database did not accept a connection."
             ) from exc
         store = pool
-    # One embedder seam for BOTH engines (the server pattern): the store
-    # hands the research embedder its SQL session — pool wrapper on
-    # Postgres, the gateway itself on DuckDB (pg_pool_of answers None, so
-    # the Ollama embedder serves; the config mix gate refuses pgml there).
-    if embedder:
-        from corpus_kb.projections.research._embed import ResearchEmbedder
-        from corpus_kb.rag import create_embedder
-
-        research_embedder = ResearchEmbedder(store, create_embedder(cfg, store))
     try:
+        # One embedder seam for BOTH engines (the server pattern): the store
+        # hands the research embedder its SQL session — pool wrapper on
+        # Postgres, the gateway itself on DuckDB (pg_pool_of answers None, so
+        # the Ollama embedder serves; the config mix gate refuses pgml there).
+        # The build sits inside the try so a construct failure closes the
+        # store, not leaks it (issue #523 P3-3).
+        if embedder:
+            from corpus_kb.projections.research._embed import ResearchEmbedder
+            from corpus_kb.rag import create_embedder
+
+            research_embedder = ResearchEmbedder(store, create_embedder(cfg, store))
         yield StoreWired(store=store, cfg=cfg, conn_str=conn_str, embedder=research_embedder)
     finally:
         await store.close()
