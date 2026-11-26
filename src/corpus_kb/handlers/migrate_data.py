@@ -94,12 +94,42 @@ EXEMPTION_MANIFEST: tuple[TablePlan, ...] = (
 )
 
 # Text-arrived vector columns per mirrored table (W0 S3 type map); NULL
-# vectors are tolerated end to end (W0 surprise 4).
+# vectors are tolerated end to end (W0 surprise 4). The DDL-driven test
+# pins this map against the DuckDB mirror migrations (issue #528).
 VECTOR_TEXT_TRANSFORMS: dict[str, tuple[ColumnTransform, ...]] = {
+    "answer_ctx_vectors": (ColumnTransform("vector", EMBEDDING_DIMENSIONS),),
+    "chunk_codes": (ColumnTransform("rationale_vector", EMBEDDING_DIMENSIONS),),
+    "code_registry": (
+        ColumnTransform("definition_vector", EMBEDDING_DIMENSIONS),
+        ColumnTransform("probe_vector", EMBEDDING_DIMENSIONS),
+    ),
     "chunks_vectors": (
         ColumnTransform("embedding", EMBEDDING_DIMENSIONS),
         ColumnTransform("vector_1024", RESEARCH_EMBEDDING_DIMENSIONS),
     ),
+    "embedding_cache": (ColumnTransform("embedding", RESEARCH_EMBEDDING_DIMENSIONS),),
+    "embedding_cache_2560": (ColumnTransform("vector", EMBEDDING_DIMENSIONS),),
+    "meta_embeddings": (ColumnTransform("embedding", EMBEDDING_DIMENSIONS),),
+    "research_exchanges": (
+        ColumnTransform("embedding", RESEARCH_EMBEDDING_DIMENSIONS),
+        ColumnTransform("embedding_256", 256),
+    ),
+    "research_observations": (ColumnTransform("embedding", RESEARCH_EMBEDDING_DIMENSIONS),),
+    "research_proposed_codes": (ColumnTransform("centroid", RESEARCH_EMBEDDING_DIMENSIONS),),
+    "research_units": (
+        ColumnTransform("embedding", RESEARCH_EMBEDDING_DIMENSIONS),
+        ColumnTransform("embedding_256", 256),
+    ),
+    "shadow_vectors": (ColumnTransform("embedding", RESEARCH_EMBEDDING_DIMENSIONS),),
+}
+
+# Columns one dialect's mirror carries with no twin on the other side.
+# ingest_runs.source is DuckDB-only (migration duckdb-030): Postgres keeps
+# ledger freshness in documents.file_hash and has no home for the column.
+# _columns drops them on every leg, so the copy and both digest sides
+# always see the same column set (issue #528).
+DIALECT_ONLY_COLUMNS: dict[str, tuple[str, ...]] = {
+    "ingest_runs": ("source",),
 }
 
 
@@ -110,12 +140,21 @@ def discover_tables(conn: StreamConn, catalog: str | None = None) -> tuple[str, 
     catalog (the ATTACH leg's alias) yields three-part names. That leg
     also drops views: the scanner reports PG views as BASE TABLE, and
     duckdb_views() is the truth (W5's master_project_index must not copy).
+
+    DuckDB runtime artifacts never copy (issue #528). The fts extension
+    builds fts_main_<table> schemas, DuckPGQ builds __duckpgq_internal,
+    and the rag backend owns rag_nodes at server startup. None exist in
+    either migration set, so the postgres target has no home for them;
+    all rebuild at runtime (a search rebuilds the fts index).
     """
     if catalog is None:
         rows = conn.execute(
             "SELECT table_schema || '.' || table_name FROM information_schema.tables"
             " WHERE table_catalog = current_database()"
             " AND table_schema NOT IN ('information_schema', 'pg_catalog')"
+            " AND position('fts_main_' IN table_schema) = 0"
+            " AND table_schema <> '__duckpgq_internal'"
+            " AND table_name <> 'rag_nodes'"
             " AND table_type = 'BASE TABLE' ORDER BY 1"
         ).fetchall()
         return tuple(str(row[0]) for row in rows)
@@ -124,6 +163,9 @@ def discover_tables(conn: StreamConn, catalog: str | None = None) -> tuple[str, 
         " FROM information_schema.tables"
         " WHERE table_catalog = ?"
         " AND table_schema NOT IN ('information_schema', 'pg_catalog')"
+        " AND position('fts_main_' IN table_schema) = 0"
+        " AND table_schema <> '__duckpgq_internal'"
+        " AND table_name <> 'rag_nodes'"
         " AND table_type = 'BASE TABLE'"
         " AND table_name NOT IN (SELECT view_name FROM duckdb_views()) ORDER BY 1",
         [catalog],
@@ -164,7 +206,11 @@ def _columns(conn: StreamConn, table: str) -> tuple[str, ...]:
             " WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
             [schema, name],
         ).fetchall()
-    return tuple(str(row[0]) for row in rows)
+    return tuple(
+        str(row[0])
+        for row in rows
+        if str(row[0]) not in DIALECT_ONLY_COLUMNS.get(table.rsplit(".", 1)[-1], ())
+    )
 
 
 def _select_parts(
