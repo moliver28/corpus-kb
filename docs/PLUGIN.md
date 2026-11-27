@@ -516,9 +516,10 @@ in four steps:
    Both plugins ship `bin/corpus-rag`, so only one may be enabled at a
    time.
 2. Restart your agent, so hooks and skills reload.
-3. Set the DSN `userConfig` keys when the plugin asks: `app_dsn_template`
-   (the study database DSN, with `{database}` in it) and `superuser_dsn`
-   (for provision, migrate, and backup).
+3. Set the DSN `userConfig` keys when the plugin asks. `app_dsn_template`
+   is the study database DSN. `{database}` in it is replaced with the
+   study's database name. `superuser_dsn` is for provision, migrate,
+   and backup.
 4. Run `corpus-rag plugin-doctor` and then `corpus-rag list`. The doctor
    must report the plugin as healthy. `list` shows your imported studies;
    the 0.6.0 `projects.json` imports into the new registry on first use.
