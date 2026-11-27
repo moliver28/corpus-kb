@@ -16,8 +16,22 @@
 # the next findings run opens a fresh one. One report per run — never
 # one per finding.
 #
-# NO auto-fix PRs, by design: mechanical dismissal is not sanctioned
-# (mimosa ledger rules), so triage stays human-in-the-loop.
+# Report-PR pattern (owner override 2026-11-27, #513/#512): the run's
+# report ALSO batches into ONE auto-PR. The PR carries the run's dated
+# report file (docs/security/triage/<date>.md) on the fixed
+# chore/security-triage-report branch, and its body holds the latest
+# report — the human triage surface. While that PR is open, each run
+# stacks the new dated report file on the branch and refreshes the
+# body; when none is open, a run with findings or scanner limits opens
+# one. A clean run with no open report PR stays silent. Merge or close
+# ends the thread; the next findings run opens a fresh one. The PR is
+# created and edited with the RELEASE_PAT token (the changelog.yml
+# token approach), so its checks run natively.
+#
+# Still NO auto-fixes, by design: the owner sanctioned REPORT batching
+# only. The PR carries the report file and nothing else. Mechanical
+# dismissal is not sanctioned (mimosa ledger rules), so triage stays
+# human-in-the-loop.
 #
 # Rule-10 ruling: this is a scheduled REPORTER, not a merge gate. It
 # adds no poe target, no CI job, and no enforcement-map row — the same
@@ -25,8 +39,9 @@
 # PRs and gates nothing. Manual runs: workflow_dispatch.
 #
 # Skip-honest: a scanner that cannot run reports the limitation in the
-# triage issue and stays green. Unknown findings are reported as
-# unknown, never as clean.
+# triage issue, the report PR body, and stays green. Unknown findings
+# are reported as unknown, never as clean. A clean run with no open
+# triage issue and no open report PR stays silent.
 name: Security triage (weekly)
 
 on:
@@ -38,8 +53,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # contents: write lets github.token push the report branch. The PR
+  # create and edit ride the RELEASE_PAT token instead. issues: write
+  # covers the triage issue; pull-requests: write covers the report PR
+  # surface; security-events: read stays read-only.
+  contents: write
   issues: write
+  pull-requests: write
   security-events: read
 
 concurrency:
@@ -135,3 +155,114 @@ jobs:
           else
             echo "Clean sweep and no open triage issue; nothing filed"
           fi
+
+      - name: Batch the week's report into one auto-PR (open or update)
+        # Owner override 2026-11-27 (#513/#512): report batching only —
+        # still no auto-fixes. One fixed chore/ branch, one PR, and the
+        # body is the human triage surface. Write failures stay green:
+        # the report already rode the weekly triage issue.
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/security-triage-report"
+          DOC_DIR="docs/security/triage"
+          REPORT_DATE="$(date -u +%Y-%m-%d)"
+          REPORT_PATH="${DOC_DIR}/${REPORT_DATE}.md"
+
+          has_report=no
+          if grep -q "has_report=yes" triage-summary.txt; then
+            has_report=yes
+          fi
+
+          open_pr="$(gh pr list --head "${BRANCH}" --state open --limit 1 \
+            --json number --jq '.[0].number // empty')"
+
+          # Skip-honest: a clean run with no open report PR stays silent.
+          if [[ -z "${open_pr}" && "${has_report}" == "no" ]]; then
+            echo "Clean sweep and no open report PR; nothing to do"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The PR body is the human triage surface: a short preamble,
+          # then the full run report.
+          mkdir -p /tmp/triage-pr
+          {
+            cat <<'HEAD'
+          ## Automated security triage PR (bot)
+
+          This pull request batches the week's security findings report. It
+          carries the report file only. It never fixes code. A person reads the
+          report and decides: merge the record, or close the PR.
+
+          The body below holds the latest run's report. Earlier runs' reports
+          stay in the dated files on this branch and in the triage issue.
+
+          The checks run natively on this pull request. The RELEASE_PAT token
+          created it, the same token approach changelog.yml uses. GitHub starts
+          workflow runs for events made with the token.
+          HEAD
+            cat triage-body.md
+          } > /tmp/triage-pr/body.md
+
+          pr_reason=""
+          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
+            # Update path: stack the dated report file on the branch tip
+            # through a throwaway worktree, then push (fast-forward).
+            if ! git fetch --depth=1 origin "${BRANCH}"; then
+              pr_reason="branch fetch failed"
+            else
+              branch_sha="$(git rev-parse FETCH_HEAD)"
+              rm -rf /tmp/triage-tw
+              if ! git worktree add /tmp/triage-tw "${branch_sha}"; then
+                pr_reason="worktree setup failed"
+              else
+                mkdir -p "/tmp/triage-tw/${DOC_DIR}"
+                cp triage-body.md "/tmp/triage-tw/${REPORT_PATH}"
+                git -C /tmp/triage-tw add "${REPORT_PATH}"
+                if ! git -C /tmp/triage-tw diff --cached --quiet; then
+                  git -C /tmp/triage-tw commit -m "chore(triage): Weekly security triage report for ${REPORT_DATE}"
+                fi
+                if ! git -C /tmp/triage-tw push origin "HEAD:refs/heads/${BRANCH}"; then
+                  pr_reason="branch push failed"
+                fi
+                git worktree remove /tmp/triage-tw || true
+                rm -rf /tmp/triage-tw || true
+              fi
+            fi
+          else
+            # Create path: fresh branch off the checked-out tip. A run
+            # only reaches this path with findings, so the PR opens too.
+            git checkout -b "${BRANCH}"
+            mkdir -p "${DOC_DIR}"
+            cp triage-body.md "${REPORT_PATH}"
+            if git diff --cached --quiet; then
+              echo "The ${REPORT_DATE} report file is already on the base branch; nothing to file"
+              exit 0
+            fi
+            git commit -m "chore(triage): Weekly security triage report for ${REPORT_DATE}"
+            if ! git push origin "HEAD:refs/heads/${BRANCH}"; then
+              pr_reason="branch push failed"
+            fi
+          fi
+
+          if [[ -n "${pr_reason}" ]]; then
+            echo "Report PR write failed: ${pr_reason}. The report still rode the weekly triage issue."
+            exit 0
+          fi
+
+          if [[ -z "${open_pr}" ]]; then
+            gh pr create --base develop --head "${BRANCH}" \
+              --title "docs(triage): Batch the weekly security findings report" \
+              --body-file /tmp/triage-pr/body.md \
+              --label "security-triage" \
+              || echo "Pull request creation failed; the report still rode the weekly triage issue."
+          else
+            gh pr edit "${open_pr}" --body-file /tmp/triage-pr/body.md \
+              || echo "Pull request update failed; the report still rode the weekly triage issue."
+          fi
+          echo "Report PR batched on ${BRANCH} at ${REPORT_PATH}"
