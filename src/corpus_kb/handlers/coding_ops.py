@@ -28,6 +28,7 @@ from corpus_kb.coding.pooling import (
 )
 from corpus_kb.coding.reliability import computeReliability
 from corpus_kb.coding.reliability_sampling import insufficient_codes, stratified_sample
+from corpus_kb.coding.scaffold_report import build_scaffold_report
 from corpus_kb.coding.speaker_role_projection import classify_speaker_roles
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 
@@ -44,18 +45,18 @@ _DISPOSITION = {
 async def pool_summaries(
     pool: CodingStore, tenant_id: UUID, codebook_version_id: UUID
 ) -> dict[str, Any]:
-    """Run keyword-hit materialization, similarity pooling, and coverage reconciliation.
+    """Keyword hits, similarity pooling, coverage, governance, roles, MECE.
 
-    Also runs keyword governance (collision/over-cap/keyness) over the
-    keyword hits this pass just materialized, surfaced under
-    `keyword_governance`; speaker-role classification runs after
-    reconcile_coverage backfills chunk_status.
+    Keyword governance (collision/over-cap/keyness) runs over the hits this
+    pass materialized; the MECE/precision/coverage-gap blocks (TD-11) ride
+    ``mece`` and ``keyword_precision``, reading stored vectors only.
     """
     keywords = await materialize_chunk_keyword_hits(pool, tenant_id, codebook_version_id)
     similarity = await run_similarity_pooling(pool, tenant_id, codebook_version_id)
     coverage = await reconcile_coverage(pool, tenant_id)
     governance = await compute_keyword_governance(pool, tenant_id, codebook_version_id)
     speaker_roles = await classify_speaker_roles(pool, tenant_id)
+    scaffold = await build_scaffold_report(pool, tenant_id, codebook_version_id)
     return {
         "status": "success",
         "keyword_hits_written": keywords["keyword_hits_written"],
@@ -63,6 +64,8 @@ async def pool_summaries(
         "coverage": coverage,
         "keyword_governance": governance,
         "speaker_roles": speaker_roles,
+        "mece": scaffold["mece"],
+        "keyword_precision": scaffold["keyword_precision"],
     }
 
 
