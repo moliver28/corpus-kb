@@ -227,8 +227,7 @@ _CYCLE = {
     "resume_hint": "",
 }
 
-# Canned coding envelopes (issue #350): patched onto the CodingHandler
-# methods so all four surfaces answer one envelope.
+#: Canned coding envelopes (issue #350): one envelope, all surfaces.
 _EMBED_CODEBOOK = {"status": "success", "codes_embedded": 2, "codebook_version_id": CV}
 _POOL = {
     "status": "success",
@@ -237,6 +236,9 @@ _POOL = {
     "coverage": {},
     "keyword_governance": {},
     "speaker_roles": {},
+    "mece": {"status": "success"},
+    "keyword_precision": {"status": "success"},
+    "scaffold": {},
 }
 _CODE_BATCH = {
     "status": "success",
@@ -1856,8 +1858,6 @@ async def _shared_release_status(ctx: dict[str, Any]) -> dict[str, Any]:
 
 # -- Offline stubs (pool / pipeline store / eventsourcing app / handlers) --
 
-#: The canned ingest_queue row every queue statement returns on the stub
-#: pool: the SELECT column set of queue/store.py, one pending row.
 _QUEUE_ROW: dict[str, Any] = {
     "id": _QUEUE_ID,
     "tenant_id": TENANT,

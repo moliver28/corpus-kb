@@ -1,0 +1,9 @@
+error_id,item_id,error_type,expected_label
+ERR-001,chunk-0001,wrong_human_label,code_not_applicable
+ERR-002,chunk-0002,invalid_structure,repair_required
+ERR-003,chunk-0003,unverified_quote,quote_gate_fail
+ERR-004,chunk-0004,negated_keyword,keyword_block_expected
+ERR-005,chunk-0005,bad_translation,translation_gate_fail
+ERR-006,chunk-0006,wrong_human_label,code_not_applicable
+ERR-007,chunk-0007,unverified_quote,quote_gate_fail
+ERR-008,chunk-0008,negated_keyword,keyword_block_expected

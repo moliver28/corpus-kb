@@ -26,6 +26,9 @@ _FEATURE_CONFIG: dict[str, object] = {
     "coding": {
         "coder": "qwen3:8b",
         "model": "qwen3:8b",
+        # TAO T0 (TD-16): directory for the codebook CSV tables. Empty
+        # means coding_export writes no files.
+        "export_dir": "",
         # U43 validate/repair: retries before a response is marked
         # invalid_output; strict enforcement opt-in (default off).
         "repair_retries": 1,

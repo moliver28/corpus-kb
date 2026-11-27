@@ -397,6 +397,7 @@ include = ["corpus_kb*"]
 # against the checkout-root originals (tests/test_packaging_assets.py).
 corpus_kb = [
     "*.yaml",
+    "coding/seeds/*.csv",
     "compose.build-local.yaml",
     "compose.yaml",
     "config/*.yaml",

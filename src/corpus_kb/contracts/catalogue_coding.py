@@ -58,6 +58,9 @@ CODING_OPERATIONS: tuple[Operation, ...] = (
             "coverage",
             "keyword_governance",
             "speaker_roles",
+            "mece",
+            "keyword_precision",
+            "scaffold",
         ),
         surfaces=(
             SurfaceSpec(MCP, "coding_pool"),
@@ -208,7 +211,7 @@ CODING_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("offset", default=0),
             _TENANT,
         ),
-        envelope_keys=("status", "columns", "rows", "count"),
+        envelope_keys=("status", "columns", "rows", "count", "codebook_csv"),
         surfaces=(
             SurfaceSpec(MCP, "coding_export"),
             SurfaceSpec(CLI, "coding export"),

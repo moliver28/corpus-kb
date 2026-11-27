@@ -37,6 +37,8 @@ MACQUEEN_FIELDS = {
 
 VALID_PARADIGMS = {"codebook", "reflexive"}
 
+KEYWORD_KEYS = {"include", "exclude"}
+
 THEORY_PROMPT = """You are a qualitative researcher. Given a code's definition
 and criteria, propose academic grounding for it.
 
@@ -60,6 +62,39 @@ Inclusion criteria: {inclusion}
 Exclusion criteria: {exclusion}
 
 Return only valid JSON, no markdown, no preamble."""
+
+
+def _validate_keywords(code: dict[str, Any]) -> None:
+    """Validate one code's optional ``keywords`` block (TD-10).
+
+    ``include`` and ``exclude`` are lists of non-empty strings; no other key
+    is allowed. One rule: an exclusion list needs an inclusion list or
+    exclusion_criteria text — an exclusion needs something to block.
+    """
+    label = code.get("code_id") or code.get("id") or "?"
+    keywords = code.get("keywords")
+    if keywords is None:
+        return
+    if not isinstance(keywords, dict):
+        raise CodebookError(f"Code {label} keywords must be an object")
+    unknown = set(keywords) - KEYWORD_KEYS
+    if unknown:
+        raise CodebookError(f"Code {label} keywords has unknown keys: {sorted(unknown)}")
+    for key in ("include", "exclude"):
+        terms = keywords.get(key)
+        if terms is None:
+            continue
+        if not isinstance(terms, list) or not all(
+            isinstance(term, str) and term.strip() for term in terms
+        ):
+            raise CodebookError(f"Code {label} keywords.{key} must be a list of strings")
+    has_include = bool(keywords.get("include"))
+    has_exclusion_text = bool(str(code.get("exclusion_criteria") or "").strip())
+    if keywords.get("exclude") and not has_include and not has_exclusion_text:
+        raise CodebookError(
+            f"Code {label} has exclusion keywords but no include list and no "
+            "exclusion_criteria text. An exclusion needs something to block."
+        )
 
 
 def validate_codebook(doc: dict[str, Any]) -> None:
@@ -101,6 +136,8 @@ def validate_codebook(doc: dict[str, Any]) -> None:
         # Validate theory field exists (may be null or {})
         if "theory" not in code:
             raise CodebookError(f"Code {code.get('id', i)} missing theory field")
+
+        _validate_keywords(code)
 
 
 def codebook_sha256(doc: dict[str, Any]) -> str:

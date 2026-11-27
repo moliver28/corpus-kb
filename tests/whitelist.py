@@ -669,3 +669,12 @@ metadata_keys
 HNSW_ON_DUCKDB_ERROR
 DUCKDB_GRAPH_BACKEND_ON_POSTGRES_ERROR
 GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR
+
+# Seeded-error data surface (TAO T0 bench_seeds.py): SeedError.item_id and
+# .expected_label are declared CSV columns of the packaged seed format; the
+# T2 bench scores them and tests/test_bench_seeds.py reads both today.
+# Vulture cannot tie the dataclass fields to the csv.DictReader values that
+# fill them. Scoped to SeedError so unrelated same-named attributes stay
+# in scope for dead-code detection.
+SeedError.item_id
+SeedError.expected_label

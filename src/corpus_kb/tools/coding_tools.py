@@ -18,6 +18,7 @@ from typing import Any
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.handlers.coding_handler import CodingHandler
+from corpus_kb.research.step_ops import run_step
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
@@ -64,8 +65,14 @@ async def coding_pool(
 ) -> dict[str, Any]:
     """Run pooling (keyword hits, similarity) and coverage reconciliation."""
     load_config_or_pass(config)
-    return await _handler(pg_pool).handle_pool(
-        uuid_arg(tenant_id, "tenant_id"), uuid_arg(codebook_version_id, "codebook_version_id")
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    version_id = uuid_arg(codebook_version_id, "codebook_version_id")
+    return await run_step(
+        pg_pool,
+        tenant,
+        "coding_pool",
+        lambda: _handler(pg_pool).handle_pool(tenant, version_id),
+        parameters={"codebook_version_id": codebook_version_id},
     )
 
 
@@ -186,8 +193,23 @@ async def coding_export(
     offset: int = 0,
 ) -> dict[str, Any]:
     """Accepted codes joined with chunk text and document source, as rows."""
-    load_config_or_pass(config)
-    uuid_arg(tenant_id, "tenant_id")
-    from corpus_kb.handlers.coding_status_ops import coding_export as export_body
+    cfg = load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
 
-    return await export_body(pg_pool, tenant_id, limit=limit, offset=offset)
+    async def _export_op() -> dict[str, Any]:
+        from corpus_kb.coding.export_tables import write_codebook_tables
+        from corpus_kb.handlers.coding_status_ops import coding_export as export_body
+
+        result = await export_body(pg_pool, tenant_id, limit=limit, offset=offset)
+        coding_cfg = cfg.get("coding") if isinstance(cfg, dict) else {}
+        export_dir = str((coding_cfg or {}).get("export_dir") or "")
+        result["codebook_csv"] = await write_codebook_tables(pg_pool, tenant, export_dir)
+        return result
+
+    return await run_step(
+        pg_pool,
+        tenant,
+        "coding_export",
+        _export_op,
+        parameters={"limit": limit, "offset": offset},
+    )
