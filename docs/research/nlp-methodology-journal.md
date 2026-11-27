@@ -66,3 +66,29 @@
 - COMET-class QE for the translate stage stays deferred until target languages are named (E10; posture-compatible but a real model dependency).
 
 **Process notes:** Interim homes unchanged (canonical docs/research/ copies come with the later docs PR). Registry updated with P5 (E1-E10, all verified live this run except E9 BLEU, marked citation-grade). First run-2 verdict issued (advisory CHANGES REQUIRED, scoped); re-issued BINDING only at W6C-6's gate if the findings survive to that wave.
+
+---
+
+## 2026-11-26 — TAO v0.3.1 doctrine verify gate (run 3; briefs/athena-v031-verify.md, dispatch 3)
+
+**Scope:** Verdict on the proposed v0.3.1 amendment set only (AM-01–AM-07, "not measured" signals, S1, AM-06 registry corrections). No code review; T0 build gate stays at close-out. Deliverable: thematic-analysis/review/athena-v031-verdict.md — **CHANGES REQUIRED**, narrowly scoped to AM-06's E1 half.
+
+**Tool families:** built-in WebSearch/WebFetch + direct API fetches over curl (doi.org Handle REST API, Crossref REST API, Hugging Face raw READMEs, fasttext.cc, docs.openalex.org). Verification run, not a sweep; no sweep debt added. WebSearch 429'd live during the run — AM-01's "never count a rate-limit fallback text as a source" rule earned its place the same day it was proposed.
+
+**Beliefs formed:**
+1. **[Fact]** AM-06's E1 correction is wrong on both counts: the doi.org handle for `10.1162/coli.08-034-R2` returns responseCode 100 = HANDLE NOT FOUND (the dossier read 100 as success), and Crossref 404s because the registry DOI has a transcription error — the true DOI is `10.1162/coli.07-034-r2`, which resolves both ways. This changed my belief about run-2's registry verification: "all verified live this run" was true of the ACL Anthology link, not of the DOI string; a DOI typed from a PDF can pass a resolver check on the wrong sibling string. Check DOIs with the Handle API responseCode 1/100 convention, never by eye.
+2. **[Fact]** AM-01's pace numbers are accurate against current primary docs: Crossref public pool = 5 DOI lookups/s at concurrency 1, list queries 1/s (official table, fetched 2026-11-26); OpenAlex no-key 10 req/s per IP; the 217-language HF LID artifact (`facebook/fasttext-language-identification`, NLLB `lid218e`) is cc-by-nc-4.0 and `lid.176.bin` is CC-BY-SA 3.0 — the exact-artifact license rule in TD-12 point 6 is correct.
+3. **[Fact]** AM-07's typology is double-sourced (QRP 2021 doi:10.1080/14780887.2020.1769238 + CAPR doi:10.1002/capr.12360); S1's JMIR paper resolves (10.2196/85572).
+4. **[Strong inference]** Six of seven amendments pass; the amendment pipeline (dossier finding → applied text → verdict) worked, and the one failure was an evidence-reading error, not a design error.
+
+**Verdicts:** CHANGES REQUIRED on the v0.3.1 set — fix F-01 (reword AM-06's E1 half: correct the DOI string to 07-034-r2, drop the "handle not Crossref" note; sites: athena-v0.3.1-proposed.md:59, decisions.md:277, row at nlp-methodology-sources.md:122 after approval). Nits F-02 (OQuaRe→OQuaRE drift), F-03 (AM-05 narrower than TD-12 point 6 — no LID model named), F-04 (AM- prefix collision, pre-existing). My findings used F-xx to escape the collision.
+
+**Open questions:** owner call on F-03 widening; namespace disambiguation in v0.4; apply mechanics (owner or delegate edits the agent file; I land the E1/E10 row fixes on approval day).
+
+**Next-sweep seeds:** DOI hygiene pass over all registry rows that carry a doi (Handle API responseCode check, scripted) — today's catch suggests the set may hold more typos; Crossref's Nov-2025 rate-limit regime is worth a re-read when AM-01's numbers next get quoted; re-verify E10's link upgrade to the ACL Anthology doi when the correction lands.
+
+**Process notes:** Verdict file written per brief (review/athena-v031-verdict.md). Registry NOT touched — AM-06's corrections await owner approval and need the F-01 fix first. Journal entry appended per standing duty (docs/research/, uncommitted — main thread owns commits in worktree 6908).
+
+**Delta re-verdict (same run, same day):** F-01 CLOSED (both sites on disk carry the correct `10.1162/coli.07-034-r2` + "re-verify against both resolvers" wording; the coordinator's quoted `10.162` typo existed only in the message, not in the files), F-02 CLOSED (OQuaRE restored). Full re-diff vs live v0.3: same 7 hunks, no new drift — also corrected my own first verdict's "ten hunks" wording (7 diff hunks; the ten-item list counted non-hunk items). **APPROVE WITH NITS** — F-03 (AM-05 width) and F-04 (AM- namespace) carried as open owner items. Lesson recorded: quote file text in verdicts, never message-quoted text; and diff-hunk counts beat prose lists for change inventories.
+
+**Approval day (same run, same day):** Owner ruled "apply both". v0.3.1 is now the live doctrine in `~/.zcode/agents/athena.md` (verified: frontmatter line 1, header "APPROVED by owner 2026-11-26 UTC", AM-05 widened per F-03 to name translation, quality-estimation, AND language-identification models, stale "until the owner approves v0.3" sentence dropped as falsified). My sanctioned registry writes landed in `docs/research/nlp-methodology-sources.md`: row E1 — DOI string corrected to `10.1162/coli.07-034-r2` with the correction note (both-resolver verification recorded); row E10 — grade B → A with the WMT 2022 doi `10.18653/v1/2022.wmt-1.60` and the ACL Anthology link. One clause beyond the strict sanction, disclosed: I appended the checked license to E10's row (`wmt22-cometkiwi-da` cc-by-nc-sa-4.0 — never a default) because the just-applied AM-05 makes license rows binding for QE models; the main thread may strike it in the docs commit if it wants the minimal diff. F-04 (AM- namespace) parked for v0.4. TAO scope of my gate: CLOSED for v0.3.1; the T0 build wave gate (on the applied doctrine) still comes at close-out per ledger 36.
