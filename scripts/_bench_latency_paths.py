@@ -107,7 +107,6 @@ async def cold_start_samples(base_port: int, iterations: int) -> list[tuple[floa
     from corpus_kb._setup.setup_duckdb import preinstall_extensions
 
     # The RAG mirror needs fts; a fresh runner has none, so pre-install like `setup`.
-    # The download is a network dependency; offline machines skip P1 honestly (RVW2-06).
     if preinstall_extensions() != 0:
         raise OfflineSkipError("fts cannot download offline; the P1 cold-start path needs it.")
     exe = shutil.which("corpus-kb")
@@ -190,9 +189,7 @@ async def ingest_samples(scratch_dsn: str, doc_count: int) -> list[float]:
 async def matrix_sample(scratch_dsn: str) -> float:
     """P3: seed 10k synthetic vectors, screen ``duplicates_screen`` three times.
 
-    The read-only screen shares one seeded store; the median of three gives
-    the p50 a denominator (one float can be a lucky run). The extra CI cost
-    is two screen runs, not two reseeds.
+    The median of three gives the p50 a denominator; reseeding once is the extra CI cost.
     """
     tenant = str(uuid.uuid4())
     vectors = np.random.default_rng(MATRIX_SEED).standard_normal((MATRIX_DOCS, MATRIX_DIMS))
