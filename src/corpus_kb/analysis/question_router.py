@@ -14,11 +14,11 @@ defaults. The idf weighting is the per-row calibration of the evidence:
 each matched phrase is scaled by its register-wide specificity, so a
 question that is one seeded phrase resolves on its own evidence (issue
 #447) and a phrase shared by many rows can never fake confidence. A
-register-derived per-row threshold gate was analyzed and rejected: any
-margin-satisfying winner must hold a phrase no other candidate row
-authors (df 1, idf 1.0), so its score is at least 1.0 and clears any
-bar at or below the base threshold — the margin rule already carries
-the per-row semantics (semantic-router per-route ``score_threshold``).
+decisive winner needs strictly more idf-weighted evidence than every
+other candidate; with unit-idf phrases that is exactly the df-1 case,
+but with shared phrases a decisive winner can score below 1.0, so
+numeric per-row threshold calibration waits for the W5 sweep's real
+score distributions (semantic-router per-route ``score_threshold``).
 
 The module is pure: no LLM, no config loading, no op-layer imports. The
 embedder arrives as a parameter and only its ``embed(text) -> list[float]``
