@@ -54,6 +54,10 @@ _ALIAS_RENAMES: tuple[tuple[str, str], ...] = (
     ("contextual.temperature", "ingest.contextualize.temperature"),
     ("contextual.fixture_dir", "ingest.contextualize.fixture_dir"),
     ("contextual.live_fallback", "ingest.contextualize.live_fallback"),
+    # graph.extractor -> extraction.backend (issue #500): the extraction
+    # backend's accepted legacy alias; the canonical key always holds a
+    # default, so the copy only wins from a user-authored tree pre-merge.
+    ("graph.extractor", "extraction.backend"),
 )
 
 # Whole-block renames: (section, legacy block name, canonical block path).
@@ -147,15 +151,6 @@ def apply_legacy_aliases(config: dict[str, object]) -> None:
             _set_dotted(config, canonical_dotted, value)
             _warn(f"{section}.{legacy_block}.{key}", canonical_dotted)
 
-    # `graph.extractor` -> `extraction.backend` (issue #500): the canonical
-    # key always holds a default, so this copy must run on the user-authored
-    # tree before the defaults merge — same rule as the namespace aliases.
-    # A non-empty extraction.backend in the same tree still wins.
-    extractor = _node(config, "graph.extractor")
-    if extractor is not None and _node(config, "extraction.backend") is None:
-        _set_dotted(config, "extraction.backend", extractor)
-        _warn("graph.extractor", "extraction.backend")
-
 
 def used_legacy_keys(config: dict[str, object]) -> list[str]:
     """Legacy keys still present in ``config`` (diagnostics/tests helper).
@@ -169,8 +164,6 @@ def used_legacy_keys(config: dict[str, object]) -> list[str]:
             present.append(legacy)
     if _node(config, "search.candidates_per_branch") is not None:
         present.append("search.candidates_per_branch")
-    if _node(config, "graph.extractor") is not None:
-        present.append("graph.extractor")
     for section, legacy_block, _ in _BLOCK_RENAMES:
         section_node = _node(config, section)
         if isinstance(section_node, dict) and legacy_block in section_node:

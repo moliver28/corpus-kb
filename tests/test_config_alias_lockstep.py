@@ -57,6 +57,7 @@ FROZEN_RENAMES: frozenset[tuple[str, str]] = frozenset(
         ("contextual.temperature", "ingest.contextualize.temperature"),
         ("contextual.fixture_dir", "ingest.contextualize.fixture_dir"),
         ("contextual.live_fallback", "ingest.contextualize.live_fallback"),
+        ("graph.extractor", "extraction.backend"),
     }
 )
 
@@ -229,6 +230,21 @@ def test_legacy_key_beats_defaulted_canonical_through_the_loader(
     warnings = [record for record in caplog.records if legacy in record.message]
     assert len(warnings) == 1
     assert canonical in warnings[0].message
+
+
+def test_overlay_legacy_key_beats_main_file_canonical_through_the_loader(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-tree precedence (issue #500): an overlay legacy key beats a
+    main-file canonical value — overlays deep-merge after the main file,
+    and each user tree got the same pre-merge alias pass."""
+    main = tmp_path / "main.yaml"
+    main.write_text("retrieval:\n  rrf_k: 30\n", encoding="utf-8")
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("search:\n  rrf_k: 41\n", encoding="utf-8")
+    monkeypatch.setenv("CORPUS_KB_CONFIG", str(main))
+    monkeypatch.setenv("CORPUS_KB_CONFIG_OVERLAY", str(overlay))
+    assert _get(load_config(), "retrieval.rrf_k") == 41
 
 
 # ---------------------------------------------------------------------------
