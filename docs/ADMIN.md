@@ -173,7 +173,7 @@ stage reads it; nothing else does.
 | `backend` | `ml` | PREFERRED extraction-backend key: `ml`, `regex`, `langextract`, `pgml`, or `gliner` |
 | `gliner.enabled` | `false` | Opt-in gate for the GLiNER2 backend |
 | `gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model |
-| `gliner.revision` | `main` | Model revision |
+| `gliner.revision` | `d7aa8a2850d175a9227ff80358ea380723d03ad2` | Model revision (HF commit sha; issue #86 item 4) |
 | `gliner.types` | `[person, organization, location, date, money, product]` | Mention-level types |
 
 ### `research`

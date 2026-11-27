@@ -1000,7 +1000,7 @@ cleanly.
 | `graph.prompt_version` | `v1` | Prompt version recorded in relation provenance |
 | `extraction.gliner.enabled` | `false` | Opt-in GLiNER mention-level NER backend (requires the `ner` extra) |
 | `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER model id |
-| `extraction.gliner.revision` | `main` | Model revision pin for reproducible GLiNER loads (pin a specific HF revision hash in production) |
+| `extraction.gliner.revision` | `d7aa8a2850d175a9227ff80358ea380723d03ad2` | Model revision pin for reproducible GLiNER loads (HF commit sha; issue #86 item 4) |
 | `extraction.gliner.types` | 6 mention types | Mention types GLiNER extracts (person, organization, location, date, money, product) |
 | `ingestion.strategies` | `{transcript: transcript}` | `source_type` → strategy-name map (extension ladder 1; see the Ingestion strategies section) |
 | `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |

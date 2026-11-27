@@ -7,7 +7,7 @@ from typing import Any, cast
 import asyncpg
 
 from .ensemble import EnsembleExtractor
-from .gliner_backend import GlinerExtractor
+from .gliner_backend import DEFAULT_GLINER_REVISION, GlinerExtractor
 from .langextract_backend import LangExtractExtractor
 from .ml_backend import MLExtractor
 from .pgml_backend import PgmlExtractor
@@ -153,14 +153,14 @@ def _create_gliner(config: dict[str, Any]) -> GlinerExtractor:
         raise ValueError("gliner extractor is opt-in: set extraction.gliner.enabled: true")
 
     model = gliner_config.get("model", "fastino/gliner2-large-v1")
-    revision = gliner_config.get("revision", "main")
+    revision = gliner_config.get("revision", DEFAULT_GLINER_REVISION)
     types_raw = gliner_config.get("types")
     types: list[str] | None = (
         [t for t in types_raw if isinstance(t, str)] if isinstance(types_raw, list) else None
     )
     return GlinerExtractor(
         model=model if isinstance(model, str) else "fastino/gliner2-large-v1",
-        revision=revision if isinstance(revision, str) else "main",
+        revision=revision if isinstance(revision, str) else DEFAULT_GLINER_REVISION,
         types=types,
     )
 
