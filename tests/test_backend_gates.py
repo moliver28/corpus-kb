@@ -230,3 +230,29 @@ def test_load_config_shipped_defaults_load_clean(
     }
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
     assert load_config()["database"]["backend"] == "postgres"
+
+
+class TestCloudConsentAndRestrictionGates:
+    """Spec gate 5 convention: the cloud refusals are typed and tested.
+
+    The consent refusal names ``coding.cloud.consent`` (config_error); the
+    restriction refusal names the table (write_refused) — consent is
+    necessary, never sufficient (C7, athena AM-04).
+    """
+
+    def test_cloud_consent_refusal_names_config_key(self) -> None:
+        from corpus_kb.coding.cloud_client import (
+            CLOUD_CONFIG_DEFAULTS,
+            CloudConsentError,
+            check_consent,
+        )
+
+        with pytest.raises(CloudConsentError, match=r"coding\.cloud\.consent"):
+            check_consent(CLOUD_CONFIG_DEFAULTS)
+        assert CLOUD_CONFIG_DEFAULTS["consent"] is False  # shipped off
+
+    def test_cloud_restricted_refusal_names_the_table(self) -> None:
+        from corpus_kb.coding.cloud_client import CloudRestrictedError, check_restricted
+
+        with pytest.raises(CloudRestrictedError, match="interviews_raw"):
+            check_restricted(restricted=True, table="interviews_raw")

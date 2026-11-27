@@ -149,6 +149,7 @@ async def _wire_handlers(cfg: dict[str, Any], gateway: Any) -> _Handlers:
 
 async def _wire_aux_handlers(cfg: dict[str, Any], gateway: Any, embedder: Any, query_handler: Any):
     """Graph, tag, versioning, router, and coding handlers (Postgres twin)."""
+    from corpus_kb.coding.model_tiers import resolve_coder_models
     from corpus_kb.handlers.coding_handler import CodingHandler, set_coding_handler
     from corpus_kb.handlers.graph_handler import GraphHandler, set_graph_handler
     from corpus_kb.handlers.router_handler import RouterHandler, set_router_handler
@@ -169,14 +170,8 @@ async def _wire_aux_handlers(cfg: dict[str, Any], gateway: Any, embedder: Any, q
     set_router_handler(router_handler)
 
     coding_cfg = cast(dict[str, Any], cfg.get("coding", {}) or {})
-    set_coding_handler(
-        CodingHandler(
-            gateway,
-            embedder,
-            coder=str(coding_cfg.get("coder", "qwen3:8b")),
-            model=str(coding_cfg.get("model", "qwen3:8b")),
-        )
-    )
+    coder, model = resolve_coder_models(coding_cfg, cfg)
+    set_coding_handler(CodingHandler(gateway, embedder, coder=coder, model=model))
     return router_handler
 
 

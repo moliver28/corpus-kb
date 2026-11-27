@@ -34,8 +34,10 @@ class AssignmentProjector:
                 INSERT INTO research_assignments
                 (tenant_id, assignment_aggregate_id, unit_id, code_id, cb_version_id,
                  run_id, sim_answer, sim_qa, sim_q, evidence_basis, stance,
-                 term_origin, rationale, confidence, tier_fired, status)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                 term_origin, rationale, confidence, tier_fired, status,
+                 grade, grade_reason)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                        $13, $14, $15, $16, $17, $18)
                 ON CONFLICT (tenant_id, assignment_aggregate_id) DO UPDATE SET
                     sim_answer = EXCLUDED.sim_answer,
                     sim_qa = EXCLUDED.sim_qa,
@@ -46,7 +48,9 @@ class AssignmentProjector:
                     rationale = EXCLUDED.rationale,
                     confidence = EXCLUDED.confidence,
                     tier_fired = EXCLUDED.tier_fired,
-                    status = EXCLUDED.status
+                    status = EXCLUDED.status,
+                    grade = EXCLUDED.grade,
+                    grade_reason = EXCLUDED.grade_reason
                 """,
                 str(tenant_id),
                 str(payload["aggregate_id"]),
@@ -64,6 +68,8 @@ class AssignmentProjector:
                 self._capped_confidence(payload),
                 payload.get("tier_fired"),
                 status,
+                _opt_str(payload.get("grade")),
+                _opt_str(payload.get("grade_reason")),
             )
 
     async def on_reviewed(self, notification: Any) -> None:

@@ -6,16 +6,12 @@ Wraps the real corpus_kb.coding modules:
   - handle_code_batch: coder_dispatch.dispatch_chunk per requested cell
   - handle_reliability: reliability_sampling + vendored Krippendorff alpha
 
-The operation bodies for pool/code_batch and the reliability report
-computation live in :mod:`coding_ops` (a pure move for the 250-line rule);
-this module keeps the embed path, the monkeypatch-pinned call sites
-(``load_instruct``, ``calibrate_code_floors``, ``compute_saturation``,
-``tenant_scope`` — tests patch them HERE), the thin delegating methods,
-and the singleton.
-
-Ported from the recovered bundle handler (blob d7293052). Two adaptations:
-imports point at corpus_kb.*, and `instruct` is resolved defensively
-(load_instruct) until the Embedder Protocol lands in rag/embedder.py.
+The operation bodies live in :mod:`coding_ops`; this module keeps the
+embed path, the monkeypatch-pinned call sites (tests patch them HERE),
+the thin delegating methods, and the singleton. Ported from the recovered
+bundle handler (blob d7293052); ``instruct`` resolves defensively until
+the Embedder Protocol lands. TAO T1: coder/model defaults resolve through
+``coding.tier`` (model_tiers).
 """
 
 from __future__ import annotations
@@ -29,6 +25,7 @@ from uuid import UUID
 from corpus_kb.coding._scope import CodingStore, tenant_scope
 from corpus_kb.coding.confidence_routing import Bands
 from corpus_kb.coding.floors_calibration import calibrate_code_floors
+from corpus_kb.coding.model_tiers import default_coder_models
 from corpus_kb.coding.saturation_query import compute_saturation
 from corpus_kb.handlers import coding_ops
 from corpus_kb.handlers._singleton import SingletonSlot
@@ -60,19 +57,22 @@ class CodingHandler:
         self,
         pool: CodingStore,
         embedder: OllamaEmbedder | PgmlEmbedder | None = None,
-        coder: str = "qwen3:8b",
-        model: str = "qwen3:8b",
+        coder: str | None = None,
+        model: str | None = None,
     ) -> None:
         """Take one store: an asyncpg pool (Postgres) or a SqlGateway.
 
         The gateway is the portable arm (storage portability program, §8):
         every coding module below takes the same store kind, and the pool
-        path stays byte-identical.
+        path stays byte-identical. ``coder``/``model`` default through
+        ``coding.tier`` + ``models.tiers`` (TD-06; the legacy keys stay
+        honored as overrides inside the resolver).
         """
+        resolved = default_coder_models()
         self._pool = pool
         self._embedder = embedder
-        self._coder = coder
-        self._model = model
+        self._coder = coder or resolved[0]
+        self._model = model or resolved[1]
 
     async def _embed_text(self, embedder: OllamaEmbedder | PgmlEmbedder, text: str) -> list[float]:
         """Embed one text off the event loop (body in coding_ops.embed_text)."""

@@ -154,9 +154,8 @@ class _LockConn:
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
         # House fake pattern (attribute routing, as in test_extraction_tune):
-        # execute is the tenant-GUC write (always OK); fetchrow routes the
-        # single-row probes (the beliefs posterior, and every ingest_queue
-        # statement, which answers the canned queue row below).
+        # execute is the tenant-GUC write; fetchrow routes the single-row
+        # probes (the beliefs posterior, every ingest_queue statement).
         if name == "execute":
             return self._ok
         if name == "fetchrow":
@@ -435,9 +434,8 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     """One stubbed world for all legs, torn down per test."""
     monkeypatch.setattr(ingest_common_module, "PostgresIngestStore", _StubStore)
 
-    # Partition seam: the file legs never exercise unstructured here (the
-    # pipeline's partition behavior is covered by the ingest tests). An
-    # empty element list keeps the walk hermetic on hosts without libmagic.
+    # Partition seam: the file legs never exercise unstructured (ingest
+    # tests cover partitioning); the empty list keeps the walk hermetic.
     import corpus_kb.ingestion.strategies.default as default_strategy_module
 
     monkeypatch.setattr(
@@ -870,8 +868,8 @@ def test_catalogue_and_legs_agree() -> None:
         assert "http" in kinds, f"{op.name} must declare the HTTP surface"
         if "socket" in kinds:
             assert LEGS[op.name].socket is not None, f"{op.name} needs a socket leg"
-        # Every catalogue MCP surface gets an MCP leg (and only those do) —
-        # the MCP server is generated from the same rows.
+        # Every catalogue MCP surface gets an MCP leg — the server is
+        # generated from the same rows.
         has_surface = bool(surfaces_of(op, "mcp"))
         has_leg = LEGS[op.name].mcp is not None
         assert has_surface == has_leg, (
@@ -1002,6 +1000,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "coding_saturation",
         "coding_status",
         "coding_export",
+        # TAO T1: the prompt-render row byte-matches its registry row.
+        "prompt_render",
         "events_summary",
         # Ruling 4a: the HTTP-only upload row byte-matches on its declared
         # surface (the empty cli/mcp registry fields are exempt).

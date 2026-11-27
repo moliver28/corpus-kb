@@ -1,0 +1,42 @@
+# The group-boundary arbiter prompt (TD-03 owner ruling). Given a unit plus
+# a GROUP of semantically similar candidate codes (grouped by
+# definition-embedding similarity), the model marks the close calls, states
+# the boundary between each pair, and names the evidence that would decide
+# them. ARBITER ONLY: the verdict never auto-accepts (S4 position-bias
+# protection); close-call flags and boundary notes feed the grade signal and
+# the human review queue.
+id: group_boundary
+version: "1.0.0"
+kind: group_boundary
+changelog: "1.0.0 seeded the group-boundary arbiter kind (TAO T1, TD-03 ruling)."
+variables:
+  - name: unit_text
+    description: The unit text the group is judged against.
+    required: true
+    default: ""
+  - name: code_group
+    description: The candidate code group, one name and definition per line.
+    required: true
+    default: ""
+defaults:
+  temperature: 0
+  max_tokens: 1024
+  json_schema: true
+body: |
+  You are an arbitral reviewer. One unit was coded against a group of
+  semantically similar candidate codes. Your task: find the close calls.
+
+  For every pair of codes in the group whose definitions both plausibly fit
+  the unit, state where the boundary sits between them and name the evidence
+  that would decide the pair. Do not merge codes. Do not decide the unit.
+
+  Candidate code group:
+  {{code_group}}
+
+  Unit text:
+  {{unit_text}}
+
+  Output contract: reply with JSON only, in this shape:
+  {"close_calls": [{"pair": [str, str], "boundary": str, "deciding_evidence": str}], "notes": str}
+  An empty close_calls list means no pair is a close call for this unit.
+  This verdict never accepts or rejects a code on its own; a human reads it.

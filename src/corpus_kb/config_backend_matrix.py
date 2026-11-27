@@ -4,11 +4,8 @@ ONE declarative row per config leaf in ``get_default_config()`` and the
 packaged ``config.yaml``. ``scripts/config_backend_parity_gate.py`` fails
 when either source and this table disagree, when a reader file lacks its
 grep token (the dead-key check), or when a refusal row lost its binding
-test. The five PR-7-removed keys are absent BY CONSTRUCTION.
-
-STRICTLY DATA + STDLIB: the PyYAML-only CI job and doctor load this file by
-path. The op half lives in ``ops_backend_matrix.py``. ``_RAW`` records are
-``keys|behavior|reader|note|token|bind`` (``keys``: whitespace group of leaves).
+test. STRICTLY DATA + STDLIB: loaded by path, so no corpus_kb import.
+``_RAW`` records are ``keys|behavior|reader|note|token|bind``.
 """
 
 from __future__ import annotations
@@ -39,8 +36,8 @@ _RAW: list[str] = [
     "analysis.labeling.min_signals analysis.routing.fallback_log_path "
     "analysis.routing.llm_fallback_enabled analysis.sentiment.lexicon_path "
     "analysis.topics.max_embeddings analysis.topics.over_time.bins "
-    "analysis.topics.over_time.enabled analysis.topics.over_time.undated|honored|"
-    "analysis/settings.py|Typed loader; gates date backfill||",
+    "analysis.topics.over_time.enabled analysis.topics.over_time.undated|honored|analysis/"
+    "settings.py|Typed loader; gates date backfill||",
     "analysis.routing.confidence_threshold analysis.routing.margin routing.confidence_threshold|"
     "honored|eval/scoring.py|||",
     "analysis.sentiment.enabled|honored|tools/sentiment_tools.py|Sentiment gate||",
@@ -48,11 +45,17 @@ _RAW: list[str] = [
     "cache.deductive_enabled cache.enabled|honored|research/deductive_run.py|Cache gates||",
     "cache.inductive_enabled|honored|research/exact_cache.py|Inductive exact-cache gate|"
     "inductive_enabled|",
-    "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
+    "coding.coder coding.model coding.tier|honored|coding/model_tiers.py|"
+    "Coder pick; tier-resolved first rung (T1, TD-06)|coding.model|",
     "coding.export_dir|honored|coding/export_tables.py|Codebook CSV table dir||",
-    'coding.model|honored|server_wiring.py||coding_cfg.get("model"|',
     'llm.base_url|honored|handlers/llm_handler.py||_str_or_default(llm, "base_url"|',
     'llm.model|honored|api/routes_v1.py||llm_section.get("model"|',
+    "coding.judgment_seed|honored|coding/judgment_sampling.py|Judgment-sampling seed bind||",
+    "coding.cloud.base_url coding.cloud.api_key_env coding.cloud.consent coding.cloud.models.small "
+    "coding.cloud.models.medium coding.cloud.models.large|honored|coding/cloud_client.py|"
+    "Cloud rungs; consent gate (TD-05)|coding.cloud.|",
+    "coding.quality.min_quality_cosine coding.quality.lid_weights_path|honored|"
+    "coding/translation_quality.py|Quality floor; LID weights (TD-12)|coding.quality.|",
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
     "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",
     "database.backend database.connection_string routing.enabled retrieval.self_query.enabled "
@@ -108,8 +111,8 @@ _RAW: list[str] = [
     "installer.profiles.balanced.llm installer.profiles.balanced.model "
     "installer.profiles.balanced.ram_gb_max installer.profiles.balanced.vram_gb_max "
     "installer.profiles.performance.llm installer.profiles.performance.model "
-    "installer.profiles.performance.ram_gb_max installer.profiles.performance.vram_gb_max|honored|"
-    "_setup/profiles.py||ram_gb_max|",
+    "installer.profiles.performance.ram_gb_max installer.profiles.performance.vram_gb_max"
+    "|honored|_setup/profiles.py||ram_gb_max|",
     "judge.enabled|honored|tools/ask_tools.py|Judge gate on ask||",
     "judge.base_url judge.max_claims judge.model|honored|rag/judge.py||max_claims|",
     "notebooks.enabled notebooks.directory|honored|notebooks/settings.py|||",
@@ -183,45 +186,42 @@ _RAW: list[str] = [
     "web.user_agent web.timeout_seconds web.max_bytes web.respect_robots web.max_pages "
     "web.max_depth web.delay_seconds web.allow_private_addresses|honored|web/settings.py||"
     "respect_robots|",
-    "research.release.profiles.exploratory.alpha_reliable "
-    "research.release.profiles.exploratory.alpha_tentative "
-    "research.release.profiles.exploratory.min_audit_sample "
-    "research.release.profiles.exploratory.min_stratum_size "
-    "research.release.profiles.exploratory.partition_rule "
-    "research.release.profiles.exploratory.required_gates "
-    "research.release.profiles.high-assurance.agreement_routing_threshold "
-    "research.release.profiles.high-assurance.alpha_reliable "
-    "research.release.profiles.high-assurance.alpha_tentative "
-    "research.release.profiles.high-assurance.alt_test_margin "
-    "research.release.profiles.high-assurance.alt_test_passing_fraction "
-    "research.release.profiles.high-assurance.content_stability_floor "
-    "research.release.profiles.high-assurance.max_stratum_disparity "
-    "research.release.profiles.high-assurance.min_audit_sample "
-    "research.release.profiles.high-assurance.min_stratum_size "
-    "research.release.profiles.high-assurance.partition_rule "
-    "research.release.profiles.high-assurance.per_code_f1_floor "
-    "research.release.profiles.high-assurance.prompt_stability_alpha "
-    "research.release.profiles.high-assurance.required_gates "
-    "research.release.profiles.team-codebook.agreement_routing_threshold "
-    "research.release.profiles.team-codebook.alpha_reliable "
-    "research.release.profiles.team-codebook.alpha_tentative "
-    "research.release.profiles.team-codebook.alt_test_margin "
-    "research.release.profiles.team-codebook.alt_test_passing_fraction "
-    "research.release.profiles.team-codebook.content_stability_floor "
-    "research.release.profiles.team-codebook.max_stratum_disparity "
-    "research.release.profiles.team-codebook.min_audit_sample "
-    "research.release.profiles.team-codebook.min_stratum_size "
-    "research.release.profiles.team-codebook.partition_rule "
-    "research.release.profiles.team-codebook.per_code_f1_floor "
-    "research.release.profiles.team-codebook.prompt_stability_alpha "
-    "research.release.profiles.team-codebook.required_gates|honored|research/release/profiles.py||"
-    "alpha_reliable|",
     "master.idle_window_s master.switch_window_s|honored|master/state_store.py|Windows||",
     "master.workspace_root|honored|tools/pipeline/stages.py|Ingest attribution root||",
     "master.adopt_on_start master.adopt_skip master.backup.enabled master.backup.schedule "
-    "master.backup.time_local master.backup.target_dir master.scan_interval_s|honored|"
-    "_setup/doctor_master.py|Doctor reports; W7 and W8 read later|adopt_skip|",
+    "master.backup.time_local master.backup.target_dir master.scan_interval_s|honored|_setup/"
+    "doctor_master.py|Doctor reports; W7 and W8 read later|adopt_skip|",
 ]
+
+# Computed rows (stdlib only: no corpus_kb import here — the PyYAML-only
+# validate job loads this file by path). One row over every leaf of the two
+# generated families.
+_TIER_NAMES = ("small", "medium", "frontier")
+_TIER_LEAVES = ("provider", "model", "digest", "context_window", "snapshot_date")
+_RAW.append(
+    " ".join(f"models.tiers.{name}.{leaf}" for name in _TIER_NAMES for leaf in _TIER_LEAVES)
+    + "|honored|coding/model_tiers.py|Local tier bands (TD-04)|models.tiers.|"
+)
+_PROFILE_LEAVES: dict[str, str] = {
+    "exploratory": "alpha_reliable alpha_tentative min_audit_sample min_stratum_size "
+    "partition_rule required_gates",
+    "high-assurance": "agreement_routing_threshold alpha_reliable alpha_tentative "
+    "alt_test_margin alt_test_passing_fraction content_stability_floor "
+    "max_stratum_disparity min_audit_sample min_stratum_size partition_rule "
+    "per_code_f1_floor prompt_stability_alpha required_gates",
+    "team-codebook": "agreement_routing_threshold alpha_reliable alpha_tentative "
+    "alt_test_margin alt_test_passing_fraction content_stability_floor "
+    "max_stratum_disparity min_audit_sample min_stratum_size partition_rule "
+    "per_code_f1_floor prompt_stability_alpha required_gates",
+}
+_RAW.append(
+    " ".join(
+        f"research.release.profiles.{name}.{leaf}"
+        for name, leaves in _PROFILE_LEAVES.items()
+        for leaf in leaves.split()
+    )
+    + "|honored|research/release/profiles.py||alpha_reliable|"
+)
 
 
 def _parse_rows() -> tuple[ConfigBackendRow, ...]:

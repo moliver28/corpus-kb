@@ -2,14 +2,10 @@
 
 Every surface routes through these functions — the MCP tools are
 generated from the catalogue rows naming them, the socket spec arms
-import them, the CLI commands call them, and the NEW routes (status,
-export) call them like the statements routes do. The six pipeline ops
-delegate to :class:`handlers.coding_handler.CodingHandler` (the ONE
-implementation the existing HTTP routes already serve); status and
-export read through ``handlers.coding_status_ops``.
-
-The handler envelope passes through unchanged, so all four surfaces
-answer byte-identically (the parity gate pins this).
+import them, the CLI commands call them, the routes call them. The
+pipeline ops delegate to :class:`handlers.coding_handler.CodingHandler`;
+status and export read through ``handlers.coding_status_ops``. The
+envelope passes through unchanged, so all surfaces answer identically.
 """
 
 from __future__ import annotations
@@ -31,16 +27,12 @@ __all__ = [
     "coding_reliability",
     "coding_saturation",
     "coding_status",
+    "prompt_render",
 ]
 
 
 def _handler(pg_pool: Any) -> CodingHandler:
-    """One CodingHandler over the caller's storage seam (pool or gateway).
-
-    The embedder resolves lazily inside the handler (the same
-    ``OllamaEmbedder`` default the routes' singleton carries), so an MCP
-    or CLI caller needs no wiring step.
-    """
+    """One CodingHandler over the caller's storage seam (pool or gateway)."""
     return CodingHandler(pg_pool)
 
 
@@ -87,11 +79,8 @@ async def coding_code_batch(
     config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
 ) -> dict[str, Any]:
-    """Code a batch of (chunk, code) cells with confidence routing.
+    """Code a batch of (chunk, code) cells with confidence routing."""
 
-    ``bands`` rides as the raw threshold dict and is coerced to the
-    handler's ``Bands`` here — the same coercion the HTTP route does.
-    """
     from corpus_kb.coding.confidence_routing import Bands
 
     if not isinstance(cells, list):
@@ -212,4 +201,46 @@ async def coding_export(
         "coding_export",
         _export_op,
         parameters={"limit": limit, "offset": offset},
+    )
+
+
+async def prompt_render(
+    pg_pool: Any,
+    prompt_id: str,
+    variables: dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> dict[str, Any]:
+    """Render one registry prompt; answers the text and its digest (TD-03).
+
+    The render is pure and runs BEFORE the ledger window; its provenance
+    triple lands on the ``analysis_steps`` row (TD-13). A bad id or a
+    variable mismatch raises the typed registry error.
+    """
+    load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    from corpus_kb.coding.prompt_registry import render_prompt
+
+    rendered = render_prompt(prompt_id, variables if isinstance(variables, dict) else {})
+
+    async def _op() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "prompt_id": rendered.prompt_id,
+            "prompt_version": rendered.prompt_version,
+            "prompt_digest": rendered.prompt_digest,
+            "rendered": rendered.rendered,
+        }
+
+    return await run_step(
+        pg_pool,
+        tenant,
+        "prompt_render",
+        _op,
+        parameters={"prompt_id": rendered.prompt_id},
+        prompt_meta={
+            "prompt_id": rendered.prompt_id,
+            "prompt_version": rendered.prompt_version,
+            "prompt_digest": rendered.prompt_digest,
+        },
     )

@@ -1,0 +1,31 @@
+# The tier-3 rationale resample prompt (moved from
+# coding/uncertainty/resample_client.py, TAO T1 TD-03). The prompt is FIXED
+# per unit; only the seed varies, so the samples stay same-distribution.
+# The /no_think soft switch keeps the temperature-0.7 sample short.
+id: resample
+version: "1.0.0"
+kind: cell
+changelog: "1.0.0 moved the inline RESAMPLE_PROMPT_TEMPLATE into the registry (TAO T1)."
+variables:
+  - name: code
+    description: The applied code name.
+    required: true
+    default: ""
+  - name: definition
+    description: The applied code definition.
+    required: true
+    default: ""
+  - name: text
+    description: The unit text under coding.
+    required: true
+    default: ""
+defaults:
+  temperature: 0.7
+  max_tokens: 256
+  json_schema: false
+body: |
+  You are a qualitative coder. Restate, in one short sentence, the rationale for applying the code below to the unit.
+  Code: "{{code}}" - {{definition}}
+  Unit text: "{{text}}"
+  Answer with the rationale sentence only.
+  /no_think

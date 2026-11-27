@@ -3,8 +3,11 @@ per-code output types plus their deterministic validator.
 
 Pure text and data transforms only. The live model call lives in
 coder_client.py; dispatch (DB reads, routing, writes) lives in
-coder_dispatch.py. The three-way split keeps each file under the 250-line
-soft limit and keeps anything that touches a socket out of this module.
+coder_dispatch.py. TAO T1 (TD-03): the window body renders through the
+prompt registry (``coder_cell``; version + digest ride every dispatch);
+the inline tail moved verbatim into ``coding/prompts/coder_cell.yaml``
+(D-8: full contract and worked example in the file, call data as
+``{{variables}}``).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from corpus_kb.chunking.hierarchy import estimate_tokens
+from corpus_kb.coding.prompt_registry import RenderedPrompt, render_prompt
 from corpus_kb.coding.window_ceiling import (
     DEFAULT_MAX_WINDOW_TOKENS,
     fit_to_tokens,
@@ -58,45 +62,57 @@ Per-Agent Coder Window Contract (numbered):
 8. One worked example provided
 """
 
-_OUTPUT_SHAPE = (
-    '{"decisions": [{"code_id": str, "decision": "assign"|"reject", '
-    '"confidence": 0.0-1.0, "evidence_quote": str|null, "rationale": str}, ...]}'
-)
-
-_WORKED_EXAMPLE = (
-    'Worked example — chunk "Participant: We tested the control quarterly." with '
-    "candidate codes CTRL-001 and PROC-003 gives\n"
-    '{"decisions": ['
-    '{"code_id": "CTRL-001", "decision": "assign", "confidence": 0.92, '
-    '"evidence_quote": "We tested the control quarterly", '
-    '"rationale": "Participant states the control was tested."}, '
-    '{"code_id": "PROC-003", "decision": "reject", "confidence": 0.90, '
-    '"evidence_quote": null, '
-    '"rationale": "No documented procedure is described in this turn."}]}'
-)
-
 # Shared by the frame measurement and the assembly, so the computed token
 # ceiling covers exactly the rendered structure.
 _CONTEXT_LABEL = (
     "Chained context (the preceding moderator question, for "
     "understanding only -- never quote from this):"
 )
-_WINDOW_TAIL = [
-    "",
-    (
-        "Output contract: reply with JSON only. Judge EVERY candidate code above "
-        "independently and return exactly one entry per code_id, each with the "
-        "decision key FIRST:"
-    ),
-    _OUTPUT_SHAPE,
-    "",
-    (
-        "Each evidence_quote must be a verbatim substring of the target chunk, and "
-        "must quote only the participant's own words, never a moderator question."
-    ),
-    "",
-    _WORKED_EXAMPLE,
-]
+
+
+def _candidate_block(code_rows: list[dict[str, Any]]) -> str:
+    """The candidate-code lines: brief definition + criteria, never theory."""
+    lines: list[str] = []
+    for row in code_rows:
+        lines.extend(
+            [
+                f"- {row['code_id']}",
+                f"  definition: {row['brief_definition']}",
+                f"  include when: {row['inclusion_criteria']}",
+                f"  exclude when: {row['exclusion_criteria']}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def chained_variable(qa_context: str | None, text: str = "") -> str:
+    """The ``chained_context`` variable value: labeled slot, or empty.
+
+    The label rides INSIDE the variable (decision D-8), so a unit without
+    context renders byte-identically to the pre-registry layout, and the
+    frame estimate can reserve the label's tokens with an empty ``text``.
+    """
+    if qa_context is None:
+        return ""
+    return f"\n\n{_CONTEXT_LABEL}\n{text}"
+
+
+def build_window_prompt(
+    code_rows: list[dict[str, Any]], chunk_text: str, chained_context: str
+) -> RenderedPrompt:
+    """Render the ``coder_cell`` prompt from the registry (TD-03).
+
+    ``chained_context`` arrives already composed (``chained_variable``);
+    the renderer substitutes the three declared variables.
+    """
+    return render_prompt(
+        "coder_cell",
+        {
+            "candidate_codes": _candidate_block(code_rows),
+            "target_chunk": chunk_text,
+            "chained_context": chained_context,
+        },
+    )
 
 
 @dataclass
@@ -119,19 +135,10 @@ class CoderWindowOutput:
 def validate_coder_output(output: CoderWindowOutput) -> tuple[bool, str]:
     """Deterministic validator for ONE per-code model decision.
 
-    Checks:
-    - decision in {'assign', 'reject'}
-    - confidence in [0.0, 1.0]
-    - evidence_quote present on assign
-
-    The verbatim-quote gate (Task 6) runs separately in dispatch_chunk, since
-    it needs the chunk text and produces a repaired quote, not just a verdict.
-
-    Args:
-        output: Parsed per-code coder output
-
-    Returns:
-        (is_valid, error_message)
+    Checks: decision in {'assign', 'reject'}; confidence in [0.0, 1.0];
+    evidence_quote present on assign. The verbatim-quote gate (Task 6)
+    runs separately in dispatch_chunk (it needs the chunk text and
+    produces a repaired quote). Returns (is_valid, error_message).
     """
     if output.decision not in ("assign", "reject"):
         return False, f"Invalid decision: {output.decision}"
@@ -148,17 +155,14 @@ def validate_coder_output(output: CoderWindowOutput) -> tuple[bool, str]:
 def parse_decisions(
     raw: dict[str, Any], code_ids: list[str]
 ) -> tuple[dict[str, CoderWindowOutput], str]:
-    """Parse the multi-decision reply into one validated output per candidate code.
+    """Parse the reply into one validated output per candidate code.
 
-    Every candidate code_id must carry exactly one decision entry; a missing,
-    duplicated, unknown, or individually invalid entry fails the whole call so
-    that nothing partial reaches the append-only chunk_codes table.
+    Every candidate code_id carries exactly one decision entry; a missing,
+    duplicated, unknown, or invalid entry fails the whole call, so nothing
+    partial reaches the append-only chunk_codes table. `logprobs` belong
+    to the one generation, so they attach to every entry (Tier 1 shared).
 
-    `logprobs` belong to the single generation that produced all the decisions,
-    so they are attached to every parsed entry (Tier 1 is shared by construction).
-
-    Returns:
-        (decisions_by_code_id, error_message). error_message is "" when valid.
+    Returns (decisions_by_code_id, error_message); "" means valid.
     """
     if raw.get("error"):
         return {}, f"Model call failed: {raw['error']}"
@@ -208,42 +212,32 @@ def build_window(
 ) -> str:
     """Render the per-agent coder window (contract items 1, 2, 3, 5, 6, 7, 8).
 
-    Carries ONLY brief_definition / inclusion_criteria / exclusion_criteria per
-    candidate code: never `theory`, never the full `examples` list. `qa_context`
-    (contract item 3) is its own labeled section -- never spliced into
-    `chunk_text` -- so the verbatim-quote gate checks the real transcript.
-
-    Contract item 5 (coding.window_ceiling): the window never exceeds
-    `max_tokens` (default DEFAULT_MAX_WINDOW_TOKENS), so a long chunk plus five
-    code definitions cannot overflow the model's context silently. The anchor
-    (output contract + worked example) is never cut; the context yields before
-    the chunk; cuts carry a "[truncated]" marker. ValueError when the ceiling
-    cannot hold the fixed sections or any of the target chunk.
+    Carries ONLY brief_definition / inclusion_criteria / exclusion_criteria
+    per candidate code: never `theory`, never the full `examples` list.
+    `qa_context` is its own labeled section -- never spliced into
+    `chunk_text` -- so the quote gate checks the real transcript. The
+    window never exceeds `max_tokens` (contract item 5): the anchor
+    (registry-rendered) is never cut, the context yields before the chunk,
+    cuts carry a "[truncated]" marker. ValueError when the ceiling cannot
+    hold the fixed sections or the chunk.
     """
-    head = ["You are coding one transcript turn against candidate codes.", "", "Candidate codes:"]
-    for row in code_rows:
-        head.extend(
-            [
-                f"- {row['code_id']}",
-                f"  definition: {row['brief_definition']}",
-                f"  include when: {row['inclusion_criteria']}",
-                f"  exclude when: {row['exclusion_criteria']}",
-            ]
-        )
-    context_slot = ["", _CONTEXT_LABEL, ""] if qa_context else []
-    frame = [*head, "", "Target chunk:", *context_slot, *_WINDOW_TAIL]
-    fixed = estimate_tokens("\n".join(frame))
     ceiling = DEFAULT_MAX_WINDOW_TOKENS if max_tokens is None else max_tokens
+    # The fixed-frame token cost is measured without the chunk and context
+    # TEXT but with the context label reserved (the pre-registry estimate
+    # counted the label in the fixed sections); the fitted pieces then land
+    # inside the reserved budget.
+    frame = build_window_prompt(code_rows, "", chained_variable(qa_context)).rendered
+    fixed = estimate_tokens(frame)
     budget = reserve_budget(ceiling, fixed)
     chunk_fit = fit_to_tokens(chunk_text, budget)
     if chunk_text and not chunk_fit:
         raise ValueError(
             f"Coder window ceiling {ceiling} leaves no room for the target chunk. Raise max_tokens."
         )
-    lines = [*head, "", "Target chunk:", chunk_fit]
+    context_fit = ""
     if qa_context:
         context_fit = fit_to_tokens(qa_context, budget - estimate_tokens(chunk_fit))
-        if context_fit:
-            lines.extend(["", _CONTEXT_LABEL, context_fit])
-    lines.extend(_WINDOW_TAIL)
-    return "\n".join(lines)
+    # No fitted context means the label yields too (the pre-registry rule).
+    chained = "" if not context_fit else chained_variable(qa_context, context_fit)
+    rendered = build_window_prompt(code_rows, chunk_fit, chained)
+    return rendered.rendered.rstrip("\n")

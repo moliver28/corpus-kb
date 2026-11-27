@@ -41,6 +41,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "coding-export": { path: "/api/coding/export", method: "POST", longRunning: false },
   "coding-inductive": { path: "/api/coding/inductive", method: "POST", longRunning: true },
   "coding-pool": { path: "/api/coding/pool", method: "POST", longRunning: true },
+  "prompt-render": { path: "/api/coding/prompt-render", method: "POST", longRunning: false },
   "coding-reliability": { path: "/api/coding/reliability", method: "POST", longRunning: false },
   "coding-run": { path: "/api/coding/run", method: "POST", longRunning: true },
   "coding-saturation": { path: "/api/coding/saturation", method: "POST", longRunning: false },

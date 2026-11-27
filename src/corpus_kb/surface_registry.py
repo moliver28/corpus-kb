@@ -54,10 +54,7 @@ SURFACES: tuple[Surface, ...] = (
         name="coding-run",
         cli_path="coding run",
         mcp_tool="coding_run",
-        description=(
-            "Deductive run: score text against a fixed codebook; "
-            "calibrated thresholds; claim sizes."
-        ),
+        description=("Deductive run: score text against a fixed codebook; calibrated thresholds."),
         http_route="/api/coding/run",
     ),
     Surface(
@@ -78,9 +75,7 @@ SURFACES: tuple[Surface, ...] = (
         name="research-report",
         cli_path="research report",
         mcp_tool="research_report",
-        description=(
-            "Governance report: coverage, coding overlap, agreement between coders, gate checks."
-        ),
+        description="Governance report: coverage, coding overlap, agreement between coders, gates.",
         http_route="/api/research/report",
     ),
     Surface(
@@ -130,8 +125,7 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="research cycle",
         mcp_tool="research_cycle",
         description=(
-            "Research cycle: full pipeline with halt gates; long-running, "
-            "synchronous on every surface (promotion is human-gated)."
+            "Research cycle: the full pipeline with halt gates; promotion is human-gated."
         ),
         http_route="/api/research/cycle",
     ),
@@ -234,8 +228,8 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="",
         mcp_tool="",
         description=(
-            "Upload one file by multipart form (field name file); the "
-            "receipt is the standard file-ingest envelope."
+            "Upload one file by multipart form (field name file); the receipt is the "
+            "standard file-ingest envelope."
         ),
         http_route="/api/ingest/upload",
         surfaces=("http",),
@@ -618,10 +612,8 @@ SURFACES: tuple[Surface, ...] = (
         http_route="/api/calibrate/apply",
     ),
     # -- chunk-coding ops (issue #350): the six routes the plugin reached
-    #    only by hard-coded HTTP posts, plus the two reads it built by
-    #    hand (status from four SQL queries, export from hand-written SQL).
-    #    The three embedding/pooling/batching rows are long ops (minutes
-    #    on a real corpus; the UI manifest pins the same ids). -----------
+    #    only by hard-coded HTTP posts, plus the two hand-built reads; the
+    #    embedding/pooling/batching rows are long ops (UI pins same ids).
     Surface(
         name="coding-embed-codebook",
         cli_path="coding embed-codebook",
@@ -678,6 +670,13 @@ SURFACES: tuple[Surface, ...] = (
         description="Accepted codes joined with chunk text and document source, as rows.",
         http_route="/api/coding/export",
     ),
+    Surface(
+        name="prompt-render",
+        cli_path="coding prompt-render",
+        mcp_tool="prompt_render",
+        description="Render one registry prompt; answers the text and its digest.",
+        http_route="/api/coding/prompt-render",
+    ),
     # -- event-store health (issue #350): one op replaces the plugin's four
     #    SQL queries and its direct read of the DuckDB events sidecar. ----
     Surface(
@@ -685,8 +684,8 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="events",
         mcp_tool="events_summary",
         description=(
-            "Event counts by topic, latest notification id, checkpoints, "
-            "dead letters, recent ingest runs (read-only)."
+            "Event counts by topic, latest notification id, checkpoints, dead letters, "
+            "recent ingest runs (read-only)."
         ),
         http_route="/api/events/summary",
     ),
@@ -823,6 +822,7 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "project_claim_list",
     "project_list",
     "projects_list",
+    "prompt_render",
     "query",
     "queue_status",
     "release_assess",

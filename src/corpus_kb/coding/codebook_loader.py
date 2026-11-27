@@ -16,7 +16,7 @@ from uuid import UUID
 
 from corpus_kb.coding._scope import CodingStore, ScopedConn, is_gateway, tenant_scope
 from corpus_kb.coding.codebook import CodebookError, codebook_sha256, validate_codebook
-from corpus_kb.coding.keyword_authoring import write_codebook_keywords
+from corpus_kb.coding.keyword_authoring import retire_code_keywords, write_codebook_keywords
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 _INSERT_CODE = """
@@ -222,6 +222,10 @@ async def load_codebook(
     if embedded:
         async with tenant_scope(pool, tenant) as conn:
             await _write_codes(conn, version_id, tenant, embedded, insert_sql)
+            # T1 pin (athena row 47): a new version's authored keywords
+            # replace the previous version's, BEFORE the new inserts (the
+            # one-active-inclusion index forces replace semantics anyway).
+            await retire_code_keywords(conn, tenant)
             await write_codebook_keywords(conn, tenant, embedded)
 
     return version_id

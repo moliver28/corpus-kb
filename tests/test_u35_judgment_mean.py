@@ -218,7 +218,11 @@ async def test_live_path_temperature_contract(monkeypatch: pytest.MonkeyPatch) -
     temperatures: list[float] = []
 
     def fake_generate(
-        window: str, model: str, base_url: str, temperature: float = 0
+        window: str,
+        model: str,
+        base_url: str,
+        temperature: float = 0,
+        seed: int | None = None,
     ) -> tuple[Any, Any]:
         temperatures.append(temperature)
         return json.dumps(_reply(0.9)), []

@@ -1,0 +1,48 @@
+# The theory-grounding prompt (moved from coding/codebook.py THEORY_PROMPT,
+# TAO T1 TD-03). The renderer substitutes the three declared variables; the
+# JSON braces in the body are literal text, never expressions.
+id: theory
+version: "1.0.0"
+kind: cell
+changelog: "1.0.0 moved the inline THEORY_PROMPT into the registry (TAO T1)."
+variables:
+  - name: definition
+    description: The code's brief definition.
+    required: true
+    default: ""
+  - name: inclusion
+    description: The code's inclusion criteria.
+    required: true
+    default: ""
+  - name: exclusion
+    description: The code's exclusion criteria.
+    required: true
+    default: ""
+defaults:
+  temperature: 0
+  max_tokens: 512
+  json_schema: false
+body: |
+  You are a qualitative researcher. Given a code's definition
+  and criteria, propose academic grounding for it.
+
+  Return a JSON object with these fields. Return null (not "null" string, actual JSON null) for any
+  field you cannot ground in the code's definition alone. Never invent a citation; never cite what
+  the code's definition does not explicitly state.
+
+  Fields:
+  - tradition: the research tradition or theoretical framework
+    (e.g. "Grounded Theory", "Phenomenology")
+  - construct: the core construct being measured or observed
+  - citation: a full citation (author(s) year) if applicable, null otherwise
+  - note: a brief explanatory note if helpful, null otherwise
+
+  Worked null example:
+  Input code definition: "the participant paused for more than 2 seconds"
+  Output: {"tradition": null, "construct": null, "citation": null, "note": null}
+
+  Code definition: {{definition}}
+  Inclusion criteria: {{inclusion}}
+  Exclusion criteria: {{exclusion}}
+
+  Return only valid JSON, no markdown, no preamble.

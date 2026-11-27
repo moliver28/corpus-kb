@@ -1,0 +1,45 @@
+# The per-cell coder prompt (TD-03, contract item 6). One code decision per
+# candidate code_id; the decision key is emitted first for Tier 1 entropy.
+# The body carries the full output contract and worked example (decision D-8):
+# the renderer allows no expressions, so the tail moved here verbatim.
+id: coder_cell
+version: "1.0.0"
+kind: cell
+changelog: "1.0.0 moved the inline coder_window tail into the registry (TAO T1)."
+variables:
+  - name: candidate_codes
+    description: The candidate code block, one brief definition per code.
+    required: true
+    default: ""
+  - name: target_chunk
+    description: The unit text being coded.
+    required: true
+    default: ""
+  - name: chained_context
+    description: The chained moderator question, or empty when absent.
+    required: false
+    default: ""
+defaults:
+  temperature: 0
+  max_tokens: 1024
+  json_schema: false
+body: |
+  You are coding one transcript turn against candidate codes.
+
+  Candidate codes:
+  {{candidate_codes}}
+
+  Target chunk:
+  {{target_chunk}}{{chained_context}}
+
+  Output contract: reply with JSON only. Judge EVERY candidate code above
+  independently and return exactly one entry per code_id, each with the
+  decision key FIRST:
+  {"decisions": [{"code_id": str, "decision": "assign"|"reject", "confidence": 0.0-1.0, "evidence_quote": str|null, "rationale": str}, ...]}
+
+  Each evidence_quote must be a verbatim substring of the target chunk, and
+  must quote only the participant's own words, never a moderator question.
+
+  Worked example — chunk "Participant: We tested the control quarterly." with
+  candidate codes CTRL-001 and PROC-003 gives
+  {"decisions": [{"code_id": "CTRL-001", "decision": "assign", "confidence": 0.92, "evidence_quote": "We tested the control quarterly", "rationale": "Participant states the control was tested."}, {"code_id": "PROC-003", "decision": "reject", "confidence": 0.90, "evidence_quote": null, "rationale": "No documented procedure is described in this turn."}]}

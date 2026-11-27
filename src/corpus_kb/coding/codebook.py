@@ -12,6 +12,8 @@ import json
 from collections.abc import Callable
 from typing import Any, TypedDict
 
+from corpus_kb.coding.prompt_registry import render_prompt
+
 
 class CodebookError(ValueError):
     """Raised when codebook validation fails."""
@@ -39,29 +41,10 @@ VALID_PARADIGMS = {"codebook", "reflexive"}
 
 KEYWORD_KEYS = {"include", "exclude"}
 
-THEORY_PROMPT = """You are a qualitative researcher. Given a code's definition
-and criteria, propose academic grounding for it.
-
-Return a JSON object with these fields. Return null (not "null" string, actual JSON null) for any
-field you cannot ground in the code's definition alone. Never invent a citation; never cite what
-the code's definition does not explicitly state.
-
-Fields:
-- tradition: the research tradition or theoretical framework
-  (e.g. "Grounded Theory", "Phenomenology")
-- construct: the core construct being measured or observed
-- citation: a full citation (author(s) year) if applicable, null otherwise
-- note: a brief explanatory note if helpful, null otherwise
-
-Worked null example:
-Input code definition: "the participant paused for more than 2 seconds"
-Output: {"tradition": null, "construct": null, "citation": null, "note": null}
-
-Code definition: {definition}
-Inclusion criteria: {inclusion}
-Exclusion criteria: {exclusion}
-
-Return only valid JSON, no markdown, no preamble."""
+# TAO T1 (TD-03): the theory prompt moved into coding/prompts/theory.yaml;
+# propose_theory renders it through the prompt registry (one renderer, one
+# header convention). THEOREY_PROMPT_ID pins the registry id.
+THEORY_PROMPT_ID = "theory"
 
 
 def _validate_keywords(code: dict[str, Any]) -> None:
@@ -182,13 +165,12 @@ async def propose_theory(
     inclusion = code.get("inclusion_criteria", "")
     exclusion = code.get("exclusion_criteria", "")
 
-    # .format would interpolate the prompt's literal JSON braces (KeyError '"tradition"');
-    # only these three slots are substitution targets.
-    prompt = (
-        THEORY_PROMPT.replace("{definition}", definition)
-        .replace("{inclusion}", inclusion)
-        .replace("{exclusion}", exclusion)
-    )
+    # The registry render replaces the old .replace chain (which existed
+    # because .format would interpolate the prompt's literal JSON braces).
+    prompt = render_prompt(
+        THEORY_PROMPT_ID,
+        {"definition": definition, "inclusion": inclusion, "exclusion": exclusion},
+    ).rendered.rstrip("\n")
 
     response = await call_fn(prompt)
 

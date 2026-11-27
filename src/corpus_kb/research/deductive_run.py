@@ -8,17 +8,16 @@ Layering contract (r11), mirrored in docs/research/research-math.md:
 
 Orchestration: read models in (units, exchanges, code_registry) ->
 CodingRun / CodingAssignment events out via ResearchHandler. Prototypes are
-rebuilt at run time from exemplar text_sha256 refs (vectors are derived data,
-never event-carried); gold units scored for the conformal calibration split
-use leave-one-out prototype rebuilds — a gold exemplar is never scored
-against a medoid chosen from it.
+rebuilt at run time from exemplar text_sha256 refs; gold units scored for
+the conformal calibration split use leave-one-out prototype rebuilds — a
+gold exemplar is never scored against a medoid chosen from it.
 
 Tier-3 wiring (issue #132): every run computes the combined review priority
 and closed-enum routing reasons into the checkpoint's ``review_priority``
 block. With ``coding.uncertainty.tier3_enabled`` the flagged minority is
-escalated: resampled rationales and pairwise mutual-entailment verdicts are
-measured through the degrading clients in ``coding/uncertainty/``, and the
-escalated units' semantic entropy rides their assignment events into
+escalated: resampled rationales and entailment verdicts are measured
+through the degrading clients in ``coding/uncertainty/``, and the flagged
+units' semantic entropy rides their assignment events into
 research_signals. Escalation is OFF by default — the engine stays
 deterministic and LLM-free unless the owner turns it on.
 """
@@ -32,6 +31,7 @@ from uuid import UUID
 import asyncpg
 import numpy as np
 
+from corpus_kb.coding.grade import grade_conformal
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
 from corpus_kb.research.deduction_guard import guard_deductive_run
@@ -177,16 +177,16 @@ def _record_assignments(
     decisions_by_unit: dict[int, list[DeductiveDecision]],
     scored: dict[str, dict[str, list[float]]],
     signals_by_unit: dict[int, list[dict[str, object]]] | None = None,
+    sets_by_unit: dict[int, set[int]] | None = None,
 ) -> tuple[int, int, int]:
     """Persist one assignment row per (unit, decision); return basis counts.
 
-    Tier-3 signals (issue #132 wiring) ride the SAME assignment event via
-    the ``signals`` kwarg; the analytics projector lands them in
-    research_signals. Returns (explicit, question_dependent, review).
+    Tier-3 signals ride the SAME event into research_signals.
     """
     explicit = qdep = review = 0
     row_of_unit = {u.unit_id: i for i, u in enumerate(units)}
     for unit in units:
+        gr = grade_conformal(len((sets_by_unit or {}).get(unit.unit_id) or ()))
         for d in decisions_by_unit[unit.unit_id]:
             views = scored.get(d.code_id, {})
             handler.record_assignment(
@@ -205,6 +205,8 @@ def _record_assignments(
                 confidence=d.confidence,
                 tier_fired=d.tier_fired,
                 status=d.status,
+                grade=gr.grade,
+                grade_reason=gr.reason,
                 signals=(signals_by_unit or {}).get(unit.unit_id),
             )
             if d.evidence_basis == "explicit_in_answer":
@@ -291,6 +293,7 @@ async def run_deductive(
         decisions_by_unit,
         scored,
         signals_by_unit,
+        sets_by_unit=conformal_sets_by_unit,
     )
 
     summary = {
@@ -333,19 +336,15 @@ def _cache_block(cache: CacheSettings) -> dict[str, Any]:
         "enabled": cache.enabled,
         "deductive_allowed": cache.allows("deductive"),
         "consulted": False,
-        "note": "deductive v2 scoring is deterministic (no LLM calls); "
-        "the cache gate is evaluated per run for the assignment path",
+        "note": "deductive v2 scoring is deterministic (no LLM calls); the gate "
+        "is evaluated per run for the assignment path",
     }
 
 
 def _conformal_block(
     sets_by_unit: dict[int, set[int]], cal_alpha: float, empirical_coverage: float
 ) -> dict[str, Any]:
-    """Set-size distribution + coverage (the report reads this block).
-
-    ``per_unit`` persists set sizes > 1 only (the routing-relevant minority;
-    size 1 is the default the notebook evidence view assumes).
-    """
+    """Set-size distribution + coverage; ``per_unit`` keeps sizes > 1 only."""
     sizes = Counter(len(s) for s in sets_by_unit.values())
     return {
         "set_size_distribution": {str(size): count for size, count in sorted(sizes.items())},

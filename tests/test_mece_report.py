@@ -331,3 +331,43 @@ def test_residue_top_terms_strip_punctuation() -> None:
     assert words[0] == "coding"  # two mentions, one punctuated
     assert words[1:] == ["code", "quality", "wins"]  # count desc, then word
     assert "it" not in words and "the" not in words  # stopwords stay out
+
+
+async def test_continuous_metrics_carry_bootstrap_intervals(tmp_path: Path) -> None:
+    """TAO-T0-01 pin: the three continuous metrics carry 95 percent intervals."""
+    gw = await _fixture_world(tmp_path)
+    codes = await gw.fetch(
+        "SELECT code_id, definition_vector FROM code_registry WHERE tenant_id=$1", str(TENANT)
+    )
+    # Pure path: recompute the exclusivity + stability blocks from fixtures.
+    from corpus_kb.coding.mece_report import parse_vector
+
+    centroids = {str(r["code_id"]): parse_vector(r["definition_vector"]) for r in codes}
+    centroids = {k: v for k, v in centroids.items() if v is not None}
+    assert len(centroids) >= 2
+    from corpus_kb.coding.mece_report import _exclusivity_block
+
+    # Two coded chunks against two centroids, two identical residue-free rows.
+    block = _exclusivity_block(
+        ["c1", "c2"],
+        {"c1": centroids["C1"], "c2": centroids["C2"]},
+        {"c1": {"C1"}, "c2": {"C2"}},
+        {},
+        ["C1", "C2"],
+        centroids,
+    )
+    centroid_distance = block["mean_centroid_cosine_distance"]
+    interval = centroid_distance["interval"]
+    assert interval is not None
+    low, high = interval
+    assert low <= centroid_distance["value"]
+    assert centroid_distance["value"] <= high
+    # Stability block: the ARI interval is the seed spread.
+    from corpus_kb.coding.mece_report import _residue_stability
+
+    vectors = {f"r{i}": centroids["C1"] for i in range(6)}
+    texts = {f"r{i}": f"residue text {i}" for i in range(6)}
+    stability, _terms = _residue_stability(list(vectors), vectors, texts)
+    assert stability["interval"] is not None
+    assert stability["interval"][0] <= stability["interval"][1]
+    await gw.close()

@@ -154,3 +154,18 @@ async def coding_export_route(request: Request) -> JSONResponse:
         offset=opt_int(body.get("offset"), 0, name="offset"),
     )
     return JSONResponse(result)
+
+
+@route_errors
+async def coding_prompt_render_route(request: Request) -> JSONResponse:
+    """POST /api/coding/prompt-render — render one registry prompt."""
+    from corpus_kb.tools.coding_tools import prompt_render
+
+    body = await parse_body(request)
+    result = await prompt_render(
+        await _pool(),
+        str(body["prompt_id"]),
+        variables=body.get("variables"),
+        tenant_id=str(body.get("tenant_id", DEFAULT_TENANT_ID)),
+    )
+    return JSONResponse(result)

@@ -34,16 +34,28 @@ async def run_step(
     op: Callable[[], Awaitable[T]],
     *,
     parameters: Mapping[str, Any] | None = None,
+    prompt_meta: Mapping[str, Any] | None = None,
 ) -> T:
     """Run ``op`` inside a start -> finish/fail ledger window; fail-open.
 
     The row opens ``running`` and completes only after ``op`` returns; a
     raised op records ``failed``, then the error propagates. Ledger
-    trouble never breaks the op.
+    trouble never breaks the op. ``prompt_meta`` (optional
+    ``prompt_id``/``prompt_version``/``prompt_digest``) lands on the
+    ledger row's prompt columns (TD-13).
     """
     step_id: UUID | None = None
+    meta = dict(prompt_meta or {})
     try:
-        step_id = await start_step(pool, tenant_id, operation, parameters=parameters)
+        step_id = await start_step(
+            pool,
+            tenant_id,
+            operation,
+            parameters=parameters,
+            prompt_id=meta.get("prompt_id"),
+            prompt_version=meta.get("prompt_version"),
+            prompt_digest=meta.get("prompt_digest"),
+        )
     except Exception:
         logger.warning("Step ledger open degraded for %s", operation, exc_info=True)
     try:

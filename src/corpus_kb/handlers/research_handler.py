@@ -383,11 +383,8 @@ class ResearchHandler:
 
     def record_assignment(self, tenant_id: UUID, **kwargs: object) -> dict[str, Any]:
         """Record one per-unit assignment (per-unit aggregate => no contention)."""
-        # Decision routing: explicit status wins (deductive v2 routing rides the
-        # event); when the caller omits it, derive from evidence_basis/stance so
-        # the question-dependent / deny / deflect -> review contract holds for
-        # legacy callers (assignment_projector mirrors this derivation for
-        # events recorded before the status field existed).
+        # Decision routing: explicit status wins; when omitted, derive from
+        # evidence_basis/stance (the projector mirrors this for old events).
         status = str(kwargs.get("status") or "")
         if status not in ("auto", "review"):
             if kwargs.get("evidence_basis") == "question_dependent" or kwargs.get("stance") in (
@@ -415,6 +412,8 @@ class ResearchHandler:
             confidence=cast("str | None", kwargs.get("confidence")),
             tier_fired=cast("int | None", kwargs.get("tier_fired")),
             status=status,
+            grade=cast("str | None", kwargs.get("grade")),
+            grade_reason=cast("str | None", kwargs.get("grade_reason")),
         )
         self.app.save(assignment)
         if kwargs.get("signals"):

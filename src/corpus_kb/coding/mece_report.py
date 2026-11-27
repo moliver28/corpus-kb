@@ -1,13 +1,12 @@
 """MECE math over fetched coding state (TD-11, R9b) — pure, no I/O.
 
-Composes the repo's existing math instead of recomputing it:
-``research/overlap.code_centroid_matrix``, ``research/exhaustiveness``
-(residuals + residual_section), and ``research/cluster_stability``
-(spherical_kmeans, bootstrap_stability, silhouette_by_group). The embedder
-name rides every report (S9). Every share carries its n and a Wilson
-95 percent interval (athena AM-02). Inputs come from stored vectors only,
-so no model call runs here (wave law). The DB reads live in
-:mod:`corpus_kb.coding.report_reads`.
+Composes the repo's existing math: ``research/overlap``,
+``research/exhaustiveness``, ``research/cluster_stability``. The embedder
+name rides every report (S9). Every share carries its n and a Wilson 95
+percent interval (AM-02); the three continuous metrics carry a 95
+percent bootstrap interval (TAO-T0-01): pair distances, chunk resamples,
+and the ARI seed spread. Stored vectors only (wave law); the DB reads
+live in :mod:`corpus_kb.coding.report_reads`.
 """
 
 from __future__ import annotations
@@ -16,6 +15,8 @@ import json
 import math
 from collections import Counter
 from typing import Any
+
+import numpy as np
 
 from corpus_kb.coding.residue_terms import residue_top_terms
 from corpus_kb.research.cluster_stability import (
@@ -31,8 +32,12 @@ __all__ = ["mece_block", "wilson_interval"]
 #: No-gold fallback for tau_res (calibrate_tau_res floors at the same value).
 TAU_RES_FLOOR = 0.05
 
-#: Deterministic cap on chunk vectors the report reads (ordered by chunk_id).
+#: Cap on chunk vectors the report reads (ordered by chunk_id).
 MAX_CHUNKS = 5000
+
+#: Bootstrap draws + fixed seed for the intervals (deterministic, T0-01).
+BOOTSTRAP_B = 500
+BOOTSTRAP_SEED = 20261125
 
 
 def wilson_interval(hits: int, n: int, z: float = 1.96) -> list[float]:
@@ -51,11 +56,28 @@ def share(hits: int, n: int) -> dict[str, object]:
     return {"value": (hits / n) if n else 0.0, "n": n, "interval": wilson_interval(hits, n)}
 
 
+def percentile_interval(values: list[float]) -> list[float] | None:
+    """The 2.5/97.5 percentile band over one bootstrap distribution."""
+    if not values:
+        return None
+    low = float(np.percentile(np.asarray(values, dtype=float), 2.5))
+    high = float(np.percentile(np.asarray(values, dtype=float), 97.5))
+    return [low, high]
+
+
+def _bootstrap_mean_interval(values: list[float], rng: np.random.Generator) -> list[float] | None:
+    """95 percent bootstrap interval for a mean (resample with replacement)."""
+    if not values:
+        return None
+    arr = np.asarray(values, dtype=float)
+    means = [float(arr[rng.integers(0, len(arr), len(arr))].mean()) for _ in range(BOOTSTRAP_B)]
+    return percentile_interval(means)
+
+
 def parse_vector(raw: object) -> list[float] | None:
     """Stored vector -> floats; None when absent, unparsable, or all zeros.
 
-    Three storage shapes arrive: a pgvector literal string (asyncpg), a list
-    (JSON), and a tuple (the DuckDB gateway's FLOAT[k] columns).
+    Shapes: a pgvector literal (asyncpg), a list (JSON), a tuple (DuckDB).
     """
     if isinstance(raw, str):
         try:
@@ -65,6 +87,60 @@ def parse_vector(raw: object) -> list[float] | None:
     if not isinstance(raw, (list, tuple)) or not raw or not any(raw):
         return None
     return [float(x) for x in raw]
+
+
+def _centroid_distance_block(
+    code_ids: list[str], centroids: dict[str, list[float]]
+) -> dict[str, object]:
+    """Mean pairwise centroid distance + its pair-bootstrap interval (T0-01)."""
+    if len(centroids) < 2:
+        return {"value": None, "n_codes": len(centroids)}
+    matrix = code_centroid_matrix([centroids[c] for c in code_ids if c in centroids])
+    k = len(matrix)
+    pairs = k * (k - 1)
+    if not pairs:
+        return {"value": None, "n_codes": len(centroids)}
+    offdiag = float(matrix.sum()) - k  # gram diagonal is 1.0
+    iu, ju = np.triu_indices(k, k=1)
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    return {
+        "value": 1.0 - offdiag / pairs,
+        "n_codes": k,
+        "interval": _bootstrap_mean_interval((1.0 - matrix[iu, ju]).tolist(), rng),
+    }
+
+
+def _silhouette_block(
+    sampled: list[str],
+    vectors: dict[str, list[float]],
+    coded_by_chunk: dict[str, set[str]],
+    code_ids: list[str],
+) -> dict[str, object]:
+    """Mean silhouette over single-coded chunks + its chunk bootstrap (T0-01)."""
+    single = [
+        c
+        for c in sampled
+        if len(coded_by_chunk.get(c, set())) == 1 and next(iter(coded_by_chunk[c])) in code_ids
+    ]
+    label_of = {c: code_ids.index(next(iter(coded_by_chunk[c]))) for c in single}
+    if len(set(label_of.values())) < 2:
+        return {"value": None, "n_groups": 0}
+    scores = silhouette_by_group([vectors[c] for c in single], [label_of[c] for c in single])
+    vals = [float(v) for v in scores.values()]
+    if not vals:
+        return {"value": None, "n_groups": 0}
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    boot_means: list[float] = []
+    for _ in range(BOOTSTRAP_B):
+        draw = [single[i] for i in rng.integers(0, len(single), len(single))]
+        draw_scores = silhouette_by_group([vectors[c] for c in draw], [label_of[c] for c in draw])
+        if draw_scores:
+            boot_means.append(sum(float(v) for v in draw_scores.values()) / len(draw_scores))
+    return {
+        "value": sum(vals) / len(vals),
+        "n_groups": len(vals),
+        "interval": percentile_interval(boot_means),
+    }
 
 
 def _exclusivity_block(
@@ -79,55 +155,39 @@ def _exclusivity_block(
     n = len(sampled)
     multi_auto = sum(1 for c in sampled if len(coded_by_chunk.get(c, set())) >= 2)
     multi_keyword = sum(1 for c in sampled if len(keyword_codes.get(c, set())) >= 2)
-
-    centroid_distance: dict[str, object] = {"value": None, "n_codes": len(centroids)}
-    if len(centroids) >= 2:
-        matrix = code_centroid_matrix([centroids[c] for c in code_ids if c in centroids])
-        k = len(matrix)
-        pairs = k * (k - 1)
-        if pairs:
-            offdiag = float(matrix.sum()) - k  # gram diagonal is 1.0
-            centroid_distance = {"value": 1.0 - offdiag / pairs, "n_codes": k}
-
-    single = [
-        c
-        for c in sampled
-        if len(coded_by_chunk.get(c, set())) == 1 and next(iter(coded_by_chunk[c])) in code_ids
-    ]
-    label_of = {c: code_ids.index(next(iter(coded_by_chunk[c]))) for c in single}
-    silhouette_report: dict[str, object] = {"value": None, "n_groups": 0}
-    if len(set(label_of.values())) >= 2:
-        scores = silhouette_by_group([vectors[c] for c in single], [label_of[c] for c in single])
-        vals = [float(v) for v in scores.values()]
-        if vals:
-            silhouette_report = {"value": sum(vals) / len(vals), "n_groups": len(vals)}
     return {
         "multi_automatic_code_share": share(multi_auto, n),
         "multi_keyword_code_share": share(multi_keyword, n),
-        "mean_centroid_cosine_distance": centroid_distance,
-        "silhouette": silhouette_report,
+        "mean_centroid_cosine_distance": _centroid_distance_block(code_ids, centroids),
+        "silhouette": _silhouette_block(sampled, vectors, coded_by_chunk, code_ids),
     }
 
 
 def _residue_stability(
     residue: list[str], vectors: dict[str, list[float]], texts: dict[str, str]
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    """ARI stability and top terms for the residue clusters (needs >= 6 chunks)."""
-    stability: dict[str, object] = {"mean_pairwise_ari": None, "n_resamples": 0}
-    cluster_terms: list[dict[str, object]] = []
-    if len(residue) >= 6:
-        labels = [int(x) for x in spherical_kmeans([vectors[c] for c in residue], 3)]
-        boot = bootstrap_stability([vectors[c] for c in residue], n_resamples=5)
-        stability = {
-            "mean_pairwise_ari": boot.get("mean_pairwise_ari"),
-            "stable": boot.get("stable"),
-            "n_resamples": 5,
-        }
-        by_label: dict[int, list[str]] = {}
-        for chunk_id, label in zip(residue, labels, strict=True):
-            by_label.setdefault(label, []).append(texts[chunk_id])
-        cluster_terms = residue_top_terms(by_label)
-    return stability, cluster_terms
+    """ARI stability + top terms (>= 6 chunks); TAO-T0-01 interval = seed spread."""
+    if len(residue) < 6:
+        return {"mean_pairwise_ari": None, "n_resamples": 0}, []
+    labels = [int(x) for x in spherical_kmeans([vectors[c] for c in residue], 3)]
+    runs = [
+        bootstrap_stability([vectors[c] for c in residue], n_resamples=5, seed=seed)
+        for seed in (42, 43, 44)
+    ]
+    observed: list[float] = []
+    for run in runs:
+        ari = run.get("mean_pairwise_ari")
+        if isinstance(ari, (int, float)):
+            observed.append(float(ari))
+    by_label: dict[int, list[str]] = {}
+    for chunk_id, label in zip(residue, labels, strict=True):
+        by_label.setdefault(label, []).append(texts[chunk_id])
+    return {
+        "mean_pairwise_ari": observed[0] if observed else None,
+        "stable": runs[0].get("stable"),
+        "n_resamples": 5,
+        "interval": percentile_interval(observed),
+    }, residue_top_terms(by_label)
 
 
 def mece_block(inputs: dict[str, Any]) -> dict[str, Any]:

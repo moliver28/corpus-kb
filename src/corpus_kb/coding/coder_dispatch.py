@@ -21,7 +21,8 @@ from corpus_kb.coding.coder_window import (
     CODER_WINDOW_CONTRACT,
     MAX_CANDIDATE_CODES,
     CoderWindowOutput,
-    build_window,
+    build_window_prompt,
+    chained_variable,
     parse_decisions,
     validate_coder_output,
 )
@@ -42,12 +43,13 @@ async def dispatch_chunk(
     chunk_id: UUID,
     code_ids: list[str],
     coder: str = "test-coder",
-    model: str = "qwen3:8b",
+    model: str | None = None,
     call_fn: Callable[[str], Awaitable[dict[str, Any]]] | None = None,
     bands: Bands | None = None,
     batch_id: str | None = None,
     coding_pass: int = 1,
     use_judgment_mean: bool | None = None,
+    paradigm: str | None = None,
 ) -> dict[str, Any]:
     """Dispatch a single chunk for coding against candidate codes.
 
@@ -93,7 +95,8 @@ async def dispatch_chunk(
         chunk_id: Chunk to code
         code_ids: Candidate code IDs (<=5; more raises ValueError)
         coder: Coder identifier (e.g., model name or user)
-        model: Model name
+        model: Model name; None resolves ``coding.tier`` through
+            ``models.tiers`` (TD-06; ``model_tiers.resolve_coder_models``)
         call_fn: Async callable(window_text) -> response dict. Injected by tests;
             under the U35 mean path each invocation is read as one independent
             draw (a live call_ollama uses JUDGMENT_SAMPLE_TEMPERATURE for the
@@ -112,6 +115,10 @@ async def dispatch_chunk(
             f"got {len(code_ids)}"
         )
     bands = bands or Bands()
+    if model is None:
+        from corpus_kb.coding.model_tiers import default_coder_models
+
+        model = default_coder_models()[1]
 
     # Phase 1 (read): the window inputs; see _read_window for the rationale.
     chunk_text, code_rows, qa_context = await _read_window(pool, tenant_id, chunk_id, code_ids)
@@ -125,8 +132,16 @@ async def dispatch_chunk(
         return unresolved
 
     # Phase 2 (model): outside any transaction, since a generation takes seconds.
-    window = build_window(chunk_text, code_rows, qa_context=qa_context)
+    prompt = build_window_prompt(
+        code_rows, chunk_text, chained_variable(qa_context, qa_context or "")
+    )
+    window = prompt.rendered.rstrip("\n")
     raw = await (call_fn(window) if call_fn is not None else call_ollama(window, model))
+    prompt_meta: dict[str, Any] = {
+        "prompt_id": prompt.prompt_id,
+        "prompt_version": prompt.prompt_version,
+        "prompt_digest": prompt.prompt_digest,
+    }
 
     decisions, error = parse_decisions(raw, [r["code_id"] for r in code_rows])
     if error:
@@ -150,24 +165,25 @@ async def dispatch_chunk(
     results = []
     async with tenant_scope(pool, tenant_id) as conn:
         for row in code_rows:
-            results.append(
-                await _write_cell(
-                    conn,
-                    chunk_id=chunk_id,
-                    tenant_id=tenant_id,
-                    coding_pass=coding_pass,
-                    batch_id=batch_id,
-                    coder=coder,
-                    model=model,
-                    row=row,
-                    output=decisions[row["code_id"]],
-                    entropy=entropy,
-                    chunk_text=chunk_text,
-                    qa_used=qa_context is not None,
-                    judgment=(judgment_by_code.get(row["code_id"]) if judgment_by_code else None),
-                    bands=bands,
-                )
+            result = await _write_cell(
+                conn,
+                chunk_id=chunk_id,
+                tenant_id=tenant_id,
+                coding_pass=coding_pass,
+                batch_id=batch_id,
+                coder=coder,
+                model=model,
+                row=row,
+                output=decisions[row["code_id"]],
+                entropy=entropy,
+                chunk_text=chunk_text,
+                qa_used=qa_context is not None,
+                judgment=(judgment_by_code.get(row["code_id"]) if judgment_by_code else None),
+                bands=bands,
+                paradigm=paradigm,
             )
+            # TD-03 point 4: every model call carries the prompt provenance.
+            results.append({**result, **prompt_meta})
 
     return {
         "status": "success",

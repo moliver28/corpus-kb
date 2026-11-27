@@ -19,7 +19,13 @@ from corpus_kb.coding.coder_steps import (
     _routed_confidence,
 )
 from corpus_kb.coding.coder_window import CoderWindowOutput
-from corpus_kb.coding.confidence_routing import Bands, route_cell
+from corpus_kb.coding.confidence_routing import Bands, RouteResult, route_cell
+from corpus_kb.coding.grade import (
+    TRANSLATION_UNTRANSLATED,
+    GradeSignals,
+    grade_cell,
+    reflexive_route,
+)
 from corpus_kb.coding.judgment_sampling import JudgmentMeanResult
 from corpus_kb.coding.uncertainty.types import assemble_tier_signals
 
@@ -40,6 +46,7 @@ async def _write_cell(
     qa_used: bool,
     judgment: JudgmentMeanResult | None,
     bands: Bands,
+    paradigm: str | None = None,
 ) -> dict[str, Any]:
     """Gate, route and persist ONE (chunk, code) cell; return its result row.
 
@@ -71,6 +78,20 @@ async def _write_cell(
         quote_ok=quote_ok,
         bands=bands,
     )
+    # T1 grade (TD-07): a summary beside the route. The coder batch path
+    # has no calibration split yet, so the honest grade is U until the
+    # T2 pilot feeds one (grade_cell documents the rule order).
+    graded = grade_cell(
+        GradeSignals(
+            decision=output.decision,
+            paradigm=paradigm,
+            quote_ok=quote_ok,
+            translation_state=TRANSLATION_UNTRANSLATED,
+        )
+    )
+    if paradigm == "reflexive":
+        # TD-08: no route ends in an accept without a human decision.
+        routed = RouteResult(route=reflexive_route(routed.route), confidence=routed.confidence)
     # chunk_codes keeps the routed-effective confidence (the U35 mean
     # when the mean path ran, else the coder's raw confidence);
     # final_codes keeps the routed one (route_cell caps provisional
@@ -78,8 +99,9 @@ async def _write_cell(
     inserted = await conn.fetchval(
         """INSERT INTO chunk_codes
              (chunk_id, code_id, tenant_id, pass, batch_id, coder, model, decision,
-              confidence, tier_signals, rationale, evidence_quote, route, qa_context_used)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+              confidence, tier_signals, rationale, evidence_quote, route, qa_context_used,
+              grade, grade_reason)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            ON CONFLICT DO NOTHING
            RETURNING chunk_id""",
         chunk_id,
@@ -96,6 +118,8 @@ async def _write_cell(
         stored_quote,
         routed.route,
         qa_used,
+        graded.grade,
+        graded.reason,
     )
     status = _final_status(routed.route)
     # No new audit row means this (chunk, code, coder, pass) was already
@@ -105,17 +129,20 @@ async def _write_cell(
     if inserted is not None:
         await conn.execute(
             """INSERT INTO final_codes
-                 (chunk_id, code_id, tenant_id, status, route, confidence)
-               VALUES ($1,$2,$3,$4,$5,$6)
+                 (chunk_id, code_id, tenant_id, status, route, confidence, grade, grade_reason)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
                ON CONFLICT (chunk_id, code_id, tenant_id) DO UPDATE
                  SET status=EXCLUDED.status, route=EXCLUDED.route,
-                     confidence=EXCLUDED.confidence, decided_at=now()""",
+                     confidence=EXCLUDED.confidence, decided_at=now(),
+                     grade=EXCLUDED.grade, grade_reason=EXCLUDED.grade_reason""",
             chunk_id,
             code_id,
             tenant_id,
             status,
             routed.route,
             routed.confidence,
+            graded.grade,
+            graded.reason,
         )
     result_row: dict[str, Any] = {
         "code_id": code_id,
@@ -128,6 +155,8 @@ async def _write_cell(
         "quote_status": quote_status,
         "rationale": output.rationale,
         "tier_signals": asdict(signals),
+        "grade": graded.grade,
+        "grade_reason": graded.reason,
         "written": inserted is not None,
         "duplicate": inserted is None,
         "qa_context_used": qa_used,

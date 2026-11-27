@@ -39,6 +39,25 @@ __all__ = [
 JUDGMENT_MEAN_SAMPLES = 4
 JUDGMENT_SAMPLE_TEMPERATURE = 0.7
 
+# T1 seed bind (TD-06, refine D-7): ``coding.judgment_seed`` is 0 by
+# default (no seed sent — today's behavior); a value above 0 binds the
+# seed on the live sampling calls, where the endpoint capability flag
+# allows it (Ollama accepts a seed; the cloud client's flag is false).
+JUDGMENT_SEED_KEY = "coding.judgment_seed"
+
+
+def judgment_seed(config: dict[str, object] | None = None) -> int | None:
+    """The bound judgment-sampling seed, or None when unset (0 = off)."""
+    cfg = config if config is not None else load_config()
+    coding = cfg.get("coding", {})
+    if not isinstance(coding, dict):
+        return None
+    try:
+        seed = int(coding.get(JUDGMENT_SEED_KEY) or 0)
+    except (TypeError, ValueError):
+        return None
+    return seed or None
+
 
 def judgment_mean_enabled(config: dict[str, object] | None = None) -> bool:
     """The ``research.judgment_distribution.use_mean`` flag (U35), typed-read.
@@ -78,12 +97,13 @@ async def sample_judgments(
     greedy confidence, reported honestly via n_samples.
     """
     replies: list[dict[str, Any]] = [greedy_reply]
+    seed = judgment_seed()
     for _ in range(JUDGMENT_MEAN_SAMPLES):
         replies.append(
             await (
                 call_fn(window)
                 if call_fn is not None
-                else call_ollama(window, model, temperature=JUDGMENT_SAMPLE_TEMPERATURE)
+                else call_ollama(window, model, temperature=JUDGMENT_SAMPLE_TEMPERATURE, seed=seed)
             )
         )
     samples: dict[str, list[float]] = {code_id: [] for code_id in code_ids}

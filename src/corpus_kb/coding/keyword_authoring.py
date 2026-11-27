@@ -20,11 +20,30 @@ from corpus_kb.coding.codebook import CodebookError
 __all__ = [
     "exclusion_blocked",
     "keyword_tag_decision",
+    "retire_code_keywords",
     "split_sentences",
     "write_codebook_keywords",
 ]
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+async def retire_code_keywords(conn: ScopedConn, tenant: str) -> int:
+    """Retire every active authored keyword row (the reload pin, athena row 47).
+
+    A new codebook version's authored keywords replace the previous
+    version's wholesale: the one-active-inclusion-keyword-per-tenant index
+    (migration 012) forces delete-then-insert semantics anyway, so the
+    loader calls this BEFORE the new version's inserts (refine D-1).
+    Synthesized rows keep their own lifecycle (``source`` separates them).
+    Answers the number of retired rows.
+    """
+    status = await conn.execute(
+        "UPDATE code_keywords SET status='retired'"
+        " WHERE tenant_id=$1 AND source='codebook' AND status='active'",
+        tenant,
+    )
+    return int(str(status).split()[-1])
 
 
 async def write_codebook_keywords(

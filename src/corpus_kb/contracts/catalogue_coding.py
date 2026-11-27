@@ -220,4 +220,19 @@ CODING_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 2, 3),
     ),
+    Operation(
+        name="prompt_render",
+        family="coding",
+        description="Render one registry prompt; answers the text and its digest.",
+        handler="corpus_kb.tools.coding_tools:prompt_render",
+        params=(ParamSpec("prompt_id", required=True), ParamSpec("variables"), _TENANT),
+        envelope_keys=("status", "prompt_id", "prompt_version", "prompt_digest", "rendered"),
+        surfaces=(
+            SurfaceSpec(MCP, "prompt_render"),
+            SurfaceSpec(CLI, "coding prompt-render"),
+            SurfaceSpec(HTTP, "/api/coding/prompt-render", "POST"),
+            SurfaceSpec(SOCKET, "prompt_render"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

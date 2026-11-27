@@ -1,18 +1,15 @@
 """HTTP adapter — FastAPI REST API for Corpus-KB.
 
 Composition root only: it builds the FastAPI app (a Starlette subclass,
-so plain starlette.routing.Route objects and the TestClient are
-unchanged) from the per-family route modules (zero-drift split of the
-former single-file route table).
+so plain Route objects and the TestClient are unchanged) from the
+per-family route modules (zero-drift split of the single route table).
 
-Thin adapters: parse JSON → construct Pydantic command/query →
-call handler → return JSONResponse. No business logic here.
+Thin adapters: parse JSON → construct Pydantic command/query → call handler → JSONResponse.
 
 Every route is wrapped in ``@route_errors`` (api._body): ONE error path.
 A ``CorpusError`` answers with its own status; a known exception class
 answers through ``errors.ERROR_MAP``; anything else is a 500
-``internal_error``. The failure envelope is always
-``{status, error, error_type}`` — never a bare 400.
+``internal_error``. The failure envelope is ``{status, error, error_type}``.
 
 Route families (the Route order below is the original single-file order):
   api/routes_ingest.py         POST /api/ingest/{file,text,directory,url}
@@ -21,7 +18,7 @@ Route families (the Route order below is the original single-file order):
                                /api/search/context, /api/verify, /api/query,
                                /api/query/sql, /api/embed
   api/routes_ask.py            POST /api/ask
-  api/routes_coding.py         POST /api/coding/* (six routes)
+  api/routes_coding.py         POST /api/coding/* (seven routes)
   api/routes_meta.py           GET /api/documents, /api/entities, /api/versions,
                                /api/stats, /api/tables, /api/document-stats
   api/routes_graph.py          POST /api/entities, /api/relations
@@ -46,7 +43,7 @@ Route families (the Route order below is the original single-file order):
                                outliers-rank, nli-classify,
                                contradictions-screen, sentiment-screen,
                                active-learn-next, survey-openend-codes,
-                               usability-severity, emotion-tag}  (AMR program)
+                               usability-severity, emotion-tag} (AMR)
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
   api/routes_demo.py           POST /api/demo/load (UI SPA Task 5a)
 """
@@ -95,6 +92,7 @@ from corpus_kb.api.routes_coding import (
     coding_embed_codebook,
     coding_export_route,
     coding_pool,
+    coding_prompt_render_route,
     coding_reliability,
     coding_saturation,
     coding_status_route,
@@ -274,6 +272,8 @@ def create_http_app() -> FastAPI:
         # Issue #350: the two coding reads + the event-store health read.
         Route("/api/coding/status", coding_status_route, methods=["GET"]),
         Route("/api/coding/export", coding_export_route, methods=["POST"]),
+        # TAO T1: the registry prompt render op (TD-03).
+        Route("/api/coding/prompt-render", coding_prompt_render_route, methods=["POST"]),
         Route("/api/events/summary", events_summary_route, methods=["GET"]),
         Route("/api/documents", list_documents, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),

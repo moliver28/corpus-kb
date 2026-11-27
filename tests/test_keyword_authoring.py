@@ -75,12 +75,47 @@ async def test_duplicate_include_term_across_codes_is_refused(tmp_path: Path) ->
     await gw.close()
 
 
-async def test_duplicate_include_against_earlier_load_is_refused(tmp_path: Path) -> None:
+async def test_reload_replaces_earlier_load_authored_rows(tmp_path: Path) -> None:
+    """T1 pin (athena row 47): a new version's authored keywords supersede.
+
+    The one-active-inclusion index forces replace semantics on reload, so
+    an authored term an earlier load claimed does NOT refuse a new load —
+    the earlier active row retires first (refine D-1, retire-on-reload).
+    Same-document duplicates still refuse (the claims check, next test).
+    """
     gw = await _gateway(tmp_path)
     await load_codebook(_codebook({"C1": ["safety"]}), gw, str(TENANT), _embed)
     doc2 = _codebook({"C3": ["Safety"]})  # case-insensitive clash with C1's active row
+    await load_codebook(doc2, gw, str(TENANT), _embed)  # no raise: reload replaces
+    rows_c1 = await _keyword_rows(gw, "C1")
+    assert ("safety", "inclusion", "codebook:retired") in rows_c1
+    rows_c3 = await _keyword_rows(gw, "C3")
+    assert ("Safety", "inclusion", "codebook:active") in rows_c3
+    # keywords.csv exports the full history with its status column, so only
+    # the current-version rows read as active (refine D-1 third check).
+    from corpus_kb.coding.export_tables import write_codebook_tables
+
+    out = tmp_path / "csv"
+    result = await write_codebook_tables(gw, TENANT, str(out))
+    assert result["status"] == "written"
+    keywords_csv = (out / "keywords.csv").read_text(encoding="utf-8").splitlines()
+    assert "safety,C1,inclusion,codebook,retired" in keywords_csv
+    assert "Safety,C3,inclusion,codebook,active" in keywords_csv
+    await gw.close()
+
+
+async def test_synthesized_active_rows_still_refuse_authored_claims(tmp_path: Path) -> None:
+    """Only authored rows retire on reload; synthesized claims still refuse."""
+    gw = await _gateway(tmp_path)
+    await gw.execute(
+        "INSERT INTO code_keywords (keyword, code_id, tenant_id, kind, source, status)"
+        " VALUES ('safety', 'SYN-1', $1, 'inclusion', 'synthesis', 'active')"
+        " ON CONFLICT DO NOTHING",
+        str(TENANT),
+    )
+    doc = _codebook({"C1": ["safety"]})
     with pytest.raises(CodebookError, match="already active"):
-        await load_codebook(doc2, gw, str(TENANT), _embed)
+        await load_codebook(doc, gw, str(TENANT), _embed)
     await gw.close()
 
 

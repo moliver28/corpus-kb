@@ -678,3 +678,31 @@ GRAPH_BACKEND_POSTGRES_ON_DUCKDB_ERROR
 # in scope for dead-code detection.
 SeedError.item_id
 SeedError.expected_label
+
+# TAO T1 graded coder: the registry/tier/view dataclass fields are the
+# declared surface of their modules (rendered envelopes, ledger triples,
+# the read-only translated view); tests assert on them directly. The
+# license constants ARE the AM-05 registry rows (named by docs and the
+# [quality] extra review); the Protocol/adapter translate methods are the
+# W6B seam contract (D-2) — the merge implements them. The ok-state
+# constant completes the D-4 truth table.
+PromptVariable.description
+PromptVariable.default
+PromptSpec.changelog
+RenderedPrompt.prompt_kind
+TranslatedView.source_language
+TranslatedView.quality_state
+TranslatedView.quality_score
+QualityResult.lid_probability
+LABSE_LICENSE
+LID_LICENSE
+TRANSLATION_OK
+TranslatePort.translate
+W6BPort.translate
+
+# The per-agent window wrapper: dispatch renders via build_window_prompt
+# (it needs the render digest); build_window is the public ceiling API the
+# tests exercise. The quality key constants carry the parity-gate tokens.
+build_window
+MIN_QUALITY_COSINE_KEY
+LID_WEIGHTS_KEY

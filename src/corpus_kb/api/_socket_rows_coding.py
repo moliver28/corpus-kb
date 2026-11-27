@@ -78,6 +78,13 @@ CODING_SPECS: dict[str, _Spec] = {
         "coding_export",
         opts=(_Opt("limit", "int", 1000), _Opt("offset", "int", 0)),
     ),
+    # TAO T1: the registry prompt render (variables rides raw).
+    "prompt_render": _Spec(
+        _CODING,
+        "prompt_render",
+        positional=(_Opt("prompt_id", "req"),),
+        opts=(_Opt("variables", "raw"),),
+    ),
 }
 
 EVENTS_SPECS: dict[str, _Spec] = {

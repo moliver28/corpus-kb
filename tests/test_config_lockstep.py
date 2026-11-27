@@ -9,6 +9,8 @@ which reports a clean skip when it cannot import corpus_kb.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+from typing import ClassVar, cast
 
 import pytest
 
@@ -102,3 +104,52 @@ class TestCheckPackagedLockstep:
         assert result.skipped is True
         assert result.errors == []
         assert "skipped" in result.summary
+
+
+class TestTaoT1Leaves:
+    """T1 leaf set (refine D-7): both trees carry every new leaf, equal."""
+
+    T1_LEAVES: ClassVar[dict[str, object]] = {
+        "models.tiers.small.provider": "ollama",
+        "models.tiers.small.model": "qwen3:4b",
+        "models.tiers.small.digest": "",
+        "models.tiers.small.context_window": 32768,
+        "models.tiers.small.snapshot_date": "2026-11-25",
+        "models.tiers.medium.model": "qwen3:8b",
+        "models.tiers.frontier.model": "qwen3:14b",
+        "coding.tier": "medium",
+        "coding.judgment_seed": 0,
+        "coding.cloud.base_url": "https://api.anthropic.com/v1/",
+        "coding.cloud.api_key_env": "ANTHROPIC_API_KEY",
+        "coding.cloud.consent": False,
+        "coding.cloud.models.small": "claude-haiku-4-5-20251001",
+        "coding.cloud.models.medium": "claude-sonnet-4-5-20250929",
+        "coding.cloud.models.large": "claude-opus-4-1-20250805",
+        "coding.quality.min_quality_cosine": 0.80,
+        "coding.quality.lid_weights_path": "",
+    }
+
+    def _tree(self, source: str) -> dict[str, object]:
+        import yaml
+
+        from corpus_kb._setup.config_lockstep import flatten_leaves
+        from corpus_kb.config import get_default_config
+
+        tree = (
+            get_default_config()
+            if source == "code"
+            else yaml.safe_load(
+                (Path(__file__).parents[1] / "src" / "corpus_kb" / "config.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+        leaves = flatten_leaves(cast("dict[str, object]", tree))
+        return {key: leaves[key] for key in self.T1_LEAVES if key in leaves}
+
+    def test_t1_leaves_present_and_equal_on_both_sides(self) -> None:
+        code = self._tree("code")
+        packaged = self._tree("yaml")
+        missing = sorted(set(self.T1_LEAVES) - set(code))
+        assert not missing, f"code-side leaves absent: {missing}"
+        assert code == packaged, f"T1 leaf drift: {set(code.items()) ^ set(packaged.items())}"

@@ -20,6 +20,17 @@ _DUCK_FK_ACTIONS = (
     "DuckDB cannot declare ON DELETE actions (duckdb 000 header); the"
     " plain FK holds and Python delete paths enforce the action."
 )
+_GRADE_REASON_CHECK = (
+    "CHECK (GRADE_REASON IS NULL OR GRADE_REASON IN ('CONFORMAL_SET_NOT_SINGLETON',"
+    " 'ELIGIBLE_AUTO_ACCEPT', 'ERROR_BOUND_ABOVE_TARGET', 'ESCALATED_NEXT_RUNG',"
+    " 'INSUFFICIENT_CALIBRATION_SEEDS', 'QUOTE_NOT_VERIFIED', 'REFLEXIVE_PARADIGM',"
+    " 'SIGNALS_CONTRADICT_DECISION', 'SIGNAL_NOT_MEASURED', 'STRUCTURE_CANARY_FAILED',"
+    " 'TRANSLATION_QUALITY_FAILED'))"
+)
+_GRADE_REASON_WHY = (
+    "DuckDB refuses ADD COLUMN with a constraint (duckdb 052 header); the"
+    " closed list is enforced at the application layer (grade.GRADE_REASONS)."
+)
 #: (kind, table, item) -> one-line why. Anything not listed here fails.
 ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     # -- Unbounded numeric -> DOUBLE (duckdb 012 header; W0 spike finding).
@@ -121,4 +132,11 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     # -- CHECK constraints (W4 audit G8): the fold now compares CHECKs.
     # -- The spelling-only differences fold equal. The one real gap (duck
     # -- 035 omitted both meta_embeddings CHECKs) closed in duck 047.
+    # -- TAO T1 (migration 051/052): the grade_reason closed list is a real
+    # -- pg-only CHECK; DuckDB cannot add a column with a constraint, so the
+    # -- mirror ships plain columns and coding/grade.py's GRADE_REASONS (the
+    # -- only writer) enforces the list at the application layer.
+    ("check", "chunk_codes", _GRADE_REASON_CHECK): _GRADE_REASON_WHY,
+    ("check", "final_codes", _GRADE_REASON_CHECK): _GRADE_REASON_WHY,
+    ("check", "research_assignments", _GRADE_REASON_CHECK): _GRADE_REASON_WHY,
 }

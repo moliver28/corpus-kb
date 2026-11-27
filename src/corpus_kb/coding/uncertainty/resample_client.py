@@ -2,9 +2,11 @@
 
 The escalated minority of a deductive run gets N resampled coding
 rationales. The prompt is FIXED per unit; only the seed varies, so the
-samples stay same-distribution (Oracle A r7). This is the live path the
-cascade consumes through ``run_deductive``; tests inject fakes at that
-call seam and never reach this module.
+samples stay same-distribution (Oracle A r7). TAO T1 (TD-03): the prompt
+lives in ``coding/prompts/resample.yaml`` and renders through the prompt
+registry. This is the live path the cascade consumes through
+``run_deductive``; tests inject fakes at that call seam and never reach
+this module.
 
 Degrade contract mirrors ``nli_client``: never raises into the caller.
 A failed sample is dropped; an empty return tells the cascade the unit
@@ -14,11 +16,12 @@ is NOT MEASURED, so no semantic entropy is fabricated.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
 
 import httpx
+
+from corpus_kb.coding.prompt_registry import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +31,19 @@ RESAMPLE_TEMPERATURE = 0.7
 # hang the worker thread.
 RESAMPLE_TIMEOUT_SECONDS = 120.0
 
-# FIXED prompt (the id pins its sha256 in run metadata for reproducibility).
-# The /no_think soft switch keeps the temperature-0.7 sample short.
-RESAMPLE_PROMPT_TEMPLATE = (
-    "You are a qualitative coder. Restate, in one short sentence, the "
-    "rationale for applying the code below to the unit.\n"
-    'Code: "{code}" - {definition}\n'
-    'Unit text: "{text}"\n'
-    "Answer with the rationale sentence only.\n/no_think"
-)
-
-RESAMPLE_PROMPT_ID = hashlib.sha256(RESAMPLE_PROMPT_TEMPLATE.encode("utf-8")).hexdigest()[:16]
+# Registry prompt id + version (the id@version pins reproducibility in run
+# metadata; the render digest covers the variable values per call).
+RESAMPLE_PROMPT_ID = "resample@1.0.0"
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def build_resample_prompt(text: str, code_name: str, definition: str) -> str:
     """Render the fixed prompt for one unit under one code."""
-    return RESAMPLE_PROMPT_TEMPLATE.format(code=code_name, definition=definition, text=text)
+    rendered = render_prompt(
+        "resample", {"code": code_name, "definition": definition, "text": text}
+    )
+    return rendered.rendered.rstrip("\n")
 
 
 def _clean(raw: object) -> str:

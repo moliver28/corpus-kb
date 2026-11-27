@@ -57,6 +57,7 @@
         "project_claim_list",
         "project_list",
         "projects_list",
+        "prompt_render",
         "query",
         "queue_status",
         "release_assess",

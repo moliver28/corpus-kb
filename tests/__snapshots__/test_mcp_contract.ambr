@@ -182,6 +182,13 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
+      'prompt_render': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'prompt_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'variables': 'POSITIONAL_OR_KEYWORD',
+      }),
     }),
     'corpus_kb.tools.conflicts_tools': dict({
       'conflicts_list': dict({

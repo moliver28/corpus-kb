@@ -350,6 +350,16 @@
     "required": []
   },
   {
+    "description": "Render one registry prompt; answers the text and its digest.",
+    "id": "prompt-render",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/prompt-render",
+    "required": []
+  },
+  {
     "description": "Sample the coded corpus and compute alpha/kappa reliability.",
     "id": "coding-reliability",
     "longRunning": false,
@@ -360,7 +370,7 @@
     "required": []
   },
   {
-    "description": "Deductive run: score text against a fixed codebook; calibrated thresholds; claim sizes.",
+    "description": "Deductive run: score text against a fixed codebook; calibrated thresholds.",
     "id": "coding-run",
     "longRunning": true,
     "method": "POST",
@@ -838,7 +848,7 @@
     ]
   },
   {
-    "description": "Research cycle: full pipeline with halt gates; long-running, synchronous on every surface (promotion is human-gated).",
+    "description": "Research cycle: the full pipeline with halt gates; promotion is human-gated.",
     "id": "research-cycle",
     "longRunning": true,
     "method": "POST",
@@ -903,7 +913,7 @@
     ]
   },
   {
-    "description": "Governance report: coverage, coding overlap, agreement between coders, gate checks.",
+    "description": "Governance report: coverage, coding overlap, agreement between coders, gates.",
     "id": "research-report",
     "longRunning": false,
     "method": "POST",

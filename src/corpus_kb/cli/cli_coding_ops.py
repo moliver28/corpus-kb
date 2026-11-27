@@ -212,3 +212,20 @@ def register_ops(coding_app: typer.Typer) -> None:
         return _run_async(
             _run_tool(coding_export, {"limit": limit, "offset": offset}, csv_out=csv_out)
         )
+
+    @coding_app.command("prompt-render")
+    def prompt_render(
+        prompt_id: str = typer.Argument(..., help="Registry prompt id (e.g. coder_cell)"),
+        variables: str = typer.Option(None, "--variables", help="Variables JSON file"),
+    ) -> int:
+        """Render one registry prompt; prints the text and its digest."""
+        from corpus_kb.tools.coding_tools import prompt_render
+
+        parsed: dict[str, Any] = {}
+        if variables:
+            loaded = _read_json(variables, "variables")
+            if not isinstance(loaded, dict):
+                print("ERROR: variables file must hold a JSON object")
+                raise typer.Exit(_EXIT_ERROR)
+            parsed = loaded
+        return _run_async(_run_tool(prompt_render, {"prompt_id": prompt_id, "variables": parsed}))

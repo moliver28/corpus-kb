@@ -146,6 +146,17 @@ latechunk = [
     "transformers>=4.51.0",
     "torch>=2.2",
 ]
+# Translation quality (TAO T1, TD-12): LaBSE scoring + fastText language ID.
+# fasttext-wheel (prebuilt wheels for all three CI OSes; the official
+# `fasttext` source build fails on Windows). Weights are site-provided,
+# never shipped; license rows live in coding/translation_quality.py
+# (LaBSE Apache-2.0, lid.176.bin CC-BY-SA 3.0; the NC HF variant is
+# refused, AM-05). CI NEVER installs this extra; imports stay lazy, so
+# the extras-less jobs stay green (same contract as latechunk).
+quality = [
+    "sentence-transformers>=2.7",
+    "fasttext-wheel>=0.9.2",
+]
 # Inductive engine (todo 15, v5 §9): UMAP reduction + HDBSCAN clustering.
 # License-reviewed permissive set: umap-learn BSD-3-Clause, hdbscan BSD-3-Clause
 # (both pull numba/llvmlite/scikit-learn, all BSD-family). CI NEVER installs
@@ -397,6 +408,7 @@ include = ["corpus_kb*"]
 # against the checkout-root originals (tests/test_packaging_assets.py).
 corpus_kb = [
     "*.yaml",
+    "coding/prompts/*.yaml",
     "coding/seeds/*.csv",
     "compose.build-local.yaml",
     "compose.yaml",

@@ -8,6 +8,9 @@ imports them back, so one source serves both.
 
 from __future__ import annotations
 
+from corpus_kb.coding.cloud_client import CLOUD_CONFIG_DEFAULTS
+from corpus_kb.coding.model_tiers import MODEL_TIERS_DEFAULTS
+from corpus_kb.coding.translation_quality import QUALITY_CONFIG_DEFAULTS
 from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 
 # ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount).
@@ -23,9 +26,24 @@ _FEATURE_CONFIG: dict[str, object] = {
         "model": "qwen3:4b",
         "base_url": "http://localhost:11434",
     },
+    # TAO T1 (TD-04): the local model bands coding.tier resolves through
+    # (coding/model_tiers.py is the typed reader).
+    "models": {
+        "tiers": MODEL_TIERS_DEFAULTS,
+    },
     "coding": {
         "coder": "qwen3:8b",
         "model": "qwen3:8b",
+        # TAO T1 (TD-06): the rung the coder starts from; resolved through
+        # models.tiers (coding/model_tiers.py is the typed reader).
+        "tier": "medium",
+        # TAO T1 (TD-06/D-7): 0 sends no seed (today's behavior); above 0
+        # binds the judgment-sampling seed where the endpoint allows it.
+        "judgment_seed": 0,
+        # TAO T1 (TD-05): cloud rungs behind consent (refine D-6).
+        "cloud": CLOUD_CONFIG_DEFAULTS,
+        # TAO T1 (TD-12): quality floor + site-provided LID weights.
+        "quality": QUALITY_CONFIG_DEFAULTS,
         # TAO T0 (TD-16): directory for the codebook CSV tables. Empty
         # means coding_export writes no files.
         "export_dir": "",
@@ -42,8 +60,8 @@ _FEATURE_CONFIG: dict[str, object] = {
             # model_revision ("1024") and the G1-winning strategy
             # (naive-prefix) are FIXED IN CODE, deliberately not knobs:
             # embedding rows always record revision "1024" and the
-            # strategy is a committed experiment result, not a runtime
-            # choice. Only the promotion guard is configurable.
+            # strategy is a committed experiment result. Only the
+            # promotion guard is configurable.
             "dimensions": RESEARCH_EMBEDDING_DIMENSIONS,
         },
         "ingest": {
@@ -94,14 +112,7 @@ _FEATURE_CONFIG: dict[str, object] = {
             "enabled": False,
             "model": "fastino/gliner2-large-v1",
             "revision": "main",
-            "types": [
-                "person",
-                "organization",
-                "location",
-                "date",
-                "money",
-                "product",
-            ],
+            "types": ["person", "organization", "location", "date", "money", "product"],
         },
         # GLiNER-Relex zero-shot relation member.
         "relex": {

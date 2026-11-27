@@ -25,7 +25,13 @@ logger = logging.getLogger(__name__)
 CODER_GENERATE_TIMEOUT_SECONDS = 120.0
 
 
-def _generate(window: str, model: str, base_url: str, temperature: float = 0) -> tuple[Any, Any]:
+def _generate(
+    window: str,
+    model: str,
+    base_url: str,
+    temperature: float = 0,
+    seed: int | None = None,
+) -> tuple[Any, Any]:
     """Blocking Ollama generate, returning (raw_text, logprobs).
 
     Runs on a worker thread (see call_ollama): the ollama client is fully
@@ -33,10 +39,15 @@ def _generate(window: str, model: str, base_url: str, temperature: float = 0) ->
     whole generation and block every other in-flight request. The explicit
     client timeout is load-bearing (see CODER_GENERATE_TIMEOUT_SECONDS).
     ``temperature`` defaults to the greedy 0 — the U35 judgment-distribution
-    sampling path is the only caller that raises it.
+    sampling path is the only caller that raises it. ``seed`` rides the
+    options only when given (T1 ``coding.judgment_seed``; Ollama accepts
+    one, so the endpoint capability flag allows the bind).
     """
     from ollama import Client
 
+    options: dict[str, Any] = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
     response = Client(host=base_url, timeout=CODER_GENERATE_TIMEOUT_SECONDS).generate(
         model=model,
         prompt=window,
@@ -44,7 +55,7 @@ def _generate(window: str, model: str, base_url: str, temperature: float = 0) ->
         think=False,
         logprobs=True,
         top_logprobs=5,
-        options={"temperature": temperature},
+        options=options,
     )
     raw = getattr(response, "response", None)
     logprobs = getattr(response, "logprobs", None)
@@ -59,6 +70,7 @@ async def call_ollama(
     model: str,
     base_url: str = "http://localhost:11434",
     temperature: float = 0,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     """Live local-model call with native logprobs, off the event loop.
 
@@ -68,7 +80,8 @@ async def call_ollama(
     typed by the ollama client, so `.response` / `.logprobs` are read via getattr
     with a dict fallback. ``temperature`` defaults to greedy 0 (the historical
     request shape); dispatch_chunk's U35 judgment-distribution mean passes a
-    sampling temperature for its extra draws.
+    sampling temperature for its extra draws. ``seed`` (T1) binds the
+    judgment-sampling seed when ``coding.judgment_seed`` is above zero.
 
     Degrade contract (mirrors OllamaJudge in src/rag/judge.py): never raises into
     the caller. A transport failure or a non-JSON reply returns
@@ -78,7 +91,9 @@ async def call_ollama(
     from ollama import ResponseError
 
     try:
-        raw, logprobs = await asyncio.to_thread(_generate, window, model, base_url, temperature)
+        raw, logprobs = await asyncio.to_thread(
+            _generate, window, model, base_url, temperature, seed
+        )
 
         parsed = json.loads(str(raw))
         if not isinstance(parsed, dict):
