@@ -161,7 +161,7 @@ async def score_candidate(
 
 
 # The zero-vector fallback makes every calibration number fake; the
-# routing sweep refuses on the first phrase-mode row (honest refusal).
+# routing sweep refuses on the first degraded row (honest refusal).
 ROUTING_DEGRADED_REFUSAL = (
     "embedding degraded: the zero-vector fallback ran, so calibration "
     "numbers would be fake. Bring the embedder up and retry."
@@ -205,7 +205,9 @@ def route_family(
         rows: list[QueryScore] = []
         for record in golden:
             result = route_question(record.question, register, embedder, settings)
-            if result.trace.mode == "phrase":
+            # Degraded is the zero-vector fallback signal (issue #447 cascade):
+            # a fast-path row (decisive stage 1) is real evidence, not a fake.
+            if result.degraded:
                 return [], [], ROUTING_DEGRADED_REFUSAL
             chosen = result.intent.method_id
             hit = 1.0 if chosen == record.expected_method_ids[0] else 0.0

@@ -16,9 +16,10 @@ lives beside it and reuses its pieces, never a second pipeline:
     allow-list.
 
 The sweep routes the golden questions once per grid point through the
-LIVE embedding path. A phrase-mode row (the zero-vector fallback) or a
-missing embedder refuses the whole sweep: phrase numbers would fake a
-calibration. Callers skip when the embedder is down.
+LIVE embedding path. A degraded row (the zero-vector fallback) or a
+missing embedder refuses the whole sweep: fallback numbers would fake a
+calibration. Fast-path rows (decisive stage-1 phrase evidence) are real
+evidence and score normally. Callers skip when the embedder is down.
 """
 
 from __future__ import annotations

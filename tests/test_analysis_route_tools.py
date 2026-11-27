@@ -43,7 +43,7 @@ QUESTION = (
 # envelope status is honestly "degraded" while the intent resolved.
 # Regenerate by running the golden query and serializing with
 # json.dumps(result, sort_keys=True).
-GOLDEN_JSON = """{"intent": {"axes": {"comparison_structure": null, "cost_tier": null, "evidence_basis": null, "output_form": null, "statistical_rigor": null, "task_type": null}, "confidence": 0.6666666666666666, "method_id": "29", "note": "degraded", "question": "find duplicate or paraphrased records before analysis. which records say nearly the same thing? i want to merge near duplicates without losing speakers. detect repeated submissions and rephrased copies.", "ranked_method_ids": ["29"], "readings": [], "status": "resolved"}, "next_methods": [], "ranked": [{"method_id": "29", "name": "Near-duplicate and paraphrase detection", "run_hint": {"op": "duplicates_screen", "params": {}}, "why": "Find duplicate or paraphrased records before analysis."}], "status": "degraded", "suggestions": ["Which near duplicates are genuinely separate speakers?", "How do thresholds split review from merge?", "What paraphrases survived the exact-match pass?"], "trace": {"margin": 0.1, "mode": "phrase", "scores": [{"method_id": "29", "score": 0.6666666666666666}], "threshold": 0.55}}"""  # noqa: E501
+GOLDEN_JSON = """{"intent": {"axes": {"comparison_structure": null, "cost_tier": null, "evidence_basis": null, "output_form": null, "statistical_rigor": null, "task_type": null}, "confidence": 1.0, "method_id": "29", "note": null, "question": "find duplicate or paraphrased records before analysis. which records say nearly the same thing? i want to merge near duplicates without losing speakers. detect repeated submissions and rephrased copies.", "ranked_method_ids": ["29"], "readings": [], "status": "resolved"}, "next_methods": [], "ranked": [{"method_id": "29", "name": "Near-duplicate and paraphrase detection", "run_hint": {"op": "duplicates_screen", "params": {}}, "why": "Find duplicate or paraphrased records before analysis."}], "status": "resolved", "suggestions": ["Which near duplicates are genuinely separate speakers?", "How do thresholds split review from merge?", "What paraphrases survived the exact-match pass?"], "trace": {"margin": 0.1, "mode": "phrase", "scores": [{"method_id": "29", "score": 4.0}], "threshold": 0.55}}"""  # noqa: E501
 
 
 class _FlatEmbedder:
@@ -212,11 +212,10 @@ async def test_unknown_override_rejected() -> None:
 
 
 async def test_phrase_mode_envelope_shape() -> None:
-    """No sync embedder (pgml): the envelope is degraded, the intent resolved.
+    """No sync embedder (pgml): the fast path resolves undegraded.
 
-    This pins the amended envelope grammar: the degraded flag rides the
-    envelope status AND ``intent.note``, while the decision itself stays
-    on ``intent.status``.
+    The degraded flag rides envelope status AND ``intent.note`` only
+    when the router needed the embedding stage and could not serve it.
     """
     result = await _run()
     assert set(result) == {
@@ -228,7 +227,7 @@ async def test_phrase_mode_envelope_shape() -> None:
         "suggestions",
     }
     assert result["next_methods"] == []
-    assert result["status"] == "degraded"
+    assert result["status"] == "resolved"
     ranked = cast("list[dict[str, object]]", result["ranked"])
     assert len(ranked) == 1
     top = ranked[0]
@@ -237,7 +236,7 @@ async def test_phrase_mode_envelope_shape() -> None:
     assert top["run_hint"] == {"op": "duplicates_screen", "params": {}}
     intent = cast("dict[str, object]", result["intent"])
     assert intent["status"] == "resolved"
-    assert intent["note"] == "degraded"
+    assert intent["note"] is None
     assert intent["method_id"] == "29"
     trace = cast("dict[str, object]", result["trace"])
     assert trace["mode"] == "phrase"
@@ -254,18 +253,18 @@ async def test_golden_envelope_is_byte_stable() -> None:
 
 # -- Suggestion presence (routing W4): the chips ride the CHOSEN method.
 #    Present iff the intent resolved AND a method is chosen — the override
-#    path and the degraded-but-decided phrase path included. Absent on
-#    ambiguous: no method is chosen yet, the ladder is the answer.
+#    path and the fast-path phrase answer included. Absent on ambiguous:
+#    no method is chosen yet, the ladder is the answer.
 
 
 async def test_degraded_resolved_envelope_carries_the_register_suggestions() -> None:
-    """The phrase-path answer (degraded envelope, resolved intent) suggests.
+    """The fast-path phrase answer (resolved, pgml run) suggests.
 
-    CI and no-Ollama hosts take this path; the chips must survive it. The
-    strings are method 29's register rows, verbatim.
+    CI and no-Ollama hosts take this path; the chips must survive it.
+    The strings are method 29's register rows, verbatim.
     """
     result = await _run()
-    assert result["status"] == "degraded"
+    assert result["status"] == "resolved"
     intent = cast("dict[str, object]", result["intent"])
     assert intent["status"] == "resolved"
     assert intent["method_id"] == "29"
@@ -693,9 +692,10 @@ async def test_pgml_provider_takes_the_phrase_path() -> None:
 
 # -- Adapter config flow (fix round 3): the routing knobs must reach the
 #    handler on EVERY surface, not only MCP and the CLI. The pgml provider
-#    keeps the phrase path, so the stacked QUESTION scores 4/6 = 0.667:
-#    a 0.9 threshold must flip the intent to ambiguous, a 0.2 threshold
-#    must leave it resolved. monkeypatched load_config = startup config.
+#    keeps the phrase path, so the stacked QUESTION scores 4.0 (four
+#    unique seeded phrases, idf-weighted): a 4.5 threshold must flip the
+#    intent to ambiguous, a 0.2 threshold must leave it resolved.
+#    monkeypatched load_config = startup config.
 
 
 async def _http_route_with_config(
@@ -733,7 +733,7 @@ def _threshold_config(threshold: float) -> dict[str, object]:
 async def test_http_adapter_passes_the_routing_threshold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    envelope = await _http_route_with_config(monkeypatch, 0.9)
+    envelope = await _http_route_with_config(monkeypatch, 4.5)
     intent = cast("dict[str, object]", envelope["intent"])
     assert intent["status"] == "ambiguous"
 
@@ -756,7 +756,7 @@ async def test_socket_adapter_passes_the_routing_threshold(
     monkeypatch.setattr(
         config_module,
         "load_config",
-        lambda: _threshold_config(0.9),
+        lambda: _threshold_config(4.5),
     )
     research_http.set_research_pool(object())
     try:

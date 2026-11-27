@@ -9,233 +9,233 @@
   "methods": {
     "01": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 75,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 25,
       "success": true
     },
     "02": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 3,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 1,
       "success": true
     },
     "03": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 42,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 14,
       "success": true
     },
     "04": {
       "doctor_next_step": 0,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 6,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 2,
       "success": true
     },
     "05": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 9,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 3,
       "success": true
     },
     "06": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 27,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 9,
       "success": true
     },
     "07": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 12,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 4,
       "success": true
     },
     "08": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 78,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 26,
       "success": true
     },
     "09": {
       "doctor_next_step": 1,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 30,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 10,
       "success": true
     },
     "10": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 33,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 11,
       "success": true
     },
     "11": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 48,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 16,
       "success": true
     },
     "12": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 36,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 12,
       "success": true
     },
     "13": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 51,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 17,
       "success": true
     },
     "14": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 54,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 18,
       "success": true
     },
     "15": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 57,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 19,
       "success": true
     },
     "16": {
       "doctor_next_step": 2,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 60,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 20,
       "success": true
     },
     "17": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 66,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 22,
       "success": true
     },
     "18": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 81,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 27,
       "success": true
     },
     "19": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 69,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 23,
       "success": true
     },
     "20": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 72,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 24,
       "success": true
     },
     "21": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 84,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 28,
       "success": true
     },
     "22": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 45,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 15,
       "success": true
     },
     "23": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 87,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 29,
       "success": true
     },
     "24": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 90,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 30,
       "success": true
     },
     "25": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 93,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 31,
       "success": true
     },
     "26": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 15,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 5,
       "success": true
     },
     "27": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 63,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 21,
       "success": true
     },
     "28": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 96,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 32,
       "success": true
     },
     "29": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 18,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 6,
       "success": true
     },
     "30": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 21,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 7,
       "success": true
     },
     "31": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 39,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 13,
       "success": true
     },
     "32": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 24,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 8,
       "success": true
     },
     "33": {
       "doctor_next_step": null,
-      "failed_attempts": 2,
-      "override_needed": true,
-      "phrase_resolution_steps": 99,
+      "failed_attempts": 0,
+      "override_needed": false,
+      "phrase_resolution_steps": 33,
       "success": true
     }
   },
