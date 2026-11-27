@@ -7,7 +7,7 @@ Composes the repo's existing math instead of recomputing it:
 name rides every report (S9). Every share carries its n and a Wilson
 95 percent interval (athena AM-02). Inputs come from stored vectors only,
 so no model call runs here (wave law). The DB reads live in
-:mod:`corpus_kb.coding.scaffold_report`.
+:mod:`corpus_kb.coding.report_reads`.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def _exclusivity_block(
     silhouette_report: dict[str, object] = {"value": None, "n_groups": 0}
     if len(set(label_of.values())) >= 2:
         scores = silhouette_by_group([vectors[c] for c in single], [label_of[c] for c in single])
-        vals = [float(v) for v in scores.values() if v > 0]
+        vals = [float(v) for v in scores.values()]
         if vals:
             silhouette_report = {"value": sum(vals) / len(vals), "n_groups": len(vals)}
     return {
@@ -142,7 +142,7 @@ def mece_block(inputs: dict[str, Any]) -> dict[str, Any]:
             vectors[chunk_id] = parsed
             texts[chunk_id] = str(row["text"] or "")
             embedder_counts[str(row["embedding_model"])] += 1
-    embedder = embedder_counts.most_common(1)[0][0] if embedder_counts else "qwen3-embedding:4b"
+    embedder = embedder_counts.most_common(1)[0][0] if embedder_counts else "unknown"
 
     codes = inputs["codes"]
     code_ids = [str(r["code_id"]) for r in codes]

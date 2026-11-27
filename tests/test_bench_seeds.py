@@ -51,6 +51,14 @@ def test_valid_seed_file_loads_sorted(tmp_path: Path) -> None:
     assert seeds[0].expected_label == "code_not_applicable"
 
 
+def test_quoted_multiline_label_parses_as_one_row(tmp_path: Path) -> None:
+    """RFC 4180 quoting holds: a newline inside a quoted field stays in-cell."""
+    body = 'ERR-001,chunk-1,wrong_human_label,"keep\nthis label"\n'
+    seeds = load_seed_file(_write(tmp_path, body))
+    assert len(seeds) == 1
+    assert seeds[0].expected_label == "keep\nthis label"
+
+
 def test_unknown_error_type_is_refused(tmp_path: Path) -> None:
     path = _write(tmp_path, "ERR-001,chunk-1,invented_type,label\n")
     with pytest.raises(SeedFileError, match="unknown error_type"):

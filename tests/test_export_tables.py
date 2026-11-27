@@ -8,6 +8,7 @@ byte-stability across runs.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -15,6 +16,7 @@ from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.coding.codebook_loader import load_codebook
 from corpus_kb.coding.export_tables import (
     _DATA_DICTIONARY,
+    _cell,
     _csv_bytes,
     write_codebook_tables,
 )
@@ -113,6 +115,13 @@ async def test_tables_write_deterministic_bytes(tmp_path: Path) -> None:
         assert b"\r" not in a  # AR-1: LF endings only
         assert first["files"][name]["sha256"] == hashlib.sha256(a).hexdigest()
 
+    # rows counts CSV records from the row list, not newline bytes.
+    assert first["files"]["codes.csv"]["rows"] == 2  # header + one code row
+    assert first["files"]["keywords.csv"]["rows"] == 3  # header + two keyword rows
+    assert first["files"]["theory.csv"]["rows"] == 2  # header + one theory row
+    assert first["files"]["releases.csv"]["rows"] == 0  # no releases: no rows, no header
+    assert first["files"]["data_dictionary.csv"]["rows"] == 1 + len(_DATA_DICTIONARY)
+
     codes = (out_a / "codes.csv").read_text(encoding="utf-8").splitlines()
     assert codes[0].startswith("code_id,name,")
     assert "safety" in codes[1]
@@ -129,7 +138,7 @@ async def test_tables_write_deterministic_bytes(tmp_path: Path) -> None:
     await gw.close()
 
 
-async def test_empty_store_writes_headers_only(tmp_path: Path) -> None:
+async def test_empty_store_writes_no_header(tmp_path: Path) -> None:
     path = tmp_path / f"blank-{uuid4().hex}.duckdb"
     await run_migrations(duckdb_path_to_conn_string(path))
     gw = await DuckDbGateway.connect(str(path))
@@ -138,5 +147,11 @@ async def test_empty_store_writes_headers_only(tmp_path: Path) -> None:
     assert result["status"] == "written"
     codes = (out / "codes.csv").read_bytes()
     assert codes == b""  # an empty table writes no header (no columns known)
+    assert result["files"]["codes.csv"]["rows"] == 0
     assert (out / "data_dictionary.csv").read_bytes() == _GOLDEN_DICT
     await gw.close()
+
+
+def test_naive_datetime_cell_assumes_utc() -> None:
+    """A naive datetime is assumed UTC and emits the offset."""
+    assert _cell(datetime(2024, 1, 2, 3, 4, 5)) == "2024-01-02T03:04:05+00:00"

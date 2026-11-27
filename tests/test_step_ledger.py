@@ -18,6 +18,7 @@ from corpus_kb.research.step_ledger import (
     start_step,
     step_key,
 )
+from corpus_kb.research.step_ops import run_step
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 
@@ -89,6 +90,67 @@ async def test_record_step_is_fail_open(tmp_path: Path) -> None:
 
     store = cast(CodingStore, Boom())
     assert await record_step(store, TENANT, "coding_pool") is None
+
+
+async def test_record_step_refuses_planned_kind(tmp_path: Path) -> None:
+    gw = await _gateway(tmp_path)
+    with pytest.raises(ValueError, match="planned"):
+        await record_step(gw, TENANT, "coding_pool", kind="planned")
+    assert await _rows(gw) == []  # the refusal happens before any write
+    await gw.close()
+
+
+async def test_run_step_completes_only_after_op_returns(tmp_path: Path) -> None:
+    gw = await _gateway(tmp_path)
+    seen: list[str] = []
+
+    async def op() -> int:
+        rows = await _rows(gw)
+        seen.append(str(rows[0]["status"]) if rows else "none")
+        return 7
+
+    result = await run_step(gw, TENANT, "coding_pool", op, parameters={"k": "v"})
+    assert result == 7
+    assert seen == ["running"]  # the row is still running while the op executes
+    rows = await _rows(gw)
+    assert rows[0]["status"] == "completed"
+    assert rows[0]["operation"] == "coding_pool"
+    assert rows[0]["finished_at"] is not None
+    await gw.close()
+
+
+async def test_run_step_records_failed_and_reraises(tmp_path: Path) -> None:
+    gw = await _gateway(tmp_path)
+
+    async def op() -> int:
+        raise RuntimeError("op exploded")
+
+    with pytest.raises(RuntimeError, match="op exploded"):
+        await run_step(gw, TENANT, "coding_pool", op)
+    rows = await _rows(gw)
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["finished_at"] is not None
+    await gw.close()
+
+
+async def test_run_step_is_fail_open_without_ledger() -> None:
+    class Boom:
+        async def fetch(self, *_a: object, **_k: object) -> list[object]:
+            raise RuntimeError("no ledger table")
+
+        async def fetchval(self, *_a: object, **_k: object) -> object:
+            raise RuntimeError("no ledger table")
+
+        async def execute(self, *_a: object, **_k: object) -> str:
+            raise RuntimeError("no ledger table")
+
+    from corpus_kb.coding._scope import CodingStore
+
+    async def op() -> str:
+        return "done"
+
+    store = cast(CodingStore, Boom())
+    assert await run_step(store, TENANT, "coding_pool", op) == "done"
 
 
 def test_step_key_changes_with_inputs_and_program() -> None:

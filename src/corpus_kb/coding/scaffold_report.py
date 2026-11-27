@@ -13,10 +13,11 @@ to ``status: unavailable`` blocks, never a crash.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
-from corpus_kb.coding._scope import CodingStore, tenant_scope
+from corpus_kb.coding._scope import CodingStore, missing_table_error, tenant_scope
 from corpus_kb.coding.bench_seeds import packaged_seed_set
 from corpus_kb.coding.mece_report import mece_block
 from corpus_kb.coding.report_reads import (
@@ -24,6 +25,9 @@ from corpus_kb.coding.report_reads import (
     fetch_inputs,
     keyword_precision_block,
 )
+from corpus_kb.errors import SeedFileError
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_scaffold_report"]
 
@@ -82,7 +86,10 @@ async def _ledger_sample(
                 tenant_id,
                 limit,
             )
-    except Exception:
+    except Exception as exc:
+        if not missing_table_error(exc):
+            raise
+        logger.warning("Ledger sample degraded: the analysis_steps table is absent", exc_info=True)
         return []
     return [
         {
@@ -101,7 +108,8 @@ def _seed_bar_block() -> dict[str, Any]:
         seeds = packaged_seed_set()
         count = len(seeds)
         types = sorted({s.error_type for s in seeds})
-    except Exception:
+    except (OSError, SeedFileError):
+        logger.warning("Packaged seed set is unreadable; the seed bar degrades", exc_info=True)
         count, types = 0, []
     return {
         "grade_a_bar": GRADE_A_SEED_BAR,
@@ -125,7 +133,10 @@ async def build_scaffold_report(
         precision = await keyword_precision_block(pool, tenant_id)
         gaps = await coverage_gaps_block(pool, tenant_id, codebook_version_id)
         mece["coverage_gaps"] = gaps
-    except Exception:
+    except Exception as exc:
+        if not missing_table_error(exc):
+            raise
+        logger.warning("Scaffold report degraded: the coding tables are absent", exc_info=True)
         reason = "coding tables absent (run corpus-kb setup)"
         mece = {
             "status": "unavailable",

@@ -4,10 +4,12 @@
 (ids, run/parent, sequence, kind, operation, inputs digest, parameters,
 prompt and model digests, UTC times, status, outputs, actor, and the PROV
 names ``used``/``was_generated_by``/``was_derived_from``). Rows store
-references and digests, never corpus text. ``record_step`` is the one-call
-op-boundary helper; it is FAIL-OPEN (the trace is metadata, never data —
-the ``OllamaEmbedder`` degrade precedent). ``start_step``/``finish_step``/
-``fail_step`` raise, so the T2 protocol runner sees real failures.
+references and digests, never corpus text. ``run_step`` (in
+:mod:`corpus_kb.research.step_ops`) runs one op inside a start ->
+finish/fail window; ``record_step`` writes an invocation marker. Both are
+FAIL-OPEN (the trace is metadata, never data — the ``OllamaEmbedder``
+degrade precedent). ``start_step``/``finish_step``/``fail_step`` raise,
+so the T2 protocol runner sees real failures.
 """
 
 from __future__ import annotations
@@ -186,11 +188,14 @@ async def record_step(
     outputs_rows: int | None = None,
     actor: str | None = None,
 ) -> UUID | None:
-    """One completed ledger row at an operation boundary; fail-open.
-
-    The op functions in ``tools/`` call this once per invocation (TD-13
-    point 2). Returns the step id, or ``None`` when the write degraded.
+    """One completed invocation marker row; fail-open. Answers the step id
+    or ``None`` when the write degraded. The row means the operation was
+    invoked, not that it succeeded; run the op inside
+    :func:`corpus_kb.research.step_ops.run_step` for outcome tracking.
+    ``kind="planned"`` is refused: planned steps belong to ``start_step``.
     """
+    if kind == "planned":
+        raise ValueError("record_step refuses kind='planned'; planned steps belong to start_step")
     try:
         step_id = await start_step(
             pool,

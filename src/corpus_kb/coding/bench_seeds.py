@@ -13,6 +13,7 @@ format (JSON chunk-label pairs) for ``classification_build`` (athena G-14).
 from __future__ import annotations
 
 import csv
+import io
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -59,7 +60,7 @@ def load_seed_file(path: str | Path) -> list[SeedError]:
         raw = source.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise SeedFileError(f"Seed file {source.name!r} is not readable: {exc.strerror}") from exc
-    reader = csv.DictReader(raw.splitlines())
+    reader = csv.DictReader(io.StringIO(raw))
     header = tuple(reader.fieldnames or ())
     if header != SEED_COLUMNS:
         raise SeedFileError(

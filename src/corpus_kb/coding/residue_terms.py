@@ -7,6 +7,7 @@ word, so the terms are stable for snapshots.
 
 from __future__ import annotations
 
+import string
 from collections import Counter
 
 _STOPWORDS = frozenset(
@@ -64,7 +65,10 @@ def residue_top_terms(texts_by_label: dict[int, list[str]]) -> list[dict[str, ob
     for label in sorted(texts_by_label):
         words: Counter[str] = Counter()
         for text in texts_by_label[label]:
-            words.update(w for w in text.lower().split() if w.isalpha() and w not in _STOPWORDS)
+            for token in text.lower().split():
+                word = token.strip(string.punctuation)
+                if word.isalpha() and word not in _STOPWORDS:
+                    words[word] += 1
         top = sorted(words.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
         clusters.append(
             {"cluster": label, "n_chunks": len(texts_by_label[label]), "top_terms": top}

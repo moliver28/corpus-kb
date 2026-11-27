@@ -15,12 +15,15 @@ import csv
 import hashlib
 import io
 import json
-from datetime import datetime
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from corpus_kb.coding._scope import CodingStore, tenant_scope
+from corpus_kb.coding._scope import CodingStore, missing_table_error, tenant_scope
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["write_codebook_tables"]
 
@@ -35,7 +38,7 @@ def _cell(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, datetime):
-        stamp = value if value.tzinfo else value.replace()
+        stamp = value if value.tzinfo else value.replace(tzinfo=UTC)
         return stamp.isoformat()
     return str(value)
 
@@ -166,20 +169,23 @@ async def write_codebook_tables(
             "reason": f"set {EXPORT_DIR_KEY} in config.yaml to write the CSV tables",
         }
     try:
-        tables: list[tuple[str, bytes]] = []
+        tables: list[tuple[str, bytes, int]] = []
         for name, sql in _TABLES:
             header, rows = await _fetch(pool, tenant_id, sql)
-            tables.append((name, _csv_bytes(header, rows)))
-        tables.append(
-            ("theory.csv", _csv_bytes(_THEORY_HEADER, await _theory_rows(pool, tenant_id)))
-        )
+            tables.append((name, _csv_bytes(header, rows), (1 if header else 0) + len(rows)))
+        theory_rows = await _theory_rows(pool, tenant_id)
+        tables.append(("theory.csv", _csv_bytes(_THEORY_HEADER, theory_rows), 1 + len(theory_rows)))
         tables.append(
             (
                 "data_dictionary.csv",
                 _csv_bytes(("table", "column", "convention"), [list(r) for r in _DATA_DICTIONARY]),
+                1 + len(_DATA_DICTIONARY),
             )
         )
-    except Exception:
+    except Exception as exc:
+        if not missing_table_error(exc):
+            raise
+        logger.warning("Codebook CSV export degraded: the coding tables are absent", exc_info=True)
         return {
             "status": "unavailable",
             "reason": "coding tables absent (run corpus-kb setup)",
@@ -187,10 +193,10 @@ async def write_codebook_tables(
     target = Path(export_dir)
     target.mkdir(parents=True, exist_ok=True)
     files: dict[str, dict[str, object]] = {}
-    for name, payload in tables:
+    for name, payload, n_rows in tables:
         path = target / name
         path.write_bytes(payload)
-        files[name] = {"rows": payload.count(b"\n"), "sha256": hashlib.sha256(payload).hexdigest()}
+        files[name] = {"rows": n_rows, "sha256": hashlib.sha256(payload).hexdigest()}
     return {
         "status": "written",
         "dir": str(target),

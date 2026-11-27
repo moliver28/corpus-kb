@@ -21,7 +21,14 @@ import asyncpg
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
-__all__ = ["CodingStore", "ScopedConn", "SqlGateway", "is_gateway", "tenant_scope"]
+__all__ = [
+    "CodingStore",
+    "ScopedConn",
+    "SqlGateway",
+    "is_gateway",
+    "missing_table_error",
+    "tenant_scope",
+]
 
 #: The one store type every coding store module accepts.
 CodingStore = asyncpg.Pool | SqlGateway
@@ -41,3 +48,18 @@ async def tenant_scope(store: CodingStore, tenant_id: UUID | str) -> AsyncIterat
     """
     async with tenant_connection(store, tenant_id) as conn:
         yield conn
+
+
+def missing_table_error(exc: BaseException) -> bool:
+    """True when the driver says the queried table itself is absent.
+
+    The coding degrade paths catch only these classes; any other bug
+    must surface instead of degrading (P2 fix, gate review round).
+    """
+    if isinstance(exc, asyncpg.UndefinedTableError):
+        return True
+    try:
+        import duckdb
+    except ImportError:
+        return False
+    return isinstance(exc, duckdb.CatalogException)

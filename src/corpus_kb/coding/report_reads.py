@@ -52,12 +52,7 @@ async def fetch_inputs(
         )
         keyword_hits = await conn.fetch(
             "SELECT DISTINCT chunk_id, code_id FROM chunk_keyword_hits "
-            "WHERE tenant_id=$1 ORDER BY chunk_id, code_id",
-            tenant_id,
-        )
-        signals = await conn.fetch(
-            "SELECT DISTINCT chunk_id, code_id FROM chunk_signals "
-            f"WHERE tenant_id=$1 AND signal='vector' {parked_clause(pool)}",
+            "WHERE tenant_id=$1 AND kind='inclusion' ORDER BY chunk_id, code_id",
             tenant_id,
         )
     return {
@@ -65,7 +60,6 @@ async def fetch_inputs(
         "vector_rows": [dict(r) for r in vector_rows],
         "coded": [dict(r) for r in coded],
         "keyword_hits": [dict(r) for r in keyword_hits],
-        "signal_pairs": {(str(r["chunk_id"]), str(r["code_id"])) for r in signals},
     }
 
 
@@ -82,9 +76,9 @@ async def keyword_precision_block(pool: CodingStore, tenant_id: UUID) -> dict[st
             "SELECT k.keyword, k.code_id, k.kind, k.source, "
             "COALESCE(h.hit_chunks, 0) AS hit_chunks "
             "FROM code_keywords k LEFT JOIN ("
-            "  SELECT code_id, keyword, COUNT(DISTINCT chunk_id) AS hit_chunks"
-            "  FROM chunk_keyword_hits WHERE tenant_id=$1 GROUP BY code_id, keyword"
-            ") h ON h.code_id = k.code_id AND h.keyword = k.keyword "
+            "  SELECT code_id, keyword, kind, COUNT(DISTINCT chunk_id) AS hit_chunks"
+            "  FROM chunk_keyword_hits WHERE tenant_id=$1 GROUP BY code_id, keyword, kind"
+            ") h ON h.code_id = k.code_id AND h.keyword = k.keyword AND h.kind = k.kind "
             "WHERE k.tenant_id=$1 AND k.status='active' "
             "ORDER BY k.code_id, k.kind, k.keyword",
             tenant_id,

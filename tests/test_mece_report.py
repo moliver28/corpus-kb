@@ -12,12 +12,15 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
 
+import asyncpg
+import duckdb
 import pytest
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.coding._scope import CodingStore
 from corpus_kb.coding.codebook_loader import load_codebook
 from corpus_kb.coding.mece_report import mece_block, wilson_interval
+from corpus_kb.coding.residue_terms import residue_top_terms
 from corpus_kb.coding.scaffold_report import build_scaffold_report
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
@@ -129,6 +132,15 @@ async def _fixture_world(tmp_path: Path) -> DuckDbGateway:
             code,
             str(TENANT),
         )
+    # An exclusion hit on chunk one (distinct keyword, so the hits PK holds).
+    # Exclusion rows must NOT count as keyword coding: the share stays 0.25
+    # even though this row gives chunk one a second (exclusion) code hit.
+    await gw.execute(
+        "INSERT INTO chunk_keyword_hits (chunk_id, keyword, code_id, tenant_id, kind, n_hits)"
+        " VALUES ('11111111-1111-1111-1111-111111111111','kx','C2',$1,'exclusion',1)"
+        " ON CONFLICT DO NOTHING",
+        str(TENANT),
+    )
     # tier-0 signal rows exist for three of four chunks (C1 pooled only).
     for chunk in (
         "11111111-1111-1111-1111-111111111111",
@@ -191,21 +203,43 @@ async def test_build_scaffold_report_numbers(tmp_path: Path) -> None:
     await gw.close()
 
 
-async def test_mece_block_on_stub_store_degrades_without_crash() -> None:
-    class Boom:
+def _gateway_stub(exc: Exception) -> CodingStore:
+    """A gateway-shaped store whose reads raise ``exc`` (the tenant seam)."""
+
+    class BoomGateway:
+        async def __aenter__(self) -> BoomGateway:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        def transaction(self, _tenant_id: str) -> BoomGateway:
+            return self
+
         async def fetch(self, *_args: object, **_kw: object) -> list[object]:
-            raise RuntimeError("no table")
+            raise exc
 
         async def fetchval(self, *_args: object, **_kw: object) -> object:
-            raise RuntimeError("no table")
+            raise exc
 
-        async def execute(self, *_args: object, **_kw: object) -> str:
-            return ""
+    return cast(CodingStore, BoomGateway())
 
-    store = cast(CodingStore, Boom())
-    report = await build_scaffold_report(store, TENANT, uuid4())
-    assert report["mece"]["status"] == "unavailable"
-    assert report["keyword_precision"]["status"] == "unavailable"
+
+async def test_scaffold_report_degrades_on_missing_tables() -> None:
+    """A missing coding table degrades; any other bug must surface."""
+    missing: list[Exception] = [
+        asyncpg.UndefinedTableError("relation does not exist"),
+        duckdb.CatalogException("Table with name chunks does not exist"),
+    ]
+    for exc in missing:
+        report = await build_scaffold_report(_gateway_stub(exc), TENANT, uuid4())
+        assert report["mece"]["status"] == "unavailable"
+        assert report["keyword_precision"]["status"] == "unavailable"
+
+
+async def test_scaffold_report_bugs_surface_instead_of_degrading() -> None:
+    with pytest.raises(RuntimeError, match="a shipped bug"):
+        await build_scaffold_report(_gateway_stub(RuntimeError("a shipped bug")), TENANT, uuid4())
 
 
 def test_wilson_interval_bounds() -> None:
@@ -243,7 +277,6 @@ def test_mece_block_pure_math_on_synthetic_rows() -> None:
             {"chunk_id": "c1", "code_id": "C2"},
             {"chunk_id": "c3", "code_id": "C2"},
         ],
-        "signal_pairs": set(),
     }
     mece = mece_block(inputs)
     assert mece["n_chunks"] == 3  # the zero-vector row never enters
@@ -251,3 +284,62 @@ def test_mece_block_pure_math_on_synthetic_rows() -> None:
     assert mece["exclusivity"]["mean_centroid_cosine_distance"]["value"] == pytest.approx(1.0)
     assert mece["exhaustiveness"]["coded_share"]["value"] == 1.0
     assert mece["exhaustiveness"]["residue_size"] == 0
+
+
+def test_silhouette_mean_covers_all_scored_groups() -> None:
+    """A negative-separation group must lower the mean and raise n_groups.
+
+    c1/c2 share label C1 but sit orthogonal; c3 is a C2 singleton (score
+    0). Per-group means: C1 scores -0.4 (the group mean carries the
+    self-distance: a=0.5 against b=0.4 and 0.2), C2 scores 0. The honest
+    mean is -0.2 over 2 groups; the old positive-only mean reported None/0.
+    """
+    inputs = {
+        "codes": [
+            {"code_id": "C1", "name": "a", "definition_vector": [1.0, 0.0]},
+            {"code_id": "C2", "name": "b", "definition_vector": [0.0, 1.0]},
+        ],
+        "vector_rows": [
+            {"chunk_id": "c1", "embedding": [1.0, 0.0], "embedding_model": "m", "text": "t1"},
+            {"chunk_id": "c2", "embedding": [0.0, 1.0], "embedding_model": "m", "text": "t2"},
+            {"chunk_id": "c3", "embedding": [0.6, 0.8], "embedding_model": "m", "text": "t3"},
+        ],
+        "coded": [
+            {"chunk_id": "c1", "code_id": "C1"},
+            {"chunk_id": "c2", "code_id": "C1"},
+            {"chunk_id": "c3", "code_id": "C2"},
+        ],
+        "keyword_hits": [],
+    }
+    mece = mece_block(inputs)
+    silhouette = mece["exclusivity"]["silhouette"]
+    assert silhouette["n_groups"] == 2  # the true group count, not positives
+    assert silhouette["value"] == pytest.approx(-0.2)
+
+
+def test_embedder_is_unknown_when_no_vector_parses() -> None:
+    """With zero parseable vectors the report must not name a default model."""
+    inputs = {
+        "codes": [],
+        "vector_rows": [
+            {
+                "chunk_id": "c1",
+                "embedding": None,
+                "embedding_model": "qwen3-embedding:4b",
+                "text": "t",
+            },
+            {"chunk_id": "c2", "embedding": "[not json", "embedding_model": "m", "text": "t"},
+        ],
+        "coded": [],
+        "keyword_hits": [],
+    }
+    assert mece_block(inputs)["embedder"] == "unknown"
+
+
+def test_residue_top_terms_strip_punctuation() -> None:
+    """'coding,' must count as 'coding', not be dropped by the alpha check."""
+    terms = residue_top_terms({0: ["Coding, quality; coding wins. it the", "code!"]})
+    words = [word for word, _n in terms[0]["top_terms"]]
+    assert words[0] == "coding"  # two mentions, one punctuated
+    assert words[1:] == ["code", "quality", "wins"]  # count desc, then word
+    assert "it" not in words and "the" not in words  # stopwords stay out
