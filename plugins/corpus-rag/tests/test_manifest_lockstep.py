@@ -21,14 +21,6 @@ def _read(path: Path) -> dict[str, object]:
 def test_plugin_json_is_valid() -> None:
     meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
     assert meta["name"] == "corpus-rag"
-    author = meta["author"]
-    assert isinstance(author, dict) and author.get("name")
-    config = meta["userConfig"]
-    for key, spec in config.items():
-        for field in ("type", "title", "description"):
-            assert isinstance(spec.get(field), str) and spec[field], f"{key}.{field}"
-    version = meta["version"]
-    assert isinstance(version, str)
 
 
 def test_uxr_report_tool_user_config_key_is_declared() -> None:

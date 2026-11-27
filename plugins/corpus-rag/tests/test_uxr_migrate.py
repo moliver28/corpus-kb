@@ -9,7 +9,6 @@ Stdlib only.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -17,44 +16,9 @@ from pathlib import Path
 PLUGIN = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, PLUGIN)
 
-import cli_spec  # noqa: E402
 import uxr_commands  # noqa: E402
 import uxr_store  # noqa: E402
-
-SPEC = {
-    "ticket": "UX1-275",
-    "research_questions": ["What breaks in the export flow?"],
-    "hypotheses": ["H1: The export failure explains churn."],
-    "analysis_questions": ["A1: Does the nav redesign hold?"],
-}
-
-
-def run(argv: list[str]) -> tuple[int, str]:
-    import contextlib
-    import io
-
-    buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        code = cli_spec.HANDLERS[argv[0]](cli_spec.parse_argv(argv))
-    return code, buffer.getvalue()
-
-
-def setup_study(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
-    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin-data"))
-    root = tmp_path / "study"
-    (root / "interviews").mkdir(parents=True, exist_ok=True)
-    (root / ".claude").mkdir(parents=True, exist_ok=True)
-    (root / ".claude" / "corpus.json").write_text(
-        json.dumps({"slug": "ux1", "uxr": {"ticket": "UX1-275"}}), encoding="utf-8"
-    )
-    (root / "00-overview.md").write_text("Study UX1-275 plan.\n", encoding="utf-8")
-    (root / "interviews" / "p1.md").write_text(
-        "**Interviewer**: hi\n**Dana (PM)**: hello\n**Participant A**: ok\n", encoding="utf-8"
-    )
-    spec = root / "UX1-275.spec.json"
-    spec.write_text(json.dumps(SPEC), encoding="utf-8")
-    monkeypatch.chdir(root)
-    return root, spec
+from test_uxr_commands import run, setup_study  # noqa: E402
 
 
 def test_migrate_alias_prints_pointer_and_imports(tmp_path: Path, monkeypatch) -> None:
