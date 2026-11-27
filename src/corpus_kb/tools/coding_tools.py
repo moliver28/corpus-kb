@@ -18,6 +18,7 @@ from typing import Any
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.handlers.coding_handler import CodingHandler
+from corpus_kb.research.step_ledger import record_step
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
@@ -64,9 +65,12 @@ async def coding_pool(
 ) -> dict[str, Any]:
     """Run pooling (keyword hits, similarity) and coverage reconciliation."""
     load_config_or_pass(config)
-    return await _handler(pg_pool).handle_pool(
-        uuid_arg(tenant_id, "tenant_id"), uuid_arg(codebook_version_id, "codebook_version_id")
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    version_id = uuid_arg(codebook_version_id, "codebook_version_id")
+    await record_step(
+        pg_pool, tenant, "coding_pool", parameters={"codebook_version_id": codebook_version_id}
     )
+    return await _handler(pg_pool).handle_pool(tenant, version_id)
 
 
 async def coding_code_batch(
@@ -187,7 +191,10 @@ async def coding_export(
 ) -> dict[str, Any]:
     """Accepted codes joined with chunk text and document source, as rows."""
     load_config_or_pass(config)
-    uuid_arg(tenant_id, "tenant_id")
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    await record_step(
+        pg_pool, tenant, "coding_export", parameters={"limit": limit, "offset": offset}
+    )
     from corpus_kb.handlers.coding_status_ops import coding_export as export_body
 
     return await export_body(pg_pool, tenant_id, limit=limit, offset=offset)
