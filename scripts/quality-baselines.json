@@ -58,6 +58,7 @@
     "src/corpus_kb/extraction/langextract_backend.py": 313,
     "src/corpus_kb/handlers/command_handler.py": 262,
     "src/corpus_kb/handlers/migrate_attach.py": 289,
+    "src/corpus_kb/handlers/migrate_data.py": 290,
     "src/corpus_kb/handlers/migrate_events.py": 261,
     "src/corpus_kb/handlers/query_search_pg.py": 319,
     "src/corpus_kb/handlers/release_handlers.py": 754,
