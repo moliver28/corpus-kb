@@ -3,12 +3,8 @@
 Split out of codebook.py (validation, hashing, theory grounding) because the load
 is three phases with a transaction boundary between them, and carrying that
 structure plus the degrade guard here keeps both files inside the 250-line limit.
-
-Three phases, mirroring coder_dispatch.dispatch_chunk: a short transaction that
-resolves the codebook version, the embedding calls with NO transaction open, then
-one short transaction that writes code_registry. Each embed is a network round
-trip, so holding a pooled connection idle-in-transaction across a whole codebook
-would exhaust the pool under any concurrent load.
+Each embed is a network round trip, so a pooled connection held
+idle-in-transaction across the embed phase would exhaust the pool under load.
 """
 
 from __future__ import annotations
@@ -20,6 +16,7 @@ from uuid import UUID
 
 from corpus_kb.coding._scope import CodingStore, ScopedConn, is_gateway, tenant_scope
 from corpus_kb.coding.codebook import CodebookError, codebook_sha256, validate_codebook
+from corpus_kb.coding.keyword_authoring import write_codebook_keywords
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 _INSERT_CODE = """
@@ -47,9 +44,9 @@ ON CONFLICT (code_id, codebook_version_id, tenant_id) DO NOTHING
 
 
 class CodebookEmbeddingError(CodebookError):
-    """Raised when the embedder degraded to zero vectors during a load.
+    """The embedder degraded to zero vectors during a load.
 
-    Distinct from a plain CodebookError so a caller can tell "this codebook is
+    Distinct from a plain CodebookError so a caller can tell "the codebook is
     malformed, fix it" from "the embedding service is down, retry".
     """
 
@@ -62,11 +59,9 @@ def _code_id(code: dict[str, Any]) -> Any:
 def _is_degraded(vector: str) -> bool:
     """True when a pgvector literal is all zeros (or empty).
 
-    Every embedder in src/rag/embedder.py logs a warning and returns a zero
-    vector rather than raising when its backend is unreachable, so an all-zero
-    vector is the only signal that the embedding silently degraded. A code
-    written with one can never pool against anything, so it must not be stored
-    and reported as a successful load.
+    Every embedder returns a zero vector (logged, not raised) when its
+    backend is unreachable; a code written with one can never pool against
+    anything, so it must not be stored and reported as a successful load.
     """
     try:
         values = json.loads(vector)
@@ -124,11 +119,10 @@ async def _embed_codes(
 ) -> list[tuple[dict[str, Any], str, str]]:
     """Embed each pending code (plain definition, instructed probe), no transaction open.
 
-    Fails fast on the first degraded vector rather than collecting every failure:
-    an unreachable embedder degrades every remaining code identically, so going on
-    only buys one more connection timeout per code. Nothing is written, and the
-    version row phase 1 created lets a re-submit resume the load once the
-    embedding service is healthy.
+    Fails fast on the first degraded vector: an unreachable embedder degrades
+    every remaining code identically, so going on only buys one more connection
+    timeout per code. Nothing is written, and the version row phase 1 created
+    lets a re-submit resume the load once the embedding service is healthy.
     """
     embedded: list[tuple[dict[str, Any], str, str]] = []
     for code in pending:
@@ -181,24 +175,19 @@ async def load_codebook(
     embed_fn: Callable[..., Awaitable[str]],
 ) -> UUID:
     """
-    Load a codebook into the database, returning the version it resolved to.
+    Load a codebook, returning the version it resolved to.
 
     Validates the codebook, embeds each code (plain definition_vector,
-    instructed probe_vector), and writes code_registry + codebook_versions.
-
-    Runs in three phases against `pool`, each transaction short: resolve the
-    version, embed with no transaction open, then write. The embed phase is a
-    network round trip per code, and a pooled connection held
-    idle-in-transaction across it would starve every concurrent caller.
+    instructed probe_vector), and writes code_registry + codebook_versions
+    + authored code_keywords rows, in three short transactions: resolve the
+    version, embed with no transaction open, then write.
 
     Loading is keyed on the codebook's content hash: a re-submit of an
     identical codebook resolves to the version_id the first load created
     (UNIQUE (tenant_id, sha256), migration 013) and re-embeds nothing that is
-    already registered under it, so operator-calibrated pool_floor /
-    residual_floor values on those rows survive untouched. Codes missing from
-    that version (a load interrupted partway, or one the embedder failed) are
-    still embedded and written, so an interrupted load can be resumed by
-    re-submitting it.
+    already registered under it. Codes missing from that version (a load
+    interrupted partway, or one the embedder failed) are still embedded and
+    written, so an interrupted load resumes by re-submitting it.
 
     Args:
         doc: Validated codebook document
@@ -209,13 +198,12 @@ async def load_codebook(
                  (typically via /api/embed endpoint)
 
     Returns:
-        The codebook_versions.version_id this content hash maps to, whether
-        this call created it or a previous load did.
+        The codebook_versions.version_id this content hash maps to.
 
     Raises:
-        CodebookError: If validation fails, or if the version could neither be
-            inserted nor found (the row was deleted concurrently).
-        CodebookEmbeddingError: If the embedder degraded to a zero vector. No
+        CodebookError: Validation failure, a version that could neither be
+            inserted nor found, or a duplicate active include keyword.
+        CodebookEmbeddingError: The embedder degraded to a zero vector. No
             code_registry row is written.
     """
     validate_codebook(doc)
@@ -234,5 +222,6 @@ async def load_codebook(
     if embedded:
         async with tenant_scope(pool, tenant) as conn:
             await _write_codes(conn, version_id, tenant, embedded, insert_sql)
+            await write_codebook_keywords(conn, tenant, embedded)
 
     return version_id
