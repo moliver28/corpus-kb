@@ -19,16 +19,20 @@ from types import TracebackType
 from typing import Protocol, cast, runtime_checkable
 
 from corpus_kb.errors import InternalError
+from corpus_kb.install_layout import extra_install_command
 
 
 class LateChunkDependencyError(InternalError):
     """Raised when the ``latechunk`` optional extra is not installed."""
 
 
-_INSTALL_HINT = (
-    "the latechunk extra is not installed — run "
-    '`pip install -e ".[latechunk]"` (sentence-transformers + transformers + torch)'
-)
+def _install_hint() -> str:
+    """The layout-aware pip command (install_layout) wrapped in prose."""
+    return (
+        "the latechunk extra is not installed — run "
+        f"`{extra_install_command('latechunk')}`"
+        " (sentence-transformers + transformers + torch)"
+    )
 
 
 def import_or_raise(module: str) -> object:
@@ -36,7 +40,7 @@ def import_or_raise(module: str) -> object:
     try:
         return importlib.import_module(module)
     except ModuleNotFoundError as exc:
-        raise LateChunkDependencyError(_INSTALL_HINT) from exc
+        raise LateChunkDependencyError(_install_hint()) from exc
 
 
 @runtime_checkable
