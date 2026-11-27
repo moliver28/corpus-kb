@@ -6,12 +6,10 @@ ONE CLI exit code (program standard 4); every surface adapter reads it.
 Socket codes follow JSON-RPC 2.0: -32602 invalid params, -32603 internal,
 plus server-defined -32001 not found, -32002 conflict, -32003 database
 unavailable, -32004 migration missing, -32005 dependency missing, -32006
-unknown name. CLI exits keep the scripted codes: 1 bad input, 3
-environment problem. Do not renumber: scripts depend on these values.
-
-``ERROR_MAP`` also carries the plain exception class names the legacy
-HTTP envelopes used as ``error_type`` strings, so old payloads get
-honest statuses. All user-facing strings follow ASD-STE100.
+unknown name. CLI exits: 1 bad input, 3 environment problem. Do not
+renumber: scripts depend on these values. ``ERROR_MAP`` also carries the
+plain exception class names the legacy envelopes used as ``error_type``
+strings. All user-facing strings follow ASD-STE100.
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     # Taxonomy names.
     "config_error": (400, -32602, 3),
     "validation_error": (400, -32602, 1),
+    "seed_file_error": (400, -32602, 1),
     "question_too_short": (400, -32602, 1),
     "no_method_matches": (400, -32602, 1),
     "write_refused": (400, -32602, 1),
@@ -58,11 +57,9 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "InterfaceError": (503, -32003, 3),
     "UndefinedTableError": (503, -32004, 3),
     "UndefinedFunctionError": (503, -32004, 3),
-    # duckdb class names surfaced through legacy envelopes. The DuckDB
-    # graph store translates its failures at the store boundary (lock and
-    # catalog errors become typed taxonomy errors); these per-class rows
-    # cover the raw names that can still escape (file locks, write-write
-    # conflicts, malformed values or SQL, constraint collisions).
+    # duckdb class names surfaced through legacy envelopes. The DuckDB graph
+    # store translates its failures at the store boundary (typed taxonomy
+    # errors); these per-class rows cover the raw names that can still escape.
     "IOException": (503, -32003, 3),
     "ConnectionException": (503, -32003, 3),
     "TransactionException": (503, -32003, 3),
@@ -89,8 +86,8 @@ def error_status(error_type: str) -> int:
 class CorpusError(Exception):
     """Base class for every typed Corpus-KB failure.
 
-    Class attributes carry the surface contract; ``str(exc)`` returns the
-    plain message. ``remediation`` names one fix the user can apply.
+    Class attributes carry the surface contract; ``remediation`` names one
+    fix the user can apply; ``str(exc)`` returns the plain message.
     """
 
     error_type: str = DEFAULT_ERROR_TYPE
@@ -140,8 +137,8 @@ class NoMethodMatchesError(CorpusError):
 class WriteRefusedError(CorpusError):
     """The statement is not a read, or the call carries more than one.
 
-    Raised by the SQL query route's statement gate (issue #349) before any
-    connection opens, so a refused statement never changes a row.
+    Raised by the statement gate (issue #349) before any connection opens,
+    so a refused statement never changes a row.
     """
 
     error_type = "write_refused"
@@ -210,9 +207,7 @@ class StoreNewerError(CorpusError):
 
     error_type = "store_newer"
     http_status, socket_code, cli_exit = ERROR_MAP["store_newer"]
-    remediation = (
-        "Update this app to the version that owns those migrations. Or restore the store backup."
-    )
+    remediation = "Update this app to the version that owns those migrations. Or restore a backup."
 
 
 class PackageNotPublishedError(CorpusError):
@@ -236,9 +231,7 @@ class SourceTypeUnknownError(CorpusError):
 
     error_type = "source_type_unknown"
     http_status, socket_code, cli_exit = ERROR_MAP["source_type_unknown"]
-    remediation = (
-        "Use a registered source type. See the typed source registry table in docs/INGESTION.md."
-    )
+    remediation = "Use a registered source type. See the source registry in docs/INGESTION.md."
 
 
 class InternalError(CorpusError):
@@ -247,3 +240,11 @@ class InternalError(CorpusError):
     error_type = "internal_error"
     http_status, socket_code, cli_exit = ERROR_MAP["internal_error"]
     remediation = "Report this error to the maintainers. Include the message."
+
+
+class SeedFileError(CorpusError):
+    """The seeded-error list file is malformed (missing or unknown values)."""
+
+    error_type = "seed_file_error"
+    http_status, socket_code, cli_exit = ERROR_MAP["seed_file_error"]
+    remediation = "Fix the seed CSV header, error types, and rows. Then load it again."
