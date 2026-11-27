@@ -46,7 +46,7 @@ Tests fake network services on loopback to exercise the seams. Those servers liv
 
 ### The mimosa scope policy
 
-The committed `.mimosa/security-policy.json` file sets the mimosa scan scope (issue #397). It lists the paths the scanner skips. Each path there matches a false-positive class in this doc. The scanner does not consume exclusions yet (upstream issues #43 and #105), so findings stay visible until it does. The benchmark DDL findings from issue #434 are fixed in code, and the worker and recorder classes above are triaged.
+The committed `.mimosa/security-policy.json` file sets the mimosa scan scope (issue #397). It lists the paths the scanner skips. Each path there matches a false-positive class in this doc. The scanner does not consume exclusions yet (upstream reports zai-org/feedback#526 and zai-org/feedback#300), so findings stay visible until it does. The benchmark DDL findings from issue #434 are fixed in code, and the worker and recorder classes above are triaged.
 
 ## Import-cycle alerts
 
