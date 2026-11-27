@@ -563,6 +563,8 @@ async def test_pre043_scratch_applies_037_to_044_once() -> None:
             "047_store_meta.sql",
             "048_master_membership.sql",
             "049_master_topology.sql",
+            "050_analysis_steps.sql",
+            "051_source_type_backfill.sql",
         ]
         assert first.applied_now == first.pending
         second = await run_migrations(app_dsn)
