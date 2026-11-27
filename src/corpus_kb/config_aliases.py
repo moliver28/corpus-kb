@@ -160,4 +160,18 @@ def used_legacy_keys(config: dict[str, object]) -> list[str]:
     return present
 
 
-__all__ = ["apply_legacy_aliases", "used_legacy_keys"]
+def canonical_block_for(legacy_block: str) -> str:
+    """The canonical block path a legacy block rename maps onto ("" = none).
+
+    ``"search.hnsw"`` answers ``"retrieval.hnsw"``; leaf aliases answer
+    ``""``. The unknown-key WARN uses this to exempt a leaf under a
+    present legacy block only when its mapped canonical leaf is declared
+    (issue #592 item 5).
+    """
+    for section, legacy, canonical in _BLOCK_RENAMES:
+        if f"{section}.{legacy}" == legacy_block:
+            return canonical
+    return ""
+
+
+__all__ = ["apply_legacy_aliases", "canonical_block_for", "used_legacy_keys"]

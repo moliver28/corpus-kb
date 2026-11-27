@@ -44,6 +44,12 @@ CREATE TABLE relations (
     relation_type VARCHAR(100) NOT NULL DEFAULT 'related_to',
     weight DOUBLE NOT NULL DEFAULT 1.0,
     chunk_id VARCHAR REFERENCES chunks(chunk_id),
+    -- Migration 008's columns; the INSERT below writes them, so the
+    -- rebuilt table must carry them (the pre-041 schema keeps 008).
+    confidence DOUBLE,
+    extractor_id VARCHAR(100),
+    model_version VARCHAR(100),
+    prompt_version VARCHAR(50),
     metadata JSON DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
