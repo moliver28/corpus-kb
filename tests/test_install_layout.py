@@ -17,7 +17,6 @@ import pytest
 
 from corpus_kb import install_layout
 from corpus_kb._setup import setup_assets
-from corpus_kb.rag.embedders import LateChunkDependencyError
 
 
 def test_pyproject_toml_is_not_package_data() -> None:
@@ -86,20 +85,25 @@ def test_latechunk_install_hint_routes_through_install_layout(
 ) -> None:
     """The latechunk error hint carries the layout-aware pip form (issue #526).
 
-    The sixth clone-only site (``rag/embedders/_latechunk_types.py``) is
-    computed at raise time from install_layout, so this installed-layout
-    simulation pins the routing in every environment, including a clone.
+    The sixth clone-only site (``rag/embedders/_latechunk_types.py``)
+    precomputes its hint at import, so the installed-layout routing is
+    pinned by reloading the shim under that layout simulation. String
+    assertions only; the module namespace is snapshotted and restored so
+    the reload leaks no new class objects to later tests.
     """
+    import importlib
+
     from corpus_kb.rag.embedders import _latechunk_types as shim
 
     monkeypatch.setattr(setup_assets, "_packaged_asset", lambda name: None)
     empty = tmp_path / "site-packages"
     empty.mkdir()
     monkeypatch.setattr(setup_assets, "_repo_root", lambda: empty)
-
-    def _absent(name: str) -> object:
-        raise ModuleNotFoundError(f"No module named {name!r}")
-
-    monkeypatch.setattr(shim.importlib, "import_module", _absent)
-    with pytest.raises(LateChunkDependencyError, match=r'pip install "corpus-kb\[latechunk\]"'):
-        shim.import_or_raise("sentence_transformers")
+    saved = dict(shim.__dict__)
+    try:
+        importlib.reload(shim)
+        assert 'pip install "corpus-kb[latechunk]"' in shim._INSTALL_HINT
+        assert 'pip install -e ".[latechunk]"' not in shim._INSTALL_HINT
+    finally:
+        shim.__dict__.clear()
+        shim.__dict__.update(saved)

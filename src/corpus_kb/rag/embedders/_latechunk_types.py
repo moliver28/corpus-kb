@@ -26,13 +26,16 @@ class LateChunkDependencyError(InternalError):
     """Raised when the ``latechunk`` optional extra is not installed."""
 
 
-def _install_hint() -> str:
-    """The layout-aware pip command (install_layout) wrapped in prose."""
-    return (
-        "the latechunk extra is not installed — run "
-        f"`{extra_install_command('latechunk')}`"
-        " (sentence-transformers + transformers + torch)"
-    )
+# Precomputed at import (the _inductive_types.py pattern): the error path
+# below must not resolve assets at runtime — setup_assets reads the package
+# through importlib.resources, which import_module serves; a patched or
+# broken import_module would crash the hint itself (CI leg failure, #526).
+_INSTALL_COMMAND = extra_install_command("latechunk")
+
+_INSTALL_HINT = (
+    "the latechunk extra is not installed — run "
+    f"`{_INSTALL_COMMAND}` (sentence-transformers + transformers + torch)"
+)
 
 
 def import_or_raise(module: str) -> object:
@@ -40,7 +43,7 @@ def import_or_raise(module: str) -> object:
     try:
         return importlib.import_module(module)
     except ModuleNotFoundError as exc:
-        raise LateChunkDependencyError(_install_hint()) from exc
+        raise LateChunkDependencyError(_INSTALL_HINT) from exc
 
 
 @runtime_checkable
