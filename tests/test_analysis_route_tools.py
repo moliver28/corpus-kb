@@ -212,12 +212,10 @@ async def test_unknown_override_rejected() -> None:
 
 
 async def test_phrase_mode_envelope_shape() -> None:
-    """No sync embedder (pgml): decisive phrase evidence resolves healthy.
+    """No sync embedder (pgml): the fast path resolves undegraded.
 
-    This pins the envelope grammar: the degraded flag rides the envelope
-    status AND ``intent.note`` only when the router NEEDED the embedding
-    stage and could not serve it; a fast-path answer (decisive stage 1)
-    resolves undegraded on the phrase path.
+    The degraded flag rides envelope status AND ``intent.note`` only
+    when the router needed the embedding stage and could not serve it.
     """
     result = await _run()
     assert set(result) == {
@@ -260,10 +258,10 @@ async def test_golden_envelope_is_byte_stable() -> None:
 
 
 async def test_degraded_resolved_envelope_carries_the_register_suggestions() -> None:
-    """The phrase-path answer (resolved via stage 1, pgml run) suggests.
+    """The fast-path phrase answer (resolved, pgml run) suggests.
 
-    CI and no-Ollama hosts take this path; the chips must survive it. The
-    strings are method 29's register rows, verbatim.
+    CI and no-Ollama hosts take this path; the chips must survive it.
+    The strings are method 29's register rows, verbatim.
     """
     result = await _run()
     assert result["status"] == "resolved"
