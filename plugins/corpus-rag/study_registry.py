@@ -1,24 +1,16 @@
 """The study registry: one slug, one database, one port (issue #351).
 
 File: ``<plugin data>/studies.json``. Keys: ``active`` and ``studies``
-(``{slug: {database_url, port, backend, pid, paradigm?}}``). Writes hold
-a lock file and land with an atomic rename (see ``registry_io``). On
-first run a 0.6.0 ``<state>/projects.json`` (``projects{slug: {db, port,
-pid, backend}}``) imports into the new file; the old file stays.
-
-Study selection, first match wins (issue #351):
-
-1. ``-p <slug>`` when given.
-2. The slug in the folder's ``.claude/corpus.json``, searched upward.
-3. The registry ``active`` study.
-4. Nothing: raise and tell the user to name one.
-
-Slug rule: lowercase; non-alphanumerics become ``_``; repeats collapse;
-edge ``_`` strips. Database name ``corpus_kb_<slug>``. DuckDB file
-``<data>/duckdb/corpus_kb_<slug>.duckdb``.
-
-Stdlib only.
-"""
+(``{slug: {database_url, port, backend, pid, paradigm?}}``). Writes hold a
+lock file and land with an atomic rename (see ``registry_io``). On first
+run a 0.6.0 ``<state>/projects.json`` (``projects{slug: {db, port, pid,
+backend, paradigm?}}``) imports into the new file; the old file stays.
+``active`` imports when it names an imported study. A bare ``db`` name
+becomes a DSN; a ``duckdb`` row maps to ``duckdb:///<file>``. Study
+selection, first match wins: ``-p <slug>``; the folder's
+``.claude/corpus.json``; the ``active`` study; nothing (raise). Slug
+rule: lowercase; non-alphanumerics become ``_``; repeats collapse; edge ``_`` strips. Database
+name ``corpus_kb_<slug>``. DuckDB file ``<data>/duckdb/corpus_kb_<slug>.duckdb``. Stdlib only."""
 
 from __future__ import annotations
 
@@ -31,7 +23,7 @@ from pathlib import Path
 
 import registry_io
 from engine_paths import plugin_data_dir, state_dir
-from study_config import base_port
+from study_config import base_port, study_dsn
 
 REGISTRY_FILENAME = "studies.json"
 LEGACY_FILENAME = "projects.json"
@@ -124,16 +116,24 @@ def _import_legacy() -> dict | None:
     for slug, row in projects.items():
         if not isinstance(row, dict):
             continue
+        db = str(row.get("db", "") or "")
+        if row.get("backend") == "duckdb":
+            database_url = f"duckdb:///{duckdb_file(str(slug))}"
+        else:
+            database_url = db if "://" in db else study_dsn(db)
         studies[str(slug)] = {
-            "database_url": row.get("db", ""),
+            "database_url": database_url,
             "port": row.get("port"),
-            "backend": row.get("backend", "postgres"),
+            "backend": row.get("backend") or "postgres",
             "pid": row.get("pid"),
+            **({"paradigm": str(paradigm)} if (paradigm := row.get("paradigm")) else {}),
         }
     if not studies:
         return None
     registry = empty_registry()
     registry["studies"] = studies
+    if isinstance((active := data.get("active")), str) and active in studies:
+        registry["active"] = active
     return registry
 
 

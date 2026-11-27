@@ -38,18 +38,27 @@ def triggers_path(plugin_root: Path | None = None) -> Path:
 
 
 def load_triggers(plugin_root: Path | None = None) -> dict:
-    """The trigger lists; empty lists when the file is absent."""
+    """The trigger lists; empty lists when the file is absent.
+
+    Optional ``owner`` and ``reviewed`` strings pass through (issue #509);
+    the matcher ignores them.
+    """
+    empty: dict = {"nouns": [], "frames": [], "exclusions": []}
     path = triggers_path(plugin_root)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {"nouns": [], "frames": [], "exclusions": []}
+        return empty
     if not isinstance(data, dict):
-        return {"nouns": [], "frames": [], "exclusions": []}
-    out: dict[str, list] = {}
+        return empty
+    out: dict[str, object] = {}
     for key in ("nouns", "frames", "exclusions"):
         rows = data.get(key)
         out[key] = rows if isinstance(rows, list) else []
+    for meta in ("owner", "reviewed"):
+        value = data.get(meta)
+        if isinstance(value, str):
+            out[meta] = value
     return out
 
 

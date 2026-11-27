@@ -108,3 +108,56 @@ def test_missing_trigger_file_matches_nothing(tmp_path: Path) -> None:
         "exclusions": [],
     }
     assert not triggers.matches("analyze the transcripts", plugin_root=tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Ported vocabulary from the private plugin (issue #509)
+# ---------------------------------------------------------------------------
+
+TRIGGER_DATA = json.loads(
+    (Path(PLUGIN) / "hooks" / "triggers.json").read_text(encoding="utf-8")
+)
+
+
+def _noun_prompt(entry: object) -> str:
+    """One prompt that holds the noun and the 'summarize' frame."""
+    term = entry if isinstance(entry, str) else entry.get("term", "")
+    return f"summarize the {str(term).replace('*', 's')}"
+
+
+def test_ported_nouns_match_with_a_frame() -> None:
+    for entry in TRIGGER_DATA["nouns"]:
+        prompt = _noun_prompt(entry)
+        terms = triggers.prompt_terms(prompt)
+        assert terms["nouns"], prompt
+        assert terms["frames"], prompt
+        assert triggers.matches(prompt), prompt
+
+
+def test_ported_exclusions_block_a_match() -> None:
+    for raw in TRIGGER_DATA["exclusions"]:
+        prompt = f"summarize the workshop transcripts {raw}"
+        terms = triggers.prompt_terms(prompt)
+        assert raw in terms["exclusions"], prompt
+        assert not triggers.matches(prompt), prompt
+
+
+def test_analytics_does_not_match_the_analy_frame_alone() -> None:
+    assert triggers.prompt_terms("analytics")["frames"] == []
+    assert not triggers.matches("analytics overview of the transcripts")
+
+
+def test_ported_everyday_vocabulary_matches() -> None:
+    for prompt in (
+        "what did the workshop participants say across sessions",
+        "summarize the customer calls from this week",
+        "summarize the internal meetings about the launch",
+        "what did participants say in the workshops",
+    ):
+        assert triggers.matches(prompt), prompt
+
+
+def test_loader_keeps_owner_and_reviewed() -> None:
+    data = triggers.load_triggers()
+    assert data.get("owner") == "moliver"
+    assert data.get("reviewed") == "2026-11-17"

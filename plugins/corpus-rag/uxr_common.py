@@ -153,6 +153,14 @@ def add_uxr_subparser(subs) -> None:
     uimp = uxr_subs.add_parser("import", help="One-time copy from a 0.6.0 uxr schema; read-only.")
     uimp.add_argument("-p", "--study-slug", default=None, help="The study slug")
 
+    umig = uxr_subs.add_parser(
+        "migrate",
+        help="Deprecated alias for 'import'; the one-time 0.6.0 uxr copy.",
+        description="Deprecated alias for 'import': the one-time read-only copy "
+        "from a 0.6.0 uxr schema.",
+    )
+    umig.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
     upost = uxr_subs.add_parser(
         "post-search", help="Internal: the post_search extension point command."
     )

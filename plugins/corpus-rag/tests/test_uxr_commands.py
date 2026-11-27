@@ -1,4 +1,4 @@
-"""Command-level behavior for the 13 ``corpus-rag uxr`` commands (issue #355).
+"""Command-level behavior for the ``corpus-rag uxr`` commands (issue #355).
 
 The commands run through the real ``cli_spec`` parser and handler map,
 so wiring and behavior get tested together. No test calls the network
@@ -397,10 +397,10 @@ def test_apply_summary_command_writes_blocks(tmp_path: Path, monkeypatch) -> Non
     [
         "consent", "ingest-plan", "classify", "confirm-classes", "stubs",
         "check-quote", "validate-rows", "rollup", "contract-test",
-        "write-themes", "apply-summary", "insights", "import",
+        "write-themes", "apply-summary", "insights", "import", "migrate",
     ],
 )
-def test_all_thirteen_commands_parse(command: str) -> None:
+def test_all_commands_parse(command: str) -> None:
     minimal = {
         "ingest-plan": ["--spec", "UX1-275.spec.json"],
         "confirm-classes": ["[]"],
