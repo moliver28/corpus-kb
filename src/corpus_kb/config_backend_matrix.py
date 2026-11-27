@@ -47,11 +47,11 @@ _RAW: list[str] = [
     "honored|eval/scoring.py|||",
     "analysis.sentiment.enabled|honored|tools/sentiment_tools.py|Sentiment gate||",
     "ask.max_sources|honored|ask/ask_settings.py|Ask candidate cap||",
-    "cache.deductive_enabled cache.enabled|honored|research/deductive_run.py|Deductive-run cache "
-    "gates||",
+    "cache.deductive_enabled cache.enabled|honored|research/deductive_run.py|Cache gates||",
     "cache.inductive_enabled|honored|research/exact_cache.py|Inductive exact-cache gate|"
     "inductive_enabled|",
     "coding.coder|honored|coding/coder_dispatch.py|Coder pick||",
+    "coding.export_dir|honored|coding/export_tables.py|Codebook CSV table dir||",
     "coding.model llm.base_url llm.model|honored|coding/coder_client.py||base_url|",
     "coding.repair_retries|honored|coding/structured_output.py|Repair loop||",
     "coding.require_structured_enforcement|honored|config_defaults_features.py||require_structured_enforcement|",

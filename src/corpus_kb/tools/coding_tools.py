@@ -190,11 +190,16 @@ async def coding_export(
     offset: int = 0,
 ) -> dict[str, Any]:
     """Accepted codes joined with chunk text and document source, as rows."""
-    load_config_or_pass(config)
+    cfg = load_config_or_pass(config)
     tenant = uuid_arg(tenant_id, "tenant_id")
     await record_step(
         pg_pool, tenant, "coding_export", parameters={"limit": limit, "offset": offset}
     )
+    from corpus_kb.coding.export_tables import write_codebook_tables
     from corpus_kb.handlers.coding_status_ops import coding_export as export_body
 
-    return await export_body(pg_pool, tenant_id, limit=limit, offset=offset)
+    result = await export_body(pg_pool, tenant_id, limit=limit, offset=offset)
+    coding_cfg = cfg.get("coding") if isinstance(cfg, dict) else {}
+    export_dir = str((coding_cfg or {}).get("export_dir") or "")
+    result["codebook_csv"] = await write_codebook_tables(pg_pool, tenant, export_dir)
+    return result
