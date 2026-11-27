@@ -24,7 +24,9 @@
 # stacks the new dated report file on the branch and refreshes the
 # body; when none is open, a run with findings or scanner limits opens
 # one. A clean run with no open report PR stays silent. Merge or close
-# ends the thread; the next findings run opens a fresh one. The PR is
+# ends the thread; the next findings run opens a fresh one — cutting a
+# clean branch, and deleting a lingering old report branch first (this
+# repo keeps merged head branches). The PR is
 # created and edited with the RELEASE_PAT token (the changelog.yml
 # token approach), so its checks run natively.
 #
@@ -210,9 +212,9 @@ jobs:
           } > /tmp/triage-pr/body.md
 
           pr_reason=""
-          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
-            # Update path: stack the dated report file on the branch tip
-            # through a throwaway worktree, then push (fast-forward).
+          if [[ -n "${open_pr}" ]] && git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
+            # Update path (open PR): stack the dated report file on the
+            # branch tip through a throwaway worktree, then push (FF).
             if ! git fetch --depth=1 origin "${BRANCH}"; then
               pr_reason="branch fetch failed"
             else
@@ -235,11 +237,17 @@ jobs:
               fi
             fi
           else
-            # Create path: fresh branch off the checked-out tip. A run
+            # Fresh PR: cut a clean branch off the checked-out tip. A run
             # only reaches this path with findings, so the PR opens too.
+            # When an old report branch lingers (this repo keeps merged
+            # head branches: delete_branch_on_merge is false), delete it
+            # first, so the fresh PR diffs only the new report — not the
+            # already-merged history again.
+            git push origin --delete "${BRANCH}" 2>/dev/null || true
             git checkout -b "${BRANCH}"
             mkdir -p "${DOC_DIR}"
             cp triage-body.md "${REPORT_PATH}"
+            git add "${REPORT_PATH}"
             if git diff --cached --quiet; then
               echo "The ${REPORT_DATE} report file is already on the base branch; nothing to file"
               exit 0
