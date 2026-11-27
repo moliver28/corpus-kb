@@ -5,16 +5,20 @@ The canonical namespaces are ``storage.*``, ``ingest.chunking.*``,
 pre-v2 namespaces (``search.*``, ``ingest.hierarchy.*``, ``contextual.*``)
 stay readable as aliases so existing user configs keep working.
 
-Precedence (locked decision 3 of the config-alignment program):
+Precedence (locked decision 3 of the config-alignment program, loader
+wiring fixed by issue #500):
 
-* canonical key present -> the legacy key is ignored silently;
-* canonical key absent -> the legacy value is copied in and ONE
-  deprecation warning names both keys.
+* canonical key in the same user tree -> the legacy key is ignored
+  silently;
+* canonical key absent from that tree -> the legacy value is copied in
+  and ONE deprecation warning names both keys.
 
-:func:`apply_legacy_aliases` runs inside ``config.load_config`` right
-after the YAML merge, BEFORE the typed readers and the cross-field gates
-read the config, so every consumer only ever sees canonical keys.
-Mutates ``config`` in place; safe on any dict shape.
+:func:`apply_legacy_aliases` runs inside ``config.load_config`` on each
+user-authored tree (the main file and every overlay) BEFORE the defaults
+merge, so a legacy key beats its defaulted canonical twin (issue #500).
+It runs BEFORE the typed readers and the cross-field gates read the
+config, so every consumer only ever sees canonical keys. Mutates
+``config`` in place; safe on any dict shape.
 """
 
 from __future__ import annotations
@@ -100,9 +104,12 @@ def _warn(legacy: str, canonical: str) -> None:
 def apply_legacy_aliases(config: dict[str, object]) -> None:
     """Copy legacy namespace values into canonical keys when canonical is absent.
 
-    Canonical present -> legacy ignored silently. Canonical absent and
-    legacy present -> value copied + one deprecation warning naming both
-    keys. Mutates ``config`` in place.
+    Canonical present in the same tree -> legacy ignored silently.
+    Canonical absent and legacy present -> value copied + one deprecation
+    warning naming both keys. Call this on each user-authored tree BEFORE
+    the defaults merge (issue #500); on an already-merged tree the
+    canonical-present branch hides every defaulted twin. Mutates
+    ``config`` in place.
     """
     for legacy, canonical in _ALIAS_RENAMES:
         legacy_value = _node(config, legacy)
@@ -140,6 +147,15 @@ def apply_legacy_aliases(config: dict[str, object]) -> None:
             _set_dotted(config, canonical_dotted, value)
             _warn(f"{section}.{legacy_block}.{key}", canonical_dotted)
 
+    # `graph.extractor` -> `extraction.backend` (issue #500): the canonical
+    # key always holds a default, so this copy must run on the user-authored
+    # tree before the defaults merge — same rule as the namespace aliases.
+    # A non-empty extraction.backend in the same tree still wins.
+    extractor = _node(config, "graph.extractor")
+    if extractor is not None and _node(config, "extraction.backend") is None:
+        _set_dotted(config, "extraction.backend", extractor)
+        _warn("graph.extractor", "extraction.backend")
+
 
 def used_legacy_keys(config: dict[str, object]) -> list[str]:
     """Legacy keys still present in ``config`` (diagnostics/tests helper).
@@ -153,6 +169,8 @@ def used_legacy_keys(config: dict[str, object]) -> list[str]:
             present.append(legacy)
     if _node(config, "search.candidates_per_branch") is not None:
         present.append("search.candidates_per_branch")
+    if _node(config, "graph.extractor") is not None:
+        present.append("graph.extractor")
     for section, legacy_block, _ in _BLOCK_RENAMES:
         section_node = _node(config, section)
         if isinstance(section_node, dict) and legacy_block in section_node:

@@ -7,15 +7,15 @@ and ``load_config`` keeps calling both alias layers. A removed alias row
 or a dropped loader call fails these tests instead of dying silently in
 a user's config.
 
-Known gap, not pinned here: a legacy key whose canonical key holds a
-default never wins through ``load_config`` — the defaults merge runs
-before the alias layer, so the canonical-present branch always fires.
-The alias tables and their resolution stay pinned at the alias layer;
-a follow-up issue tracks the loader precedence fix.
+The loader runs the alias layer on each user-authored tree (the main
+config file and each overlay) BEFORE the defaults merge (issue #500): a
+legacy key beats its defaulted canonical twin, and an explicit canonical
+key in the same tree still wins.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 import pytest
@@ -147,9 +147,10 @@ def test_block_rename_moves_keys_key_by_key(
 
 
 # ---------------------------------------------------------------------------
-# Loader wiring: load_config runs both alias layers. The alias layer sees
-# the merged tree, so these spies only prove the calls happen — the
-# defaults-precedence gap is tracked separately (module docstring).
+# Loader wiring: load_config runs both alias layers. The alias layer runs on
+# each user-authored tree before the defaults merge, so these spies only
+# prove the calls happen — the precedence proof is the parametrized probe
+# below (issue #500).
 # ---------------------------------------------------------------------------
 
 
@@ -183,6 +184,51 @@ def test_load_config_calls_the_extraction_alias_layer(
     )
     load_config()
     assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Loader precedence (issue #500): a legacy key whose canonical twin holds a
+# default still takes effect through load_config. One deprecation warning
+# names both keys.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("payload", "legacy", "canonical", "expected"),
+    [
+        ("search:\n  rrf_k: 41\n", "search.rrf_k", "retrieval.rrf_k", 41),
+        (
+            "ingest:\n  hierarchy:\n    chunk_tokens: 999\n",
+            "ingest.hierarchy.chunk_tokens",
+            "ingest.chunking.chunk_tokens",
+            999,
+        ),
+        (
+            "contextual:\n  temperature: 0.7\n",
+            "contextual.temperature",
+            "ingest.contextualize.temperature",
+            0.7,
+        ),
+        ("graph:\n  extractor: gliner\n", "graph.extractor", "extraction.backend", "gliner"),
+    ],
+)
+def test_legacy_key_beats_defaulted_canonical_through_the_loader(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    payload: str,
+    legacy: str,
+    canonical: str,
+    expected: object,
+) -> None:
+    """The issue #500 probe keys all load as the legacy value, not the default."""
+    _write_probe_config(tmp_path, monkeypatch, payload)
+    with caplog.at_level(logging.WARNING):
+        config = load_config()
+    assert _get(config, canonical) == expected
+    warnings = [record for record in caplog.records if legacy in record.message]
+    assert len(warnings) == 1
+    assert canonical in warnings[0].message
 
 
 # ---------------------------------------------------------------------------

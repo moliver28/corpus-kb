@@ -253,12 +253,15 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         ref = resources.files("corpus_kb") / "config.yaml"
         with resources.as_file(ref) as packaged_path:
             file_config = _load_yaml_mapping(Path(packaged_path))
+    # Legacy aliases (issue #500): each user-authored tree gets the alias
+    # layer BEFORE the defaults merge; legacy beats the defaulted twin.
+    apply_legacy_aliases(file_config)
     _deep_update(config, file_config)
 
     # Issue #348 overlays: deep-merge IN ORDER after the main file, before
-    # the alias and env layers. `file_config` stays the MAIN file's tree —
-    # _follow_graph_backend's "did the operator choose" question is about
-    # the main file's graph backend, not the overlays.
+    # the env layer; each overlay got the same alias pass. `file_config`
+    # stays the MAIN file's tree — _follow_graph_backend's "did the
+    # operator choose" question is about the main file's graph backend.
     for overlay_path in config_overlay_paths():
         if not overlay_path.is_file():
             raise ConfigError(
@@ -270,12 +273,8 @@ def load_config(path: str | None = None) -> dict[str, Any]:
             raise ConfigError(
                 f"Config overlay {overlay_path} must hold a YAML mapping of settings."
             )
+        apply_legacy_aliases(overlay_config)
         _deep_update(config, overlay_config)
-
-    # Legacy namespace aliases (search.* / ingest.hierarchy.* / contextual.*):
-    # copied into the canonical keys when absent, with a deprecation warning.
-    # Runs BEFORE the typed readers and cross-field gates.
-    apply_legacy_aliases(config)
 
     apply_env_overrides(config)
 
