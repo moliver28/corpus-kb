@@ -132,6 +132,17 @@ Tool families used this sweep: built-in WebSearch · firecrawl research paper se
 
 **Pillar caveat:** E4/E9 are reference-based; the translate stage stores originals with no references, so translation-quality eval is a deferred design question. E10 is reference-free but adds a learned neural dependency — a posture-compatible but real cost. UNKNOWN until the owner names target languages and a corpus.
 
+## P6 — T1 CODER MODELS (TAO T1; athena gate D-12, added 2026-11-27)
+
+The two model artifacts the T1 quality layer scores with, per AM-05. Both load only when the site installs the `[quality]` extra (R18) and provides its weights; absent extras or weights leave the signal `not_measured` — no crash, no default-path dependency.
+
+| # | Source | Link | Grade | Tags | Use for |
+|---|--------|------|-------|------|---------|
+| E11 | Feng et al., "Language-agnostic BERT Sentence Embedding" (ICML 2020) | arxiv.org/abs/2002.06767 · proceedings.mlr.press/v119/feng20b.html | A (peer-reviewed, ICML 2020) | sentence-embeddings, multilingual, translation-quality | LaBSE — the original-vs-translation cosine scorer in `coding/translation_quality.py`. HF weights `sentence-transformers/LaBSE` are Apache-2.0 (AM-05). Extras-only, lazy-imported, never on the default path (R18). |
+| E12 | Joulin et al., "Bag of Tricks for Efficient Text Classification" (EACL 2017) | aclanthology.org/E17-2276 · arxiv.org/abs/1607.01759 | A (peer-reviewed, EACL 2017) | lid, fasttext | The fastText classifier lineage behind `lid.176.bin` — the language-ID weights in `coding/translation_quality.py`. Weights are CC-BY-SA 3.0; the wheel (`fasttext-wheel`) is MIT. The 217-language HF re-upload is CC-BY-NC-4.0 — named and refused (AM-05). |
+
+**Pillar caveat:** neither model runs unless the site opts in; LaBSE is a BERT-class model (~0.5b class) and stays outside the default ≤8b posture through the extras gate.
+
 ## Honest gaps / UNKNOWN
 - No canonical NLP source exists for the Chao/iNEXT + Heaps saturation adaptation; the piece citations above are the strongest defensible base. Owner assumption statement required in any spec that cites it.
 - No paper pins a downstream delta-F1 compression gate; R3's pinned value is our convention with stated rationale.
