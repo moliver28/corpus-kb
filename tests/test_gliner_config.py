@@ -13,10 +13,16 @@ from corpus_kb._setup.validate_configs import (
     validate_all,
     validate_extraction_gliner,
 )
+from corpus_kb.config import get_default_config
+from corpus_kb.extraction import DEFAULT_GLINER_REVISION
 
 ROOT = Path(__file__).resolve().parent.parent
 
 _PINNED_TYPES = ["person", "organization", "location", "date", "money", "product"]
+# The HF commit sha of fastino/gliner2-large-v1's tip (2026-11-27, issue #86
+# item 4). A branch default floats and would silently change the model behind
+# the eval promotion gate.
+_PINNED_GLINER_REVISION = "d7aa8a2850d175a9227ff80358ea380723d03ad2"
 
 
 def _gliner_block(config: dict[str, Any]) -> dict[str, Any]:
@@ -28,14 +34,16 @@ def _gliner_block(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_root_and_packaged_configs_carry_pinned_gliner_block() -> None:
-    """Both config.yaml copies match the plan-pinned defaults exactly."""
+    """Both config.yaml copies and every code default carry the pinned sha."""
     for relative in ("config.yaml", Path("src") / "corpus_kb" / "config.yaml"):
         config = load_yaml(ROOT / relative)
         gliner = _gliner_block(config)
         assert gliner["enabled"] is False
         assert gliner["model"] == "fastino/gliner2-large-v1"
-        assert gliner["revision"] == "main"
+        assert gliner["revision"] == _PINNED_GLINER_REVISION
         assert gliner["types"] == _PINNED_TYPES
+    assert get_default_config()["extraction"]["gliner"]["revision"] == _PINNED_GLINER_REVISION
+    assert DEFAULT_GLINER_REVISION == _PINNED_GLINER_REVISION
 
 
 def test_mention_type_vocabulary_is_the_six_pinned_types() -> None:

@@ -93,7 +93,7 @@ _FEATURE_CONFIG: dict[str, object] = {
         "gliner": {
             "enabled": False,
             "model": "fastino/gliner2-large-v1",
-            "revision": "main",
+            "revision": "d7aa8a2850d175a9227ff80358ea380723d03ad2",
             "types": [
                 "person",
                 "organization",

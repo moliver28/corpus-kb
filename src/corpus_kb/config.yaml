@@ -535,7 +535,8 @@ extraction:
   gliner:
     enabled: false
     model: fastino/gliner2-large-v1
-    revision: main
+    # HF commit sha of the model tip (2026-11-27); a branch name would float.
+    revision: d7aa8a2850d175a9227ff80358ea380723d03ad2
     types: [person, organization, location, date, money, product]
   relex:
     model: knowledgator/gliner-relex-large-v1.0

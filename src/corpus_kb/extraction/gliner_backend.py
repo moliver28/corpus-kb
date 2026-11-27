@@ -34,7 +34,10 @@ from .protocol import ExtractStats, OntologyViolationError, Timer
 logger = logging.getLogger(__name__)
 
 DEFAULT_GLINER_MODEL = "fastino/gliner2-large-v1"
-DEFAULT_GLINER_REVISION = "main"
+# The HF commit sha of fastino/gliner2-large-v1's tip (2026-11-27). A
+# branch name would float and silently change the model behind the eval
+# promotion gate (issue #86 item 4).
+DEFAULT_GLINER_REVISION = "d7aa8a2850d175a9227ff80358ea380723d03ad2"
 
 #: Spans scoring below this are dropped and counted in
 #: ``dropped_by_confidence``. Kept as a code constant (not a config key)
