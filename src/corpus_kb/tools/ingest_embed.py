@@ -12,14 +12,15 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from ..rag import aembed_batch, create_embedder, provider_label
-from ..rag.embedder_selection import (
+from corpus_kb.rag import aembed_batch, create_embedder, provider_label
+from corpus_kb.rag.embedder_selection import (
     POOLED_MODE,
     IngestEmbeddingPlan,
     late_chunking_requested,
     select_ingest_embedder,
 )
-from ..rag.embedder_usage import embed_usage_section
+from corpus_kb.rag.embedder_usage import embed_usage_section
+
 from ..utils.models import Chunk
 from .ingest_cfg import _nested_dict
 
@@ -27,11 +28,7 @@ if TYPE_CHECKING:
     import asyncpg
 
 
-def _record_embed_usage(
-    meta: dict[str, object] | None,
-    provider: str,
-    embedder: object,
-) -> None:
+def _record_embed_usage(meta: dict[str, object] | None, provider: str, embedder: object) -> None:
     """Write the serving embedder's usage snapshot into ``meta`` (issue #198).
 
     Only an embedder that publishes a snapshot (today: OllamaEmbedder)

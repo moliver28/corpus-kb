@@ -23,6 +23,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _bench_latency_paths import (  # noqa: E402
+    OfflineSkipError,
     cold_start_samples,
     ingest_samples,
     matrix_sample,
@@ -60,9 +61,18 @@ def percentile(values: list[float], pct: float) -> float:
 
 
 def load_ceilings() -> dict[str, float]:
-    """The ``bench_*`` ceiling keys from the checked-in baselines file."""
+    """The ``bench_*`` ceiling keys from the checked-in baselines file.
+
+    A missing ceiling key fails loudly (RVW2-03): a silently skipped
+    gate path would measure nothing and pass.
+    """
     raw: dict[str, Any] = json.loads(BASELINES_PATH.read_text(encoding="utf-8"))
-    return {key: float(raw[key]) for key in BASELINE_KEYS if key in raw}
+    missing = [key for key in BASELINE_KEYS if key not in raw]
+    if missing:
+        raise KeyError(
+            "Missing bench ceilings in scripts/quality-baselines.json: " + ", ".join(missing)
+        )
+    return {key: float(raw[key]) for key in BASELINE_KEYS}
 
 
 def check_against_ceilings(
@@ -82,9 +92,15 @@ async def measure(
     """Run the drivers and return the p50s keyed by the baseline keys."""
     measured: dict[str, float] = {}
     if not skip_cold_start and cold_iterations > 0:
-        pairs = await cold_start_samples(BENCH_BASE_PORT, cold_iterations)
-        measured["bench_cold_start_ready_p50_s"] = percentile([pair[0] for pair in pairs], 50)
-        measured["bench_first_query_p50_s"] = percentile([pair[1] for pair in pairs], 50)
+        try:
+            pairs = await cold_start_samples(BENCH_BASE_PORT, cold_iterations)
+        except OfflineSkipError as exc:
+            # Honest skip (RVW2-06): the offline machine still measures the
+            # other paths; CI (online) enforces the P1 ceilings.
+            print(f"[bench-latency] SKIP P1: {exc}", file=sys.stderr)
+        else:
+            measured["bench_cold_start_ready_p50_s"] = percentile([pair[0] for pair in pairs], 50)
+            measured["bench_first_query_p50_s"] = percentile([pair[1] for pair in pairs], 50)
     with tempfile.TemporaryDirectory(prefix="bench-latency-ingest-") as tmp:
         dsn = _migrated_scratch(Path(tmp))
         per_doc = await ingest_samples(dsn, other_iterations)
@@ -143,7 +159,12 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(measured, sort_keys=True))
     if not args.check:
         return 0
-    violations = check_against_ceilings(measured, load_ceilings())
+    try:
+        ceilings = load_ceilings()
+    except KeyError as exc:
+        print(f"bench-latency gate cannot run: {exc.args[0]}", file=sys.stderr)
+        return 1
+    violations = check_against_ceilings(measured, ceilings)
     for line in violations:
         print(line, file=sys.stderr)
     return 1 if violations else 0

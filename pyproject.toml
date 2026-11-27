@@ -750,7 +750,7 @@ help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrin
 # them with the bench_* ceilings in scripts/quality-baselines.json.
 [tool.poe.tasks.bench-latency]
 cmd = "python scripts/bench_latency.py --check"
-help = "Latency ceilings P1-P4: cold start, first query, per-doc ingest, 10k matrix, route (bench_latency.py)"
+help = "Latency ceilings P1-P4 (bench_latency.py). Reference runner only: Ollama down. A local machine with Ollama up runs red by design; an offline machine skips the P1 cold-start path with a typed SKIP line."
 
 [tool.poe.tasks.verify]
 sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "size-ratchet", "dup-check", "audit-deps", "test"]

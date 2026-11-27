@@ -63,15 +63,25 @@ def test_ask_flow_returns_evidence_on_duckdb(
 def test_uncoded_flow_ranks_residuals_on_duckdb(
     duckdb_dsn: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Flow coverage, not seam coverage (issue #523 P3-1).
+
+    ``uncoded_units`` discards the embedder (the residuals rank through
+    SQL-side kNN), so this test passes identically before or after any
+    embedder-seam change. Never cite it as RED evidence for a seam fix.
+    The order assertion IS semantic: unit 3 carries a non-orthogonal
+    embedding (see ``seeds.tilt_unit_three``), so its residual differs
+    from the 0.0 tie and it ranks last.
+    """
     from corpus_kb.cli.cli_research_views import _uncoded_coroutine
     from corpus_kb.cli.cli_support import _run_async
 
     asyncio.run(seeds.seed_radar_fixture(duckdb_dsn))
+    asyncio.run(seeds.tilt_unit_three(duckdb_dsn))
     exit_code = _run_async(_uncoded_coroutine(None, None, 25, True))
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
-    assert [u["unit_id"] for u in payload["units"]] == [2, 3, 4]
+    assert [u["unit_id"] for u in payload["units"]] == [2, 4, 3]
 
 
 def test_ask_scopes_to_the_project_on_duckdb(

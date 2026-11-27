@@ -42,6 +42,27 @@ async def test_wired_store_builds_the_research_embedder_on_duckdb(tmp_path) -> N
         assert isinstance(wired.embedder, ResearchEmbedder)
 
 
+async def test_wired_store_closes_the_store_when_the_embedder_build_fails(
+    tmp_path, monkeypatch
+) -> None:
+    """An embedder construct failure closes the store, not leaks it (#523 P3-3)."""
+    import corpus_kb.rag
+    from corpus_kb.cli.cli_store import wired_store
+
+    path = tmp_path / "wired-leak.duckdb"
+    conn_str = f"duckdb:///{path.as_posix()}"
+
+    def boom(cfg, store):
+        raise RuntimeError("embedder construct failure")
+
+    monkeypatch.setattr(corpus_kb.rag, "create_embedder", boom)
+    with pytest.raises(RuntimeError, match="embedder construct failure"):
+        async with wired_store(embedder=True, cfg=_cfg(conn_str)):
+            pass  # never reached: the build raises before the yield
+    # On Windows an open DuckDB file cannot be deleted; the unlink proves close().
+    path.unlink()
+
+
 @pytest.mark.requires_ollama
 async def test_wired_store_duckdb_embedder_embeds_for_real(tmp_path) -> None:
     """Ollama up: the duckdb embedder returns a real 1024-d unit vector."""

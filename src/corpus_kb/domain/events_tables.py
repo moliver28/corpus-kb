@@ -10,19 +10,32 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import re
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
 import asyncpg
 
+#: The probe SQL interpolates the derived table names, so they must stay
+#: plain lower-case identifiers (review-w1 RVW-03 hardening).
+_IDENTIFIER_PATTERN = re.compile(r"^[a-z_]+$")
+
 
 def events_table_names() -> tuple[str, str]:
-    """The lib-owned table names, derived from the application class name."""
+    """The lib-owned table names, derived from the application class name.
+
+    Raises ``ValueError`` when a derived name is not a plain identifier,
+    so the probe f-string never carries an unsafe name.
+    """
     from corpus_kb.domain.application import CorpusApplication
 
     prefix = str(CorpusApplication.name).lower()
-    return (f"{prefix}_events", f"{prefix}_snapshots")
+    names = (f"{prefix}_events", f"{prefix}_snapshots")
+    for name in names:
+        if not _IDENTIFIER_PATTERN.match(name):
+            raise ValueError(f"Unsafe events table name: {name}.")
+    return names
 
 
 async def events_tables_present(conn_str: str, backend: str) -> bool:

@@ -189,3 +189,27 @@ async def seed_radar_fixture(dsn: str) -> None:
         )
     finally:
         await gateway.close()
+
+
+async def tilt_unit_three(dsn: str) -> None:
+    """Give unit 3 a non-orthogonal embedding: 0.5*e1 + e3, unit length.
+
+    The radar test's order then proves discrimination, not a sort tie:
+    unit 3's residual to the coded prototype rises to ~0.45 over the
+    other units' 0.0, so the semantic order is [2, 4, 3].
+    """
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    tilted = [0.5 * (i == 0) + (1.0 * (i == 2)) for i in range(DIM)]
+    tilted = normalized(tilted)
+    gateway = await DuckDbGateway.connect(dsn)
+    try:
+        await gateway.execute(
+            "UPDATE research_units SET embedding = ?::FLOAT[1024],"
+            " embedding_256 = ?::FLOAT[256] WHERE tenant_id = ? AND seq = 3",
+            vector_literal(tilted),
+            vector_literal(slice_256(tilted)),
+            TENANT,
+        )
+    finally:
+        await gateway.close()
