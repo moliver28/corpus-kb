@@ -41,6 +41,19 @@ async def _rows(gw: DuckDbGateway) -> list[dict[str, object]]:
     ]
 
 
+class Boom:
+    """A store whose every call raises (the fail-open ledger paths)."""
+
+    async def fetch(self, *_a: object, **_k: object) -> list[object]:
+        raise RuntimeError("no ledger table")
+
+    async def fetchval(self, *_a: object, **_k: object) -> object:
+        raise RuntimeError("no ledger table")
+
+    async def execute(self, *_a: object, **_k: object) -> str:
+        raise RuntimeError("no ledger table")
+
+
 async def test_ledger_round_trip_on_duckdb(tmp_path: Path) -> None:
     gw = await _gateway(tmp_path)
     step_id = await start_step(
@@ -76,16 +89,6 @@ async def test_ledger_round_trip_on_duckdb(tmp_path: Path) -> None:
 
 
 async def test_record_step_is_fail_open(tmp_path: Path) -> None:
-    class Boom:
-        async def fetch(self, *_a: object, **_k: object) -> list[object]:
-            raise RuntimeError("no ledger table")
-
-        async def fetchval(self, *_a: object, **_k: object) -> object:
-            raise RuntimeError("no ledger table")
-
-        async def execute(self, *_a: object, **_k: object) -> str:
-            raise RuntimeError("no ledger table")
-
     from corpus_kb.coding._scope import CodingStore
 
     store = cast(CodingStore, Boom())
@@ -134,16 +137,6 @@ async def test_run_step_records_failed_and_reraises(tmp_path: Path) -> None:
 
 
 async def test_run_step_is_fail_open_without_ledger() -> None:
-    class Boom:
-        async def fetch(self, *_a: object, **_k: object) -> list[object]:
-            raise RuntimeError("no ledger table")
-
-        async def fetchval(self, *_a: object, **_k: object) -> object:
-            raise RuntimeError("no ledger table")
-
-        async def execute(self, *_a: object, **_k: object) -> str:
-            raise RuntimeError("no ledger table")
-
     from corpus_kb.coding._scope import CodingStore
 
     async def op() -> str:

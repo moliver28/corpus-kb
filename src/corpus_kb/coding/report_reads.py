@@ -13,17 +13,7 @@ from uuid import UUID
 from corpus_kb.coding._scope import CodingStore, is_gateway, tenant_scope
 from corpus_kb.coding.mece_report import MAX_CHUNKS, share
 
-__all__ = [
-    "coverage_gaps_block",
-    "fetch_inputs",
-    "keyword_precision_block",
-    "parked_clause",
-]
-
-
-def parked_clause(pool: CodingStore) -> str:
-    """The gateway arm ignores parked signal rows (score NULL), like reconcile."""
-    return "AND score IS NOT NULL" if is_gateway(pool) else ""
+__all__ = ["coverage_gaps_block", "fetch_inputs", "keyword_precision_block"]
 
 
 async def fetch_inputs(
@@ -127,9 +117,11 @@ async def coverage_gaps_block(
         corpus_chunks = await conn.fetchval(
             "SELECT COUNT(*) FROM chunks WHERE tenant_id=$1", tenant_id
         )
+        # The gateway arm ignores parked rows (score NULL), like reconcile.
+        parked = "AND score IS NOT NULL" if is_gateway(pool) else ""
         pooled = await conn.fetch(
             "SELECT code_id, COUNT(DISTINCT chunk_id) AS n FROM chunk_signals "
-            f"WHERE tenant_id=$1 AND signal='vector' {parked_clause(pool)} GROUP BY code_id",
+            f"WHERE tenant_id=$1 AND signal='vector' {parked} GROUP BY code_id",
             tenant_id,
         )
     pooled_by_code = {str(r["code_id"]): int(r["n"]) for r in pooled}
