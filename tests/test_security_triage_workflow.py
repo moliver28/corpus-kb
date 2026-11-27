@@ -15,7 +15,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "security-triage.yml"
-STEP_NAME = "Batch the week's report into one auto-PR (open or update)"
 
 
 def _load_workflow() -> dict:
@@ -65,6 +64,17 @@ def test_report_pr_batches_the_report_file_without_autofixes() -> None:
     assert "git add ." not in script
     assert "pip install" not in script
     assert "uv lock" not in script
+
+
+def test_create_path_stages_the_report_before_the_guard() -> None:
+    lines = [line.strip() for line in str(_batch_step().get("run", "")).splitlines()]
+    checkout = lines.index('git checkout -b "${BRANCH}"')
+    guard = next(
+        i for i, line in enumerate(lines) if line.startswith("if git diff --cached --quiet")
+    )
+    assert checkout < guard
+    between = lines[checkout + 1 : guard]
+    assert 'git add "${REPORT_PATH}"' in between
 
 
 def test_clean_run_with_no_open_report_pr_stays_silent() -> None:
