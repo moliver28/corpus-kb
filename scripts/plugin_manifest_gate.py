@@ -9,10 +9,9 @@ that entry's resolved plugin.json.
 Runs in the plugin-manifest CI job through `poe plugin-manifest`.
 Python 3.11, stdlib only. Exit 0 is pass.
 
-Structural checks always run. The lockstep cross-checks activate per
-entry once that entry's resolved plugin.json exists (issue 331 step 1
-subtree import); while no entry resolves, the gate prints one note line
-and passes.
+Structural checks always run. The lockstep cross-checks activate once an
+entry's resolved plugin.json exists; while none resolve, the gate prints
+one note line and passes.
 """
 
 from __future__ import annotations
@@ -25,16 +24,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPO / ".claude-plugin" / "marketplace.json"
 
-# Marketplace reference, "Top-level fields": letters, digits, ".", "_",
-# and "-", start with a letter or digit, and no "..". The same rule
-# holds for a plugin entry name ("Plugin entries"). fullmatch guards
-# against trailing newlines, which "$" would accept.
+# Marketplace reference, "Top-level fields": letters, digits, ".", "_", and
+# "-", start with a letter or digit, no ".."; the same rule holds for a
+# plugin entry name. fullmatch guards trailing newlines "$" would accept.
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?")
 
-# Marketplace reference, "Plugin sources": required fields per source
-# kind. A source object without its required fields would parse in the
-# manifest and fail later at plugin load; the gate fails it here.
+# Marketplace reference, "Plugin sources": required fields per source kind;
+# a source object missing them parses here but fails at plugin load.
 REQUIRED_SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
     "github": ("repo",),
     "url": ("url",),
@@ -45,10 +42,9 @@ REQUIRED_SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
 }
 SOURCE_KINDS = frozenset(REQUIRED_SOURCE_FIELDS)
 
-# Marketplace reference, "Reserved names" (the subset a gate can pin
-# without chasing Claude Code versions): session/built-in marketplace
-# names, package-manager names reserved in any casing, and the plugin
-# test name.
+# Marketplace reference, "Reserved names" (the subset a gate can pin without
+# chasing Claude Code versions): session/built-in marketplace names,
+# package-manager names in any casing, and the plugin test name.
 RESERVED_MARKETPLACE_NAMES = {
     "inline",
     "builtin",
@@ -126,11 +122,10 @@ def check_entry(messages: list[str], entry: object, index: int, seen: set[str]) 
 
 
 def resolved_plugin_json(entry: object) -> Path | None:
-    """Return the entry's local plugin.json path, when it is knowable.
+    """The entry's local plugin.json path. None when nothing local resolves.
 
-    Only a relative-path source resolves inside this repository. An
-    object source (github, url, git-subdir, ...) fetches from elsewhere,
-    so there is nothing local to lockstep against.
+    Only a relative-path source resolves inside this repository; an object
+    source (github, url, git-subdir, ...) fetches from elsewhere.
     """
     if not isinstance(entry, dict):
         return None
@@ -141,12 +136,7 @@ def resolved_plugin_json(entry: object) -> Path | None:
 
 
 def check_plugin_fields(messages: list[str], plugin_json: Path, plugin: dict[str, object]) -> None:
-    """The Claude Code manifest fields a string typo would break (issue 507).
-
-    ``author`` must be an object with a ``name`` string. Every
-    ``userConfig`` entry must carry ``type``, ``title``, and
-    ``description`` strings; Claude Code rejects the plugin otherwise.
-    """
+    """The Claude Code manifest fields a string typo would break (issue 507)."""
     author = plugin.get("author")
     if (
         not isinstance(author, dict)
@@ -166,17 +156,12 @@ def check_plugin_fields(messages: list[str], plugin_json: Path, plugin: dict[str
             fail(messages, f"{where} must be an object")
             continue
         for field in ("type", "title", "description"):
-            value = spec.get(field)
-            if not isinstance(value, str) or not value:
+            if not isinstance(spec.get(field), str) or not spec.get(field):
                 fail(messages, f"{where}.{field} is missing or empty")
 
 
 def cross_check_plugin(messages: list[str], manifest: dict[str, object]) -> bool:
-    """Check every entry against its resolved plugin.json.
-
-    True when at least one entry resolved to an existing plugin.json.
-    False when none did (plugin tree not imported yet).
-    """
+    """Check every entry against its resolved plugin.json; true when one resolved."""
     entries = manifest.get("plugins")
     if not isinstance(entries, list):
         return False

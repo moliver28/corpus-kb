@@ -29,7 +29,6 @@
     "plugins/corpus-rag/tests/test_uxr_commands.py": 412,
     "plugins/corpus-rag/uxr_commands.py": 289,
     "plugins/corpus-rag/uxr_store.py": 263,
-    "scripts/plugin_manifest_gate.py": 265,
     "scripts/run_ner_promotion.py": 295,
     "src/corpus_kb/_setup/doctor_env.py": 282,
     "src/corpus_kb/_setup/doctor_research.py": 769,
