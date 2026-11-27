@@ -19,15 +19,22 @@ from types import TracebackType
 from typing import Protocol, cast, runtime_checkable
 
 from corpus_kb.errors import InternalError
+from corpus_kb.install_layout import extra_install_command
 
 
 class LateChunkDependencyError(InternalError):
     """Raised when the ``latechunk`` optional extra is not installed."""
 
 
+# Precomputed at import (the _inductive_types.py pattern): the error path
+# below must not resolve assets at runtime — setup_assets reads the package
+# through importlib.resources, which import_module serves; a patched or
+# broken import_module would crash the hint itself (CI leg failure, #526).
+_INSTALL_COMMAND = extra_install_command("latechunk")
+
 _INSTALL_HINT = (
     "the latechunk extra is not installed — run "
-    '`pip install -e ".[latechunk]"` (sentence-transformers + transformers + torch)'
+    f"`{_INSTALL_COMMAND}` (sentence-transformers + transformers + torch)"
 )
 
 

@@ -27,13 +27,17 @@ one retry with a short backoff, a malformed 200 body fails bounded.
 
 Exit code 1 on the first real failure with a bounded reason. The temp
 venv self-cleans on success AND failure. Output stays bounded: one line
-per step, tails only on failure.
+per step, tails only on failure. Every run ends with one ``SUMMARY:``
+line (stdout, plus the Actions job summary file when
+``GITHUB_STEP_SUMMARY`` is set) so a long PyPI outage stays visible
+without failing PRs (issue #526).
 """
 
 from __future__ import annotations
 
 import http.client
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -88,11 +92,22 @@ def _run(args: list[str], timeout: float, tail_lines: int = 40) -> tuple[int, st
     return proc.returncode, tail
 
 
+def _summary(status: str, note: str) -> None:
+    """One end-of-run line: stdout, plus the Actions job summary file."""
+    line = f"{PREFIX} SUMMARY: {status} - {note}"
+    print(line, flush=True)
+    target = os.environ.get("GITHUB_STEP_SUMMARY")
+    if target:
+        with Path(target).open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+
 def _fail(label: str, tail: str) -> None:
     """One FAIL line plus a bounded tail, then exit 1 (first failure wins)."""
     print(f"{PREFIX} {label}: FAIL", flush=True)
     if tail:
         print(f"{PREFIX} {label} detail (tail):\n{tail}")
+    _summary("FAIL", label)
     raise SystemExit(1)
 
 
@@ -124,6 +139,7 @@ def _probe_pypi() -> None:
             time.sleep(PROBE_RETRY_BACKOFF_S)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print(f"{PREFIX} SKIP: PyPI not reachable ({exc}).", flush=True)
+            _summary("SKIP", "PyPI not reachable; the install was not run.")
             raise SystemExit(0) from None
         except (ValueError, http.client.HTTPException) as exc:
             _fail("PyPI index body (malformed 200 answer)", str(exc))
@@ -223,9 +239,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{PREFIX} note: temp venv cleanup failed (left at {root}).")
     failed = results.count(False)
     if failed:
-        print(f"{PREFIX} FAIL ({failed} of {len(results)} checks failed).", flush=True)
+        _summary("FAIL", f"{failed} of {len(results)} checks failed.")
         return 1
-    print(f"{PREFIX} PASS.", flush=True)
+    _summary("PASS", f"all {len(results)} checks passed.")
     return 0
 
 

@@ -78,3 +78,32 @@ def test_extra_install_command_matches_this_layout() -> None:
         assert command == 'pip install -e ".[inductive]"'
     else:
         assert command == 'pip install "corpus-kb[inductive]"'
+
+
+def test_latechunk_install_hint_routes_through_install_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The latechunk error hint carries the layout-aware pip form (issue #526).
+
+    The sixth clone-only site (``rag/embedders/_latechunk_types.py``)
+    precomputes its hint at import, so the installed-layout routing is
+    pinned by reloading the shim under that layout simulation. String
+    assertions only; the module namespace is snapshotted and restored so
+    the reload leaks no new class objects to later tests.
+    """
+    import importlib
+
+    from corpus_kb.rag.embedders import _latechunk_types as shim
+
+    monkeypatch.setattr(setup_assets, "_packaged_asset", lambda name: None)
+    empty = tmp_path / "site-packages"
+    empty.mkdir()
+    monkeypatch.setattr(setup_assets, "_repo_root", lambda: empty)
+    saved = dict(shim.__dict__)
+    try:
+        importlib.reload(shim)
+        assert 'pip install "corpus-kb[latechunk]"' in shim._INSTALL_HINT
+        assert 'pip install -e ".[latechunk]"' not in shim._INSTALL_HINT
+    finally:
+        shim.__dict__.clear()
+        shim.__dict__.update(saved)
