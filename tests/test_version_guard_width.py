@@ -56,5 +56,5 @@ async def test_guard_reads_a_runner_migrated_store(tmp_path, monkeypatch) -> Non
     _, dsn = await migrated_duck_store(tmp_path, "tracked.duckdb")
     report = await assert_store_supported(dsn, "duckdb")
     assert report is not None
-    assert report.store_head == "051_analysis_steps.sql"
+    assert report.store_head == "052_source_type_backfill.sql"
     assert report.pending_count == 0
