@@ -6,11 +6,11 @@ one-active-inclusion-keyword-per-tenant index is real when the refusal fires.
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from _coding_vectors import _embed
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.coding.codebook import CodebookError
@@ -19,7 +19,6 @@ from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
-DIM = 2560
 
 
 def _codebook(include_by_code: dict[str, list[str]]) -> dict[str, object]:
@@ -38,17 +37,6 @@ def _codebook(include_by_code: dict[str, list[str]]) -> dict[str, object]:
             }
         )
     return {"paradigm": "codebook", "categories": categories}
-
-
-def _one_hot(text: str, instructed: bool = False) -> list[float]:
-    index = int(hashlib.sha256(f"{instructed}:{text}".encode()).hexdigest(), 16) % DIM
-    vector = [0.0] * DIM
-    vector[index] = 1.0
-    return vector
-
-
-async def _embed(text: str, instructed: bool = False) -> str:
-    return "[" + ",".join(format(float(v), ".9g") for v in _one_hot(text, instructed)) + "]"
 
 
 async def _gateway(tmp_path: Path) -> DuckDbGateway:

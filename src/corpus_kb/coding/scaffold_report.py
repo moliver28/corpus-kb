@@ -74,17 +74,14 @@ def _scaffold_lines(mece: dict[str, Any], precision: dict[str, Any]) -> list[str
     return lines
 
 
-async def _ledger_sample(
-    pool: CodingStore, tenant_id: UUID, limit: int = 5
-) -> list[dict[str, Any]]:
+async def _ledger_sample(pool: CodingStore, tenant_id: UUID) -> list[dict[str, Any]]:
     """The newest ledger rows as a small sample; empty when the table is absent."""
     try:
         async with tenant_scope(pool, tenant_id) as conn:
             rows = await conn.fetch(
                 "SELECT operation, kind, status, started_at FROM analysis_steps "
-                "WHERE tenant_id=$1 ORDER BY started_at DESC, step_id DESC LIMIT $2",
+                "WHERE tenant_id=$1 ORDER BY started_at DESC, step_id DESC LIMIT 5",
                 tenant_id,
-                limit,
             )
     except Exception as exc:
         if not missing_table_error(exc):

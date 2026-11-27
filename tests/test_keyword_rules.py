@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from corpus_kb.coding.codebook import CodebookError, validate_codebook
-from corpus_kb.coding.keyword_rules import (
+from corpus_kb.coding.keyword_authoring import (
     exclusion_blocked,
     keyword_tag_decision,
     split_sentences,
