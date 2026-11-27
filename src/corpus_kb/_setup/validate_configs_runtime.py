@@ -91,23 +91,37 @@ def unknown_key_warnings(config: dict[str, Any]) -> list[str]:
     The known set is the declaration matrix (``config_backend_matrix``),
     the same table the parity gate enforces against the defaults, plus
     ``NON_DEFAULT_READ_KEYS``. Legacy alias keys stay accepted without a
-    warning (``config_aliases``): anything ``used_legacy_keys`` reports —
-    including a present block rename such as ``search.hnsw`` — is exempt
-    subtree-wide. Warn, never error: the exit code must stay 0.
+    warning (``config_aliases``): a legacy leaf is exempt, and a leaf
+    under a present block rename (``search.hnsw``) is exempt when the
+    rename maps it onto a declared canonical leaf — an unmapped leaf now
+    warns instead of hiding behind the block (issue #592 item 5). Empty
+    section dicts are skipped, not reported as unknown heads (issue #592
+    item 6). Warn, never error: the exit code must stay 0.
     """
     known = frozenset(_matrix_module().declared_leaf_keys()) | NON_DEFAULT_READ_KEYS
-    present_legacy = _aliases_module().used_legacy_keys(config)
+    aliases = _aliases_module()
+    present_legacy = aliases.used_legacy_keys(config)
     warnings: list[str] = []
+
+    def exempt(path: str) -> bool:
+        if path in known:
+            return True
+        for leg in present_legacy:
+            if path == leg:
+                return True
+            if path.startswith(f"{leg}."):
+                block = aliases.canonical_block_for(leg)
+                if block and f"{block}{path[len(leg) :]}" in known:
+                    return True
+        return False
 
     def walk(node: dict[str, Any], prefix: str) -> None:
         for key, value in node.items():
             path = f"{prefix}{key}"
-            if isinstance(value, dict) and value:
+            if isinstance(value, dict):
                 walk(value, f"{path}.")
                 continue
-            if path in known:
-                continue
-            if any(path == leg or path.startswith(f"{leg}.") for leg in present_legacy):
+            if exempt(path):
                 continue
             warnings.append(f"unknown config key '{path}' is not read by this version")
 

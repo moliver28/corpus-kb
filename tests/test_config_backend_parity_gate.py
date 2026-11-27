@@ -154,6 +154,24 @@ def test_gate_green_on_current_tree() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_group_rows_carry_per_leaf_grep_tokens() -> None:
+    """coding.model / llm.model / llm.base_url each grep their own read site.
+
+    The old record pinned all three keys to one group token (``base_url``
+    inside ``coding/coder_client.py``), which proves nothing about either
+    model key. Each key now names its true reader and a site-specific
+    token (issue #592 item 7).
+    """
+    keys = {"coding.model", "llm.model", "llm.base_url"}
+    rows = {row.key: row for row in gate._load_rows() if row.key in keys}
+    assert set(rows) == keys, f"a formerly grouped key lost its row: {keys - set(rows)}"
+    assert len({row.token for row in rows.values()}) == len(keys), "tokens still shared"
+    for key, row in rows.items():
+        assert row.token, f"{key} carries no per-leaf grep token"
+        text = (REPO / "src" / "corpus_kb" / row.reader).read_text(encoding="utf-8")
+        assert row.token in text, f"{key}'s token is absent from {row.reader}"
+
+
 def test_ops_matrix_covers_parity_catalogue() -> None:
     """OPS_DELTA_ROWS equals PARITY_OPS plus the HTTP-only upload op."""
     from corpus_kb.ops_backend_matrix import declared_ops

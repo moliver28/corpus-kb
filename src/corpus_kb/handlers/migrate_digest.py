@@ -74,11 +74,19 @@ def _canonical(value: object) -> list[object]:
 
 
 def _half_quantize(values: Sequence[float]) -> list[float]:
-    """Round each float through IEEE half storage (pgvector halfvec policy)."""
+    """Round each float through float32, then IEEE half storage.
+
+    The float32 pass is the dialect-equalizer: DuckDB FLOAT[n] returns
+    exact float32 doubles, pgvector text carries shortest float4 decimals
+    that parse to nearby doubles. Without the pass the two inputs can sit
+    on opposite sides of a float16 rounding midpoint and hash unequal
+    (issue #528: live shadow_vectors rows failed the digest check)."""
     if not values:
         return []
-    packed = struct.pack(f"{len(values)}e", *values)
-    return list(struct.unpack(f"{len(values)}e", packed))
+    count = len(values)
+    packed = struct.pack(f"{count}f", *values)
+    packed = struct.pack(f"{count}e", *struct.unpack(f"{count}f", packed))
+    return list(struct.unpack(f"{count}e", packed))
 
 
 def _parse_vector_text(text: str) -> list[float]:
@@ -88,8 +96,14 @@ def _parse_vector_text(text: str) -> list[float]:
 
 
 def _canonical_json(value: object) -> object:
-    """Sorted compact JSON text — jsonb and copied text hash equal."""
-    return json.dumps(json.loads(str(value)), sort_keys=True, separators=(",", ":"))
+    """Sorted compact JSON text — jsonb and copied text hash equal.
+
+    psycopg returns postgres jsonb as a Python object (dict, list); the
+    duckdb side returns JSON text. Both forms canonicalize identically
+    (issue #528: live pg target digest crashed on the dict form)."""
+    if isinstance(value, str):
+        return json.dumps(json.loads(value), sort_keys=True, separators=(",", ":"))
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def _post_steps(
