@@ -1,7 +1,7 @@
 {
   "name": "corpus-kb-ui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Corpus-KB lifecycle SPA (built into src/corpus_kb/ui_dist, served at /app)",
   "engines": {

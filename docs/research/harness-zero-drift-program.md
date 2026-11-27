@@ -68,6 +68,10 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
   doctor, backup, and migrate-data enumerate them. The registry migration
   itself is static DDL; the raw tables are runtime DDL created by the
   factory. No other module may run dynamic DDL.
+- **Release version lockstep (owner ruling 2026-11-27, issue #568)**: the UI
+  version in `ui_src/package.json` bumps in the same commit as the
+  `pyproject.toml` version on every release. This is a rule, not a gate —
+  no `poe` target, CI job, or map row.
 
 ## UI SPA program amendments (D17, 2026-10-25)
 
