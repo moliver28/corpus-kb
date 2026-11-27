@@ -238,6 +238,7 @@ _POOL = {
     "speaker_roles": {},
     "mece": {"status": "success"},
     "keyword_precision": {"status": "success"},
+    "scaffold": {},
 }
 _CODE_BATCH = {
     "status": "success",

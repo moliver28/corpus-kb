@@ -60,6 +60,7 @@ CODING_OPERATIONS: tuple[Operation, ...] = (
             "speaker_roles",
             "mece",
             "keyword_precision",
+            "scaffold",
         ),
         surfaces=(
             SurfaceSpec(MCP, "coding_pool"),

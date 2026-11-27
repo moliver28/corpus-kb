@@ -179,6 +179,15 @@ async def test_build_scaffold_report_numbers(tmp_path: Path) -> None:
     precision = report["keyword_precision"]
     assert precision["n_keywords"] == 2
     assert all(kw["precision"] == "not_measured" for kw in precision["keywords"])
+
+    scaffold = report["scaffold"]
+    assert scaffold["lines"], "the owner-facing report carries lines"
+    assert any("Embedder:" in line for line in scaffold["lines"])
+    assert any("tier-0 row" in line for line in scaffold["lines"])
+    seed_bar = scaffold["seed_bar"]
+    assert seed_bar["grade_a_bar"] == 59
+    assert seed_bar["packaged_seed_rows"] >= 5
+    assert scaffold["ledger_sample"] == []  # no coding_pool op ran in this fixture
     await gw.close()
 
 

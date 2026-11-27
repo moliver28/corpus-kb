@@ -66,6 +66,7 @@ async def pool_summaries(
         "speaker_roles": speaker_roles,
         "mece": scaffold["mece"],
         "keyword_precision": scaffold["keyword_precision"],
+        "scaffold": scaffold["scaffold"],
     }
 
 
