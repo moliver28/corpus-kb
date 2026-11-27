@@ -181,13 +181,13 @@ async def _run(
 
 
 async def test_resolved_degraded_envelope_holds_an_empty_list() -> None:
-    """The live fixture route is degraded; an empty list stays honest.
+    """The fast-path answer resolves; an empty chain stays honest.
 
-    Method 29 has no ladder followers, so even a resolved run would
-    hold []; the degraded status holds [] regardless of the ladder.
+    Method 29 has no ladder followers, so the resolved run holds [];
+    the empty list rides the resolved status, not the degraded one.
     """
     result = await _run()
-    assert result["status"] == "degraded"
+    assert result["status"] == "resolved"
     assert result["next_methods"] == []
 
 

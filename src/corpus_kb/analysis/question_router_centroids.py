@@ -16,6 +16,7 @@ are computed on demand, one method at a time.
 from __future__ import annotations
 
 import hashlib
+import math
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -97,14 +98,64 @@ def usable_vector(vector: list[float]) -> list[float] | None:
     return None
 
 
+def normalize_text(text: str) -> str:
+    """Casefold and collapse whitespace runs to single spaces."""
+    return " ".join(text.split()).casefold()
+
+
+def phrase_document_frequencies(register: MethodRegister) -> dict[str, int]:
+    """Per-phrase document frequency over the register's phrase material.
+
+    df counts the rows whose normalized ``question_phrases`` carry the
+    normalized phrase text; one row is one document. A phrase only one
+    row authors is maximally specific (df 1); a phrase every row shares
+    cannot tell rows apart (df N).
+    """
+    df: dict[str, int] = {}
+    for record in register.methods:
+        for phrase in record.question_phrases or []:
+            text = normalize_text(phrase)
+            df[text] = df.get(text, 0) + 1
+    return df
+
+
+def idf_weights(register: MethodRegister) -> dict[str, float]:
+    """Normalized idf per phrase text: ``ln(N/df)/ln(N)``, unique = 1.0.
+
+    ``N`` is the row count that carries phrases. A phrase every row
+    shares scores 0.0: it carries no routing signal. ``N <= 1`` answers
+    1.0 for every phrase (the log ratio is undefined; a lone row's
+    phrase is the strongest evidence there is).
+    """
+    df = phrase_document_frequencies(register)
+    n = sum(1 for record in register.methods if record.question_phrases)
+    if n <= 1:
+        return dict.fromkeys(df, 1.0)
+    log_n = math.log(n)
+    return {text: math.log(n / df[text]) / log_n for text in df}
+
+
 def phrase_scores(
     candidate_ids: list[str],
     hits: dict[str, list[str]],
-    phrase_counts: dict[str, int],
+    register: MethodRegister,
 ) -> dict[str, float]:
-    """Hit share over the authored phrase count (the degraded mode)."""
+    """IDF-weighted phrase evidence per row: the sum of normalized idf
+    over the row's matched phrases.
+
+    The former phrase-hit share (hits / authored count) punished rows
+    for rich phrase material: a question that is one seeded phrase
+    capped at ``1/phrase_count`` (issue #447). The information-retrieval
+    standard weights each matched phrase by its register-wide
+    specificity instead: a phrase only this row authors is full
+    evidence (1.0); a phrase shared by k rows scores ``ln(N/k)/ln(N)``
+    and helps only to tell those rows apart. More matched phrases add
+    evidence (Lucene phrase-query scoring sums term idf), and the
+    margin rule separates rows on the evidence only one row holds.
+    """
+    weights = idf_weights(register)
     return {
-        method_id: len(hits.get(method_id, [])) / phrase_counts[method_id]
+        method_id: sum(weights[normalize_text(p)] for p in hits.get(method_id, []))
         for method_id in candidate_ids
     }
 

@@ -56,6 +56,19 @@ class ZeroEmbedder:
         return [0.0] * EMBED_DIMENSIONS
 
 
+class CountingEmbedder:
+    """Fake that counts embed() calls; vectors ride ZeroEmbedder's shape."""
+
+    dimensions = EMBED_DIMENSIONS
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, text: str) -> list[float]:
+        self.calls += 1
+        return [0.0] * EMBED_DIMENSIONS
+
+
 # --- hand-built registers (subsets stay valid; the loader owns the ledger) -
 
 
@@ -174,7 +187,7 @@ class TestIntentSchema:
 
 class TestPhrasePath:
     def test_single_candidate_resolves_when_score_clears_threshold(self) -> None:
-        """Both phrases of the only row sit in the question: score 1.0 resolves."""
+        """Both phrases of the only row sit in the question: stage 1 resolves."""
         register = _cluster_register()
         question = (
             "How do I cluster my documents by theme? Also which cluster structure fits these "
@@ -183,10 +196,10 @@ class TestPhrasePath:
         result = route_question(question, register, None, None)
         assert isinstance(result, RouteResult)
         assert result.status == "resolved"
-        assert result.degraded is True
+        assert result.degraded is False
         assert result.intent.method_id == "05"
         assert result.intent.confidence == pytest.approx(1.0)
-        assert result.intent.note == "degraded"
+        assert result.intent.note is None
         assert result.trace.mode == "phrase"
 
     def test_clear_winner_resolves_via_threshold_and_margin(self) -> None:
@@ -201,15 +214,14 @@ class TestPhrasePath:
         )
         question = (
             "How do I cluster my documents by theme? Which cluster structure fits these records? "
-            "How do I build a codebook for my interviews? Can a method help me code these "
-            "transcripts?"
+            "How do I build a codebook for my interviews?"
         )
         result = route_question(question, register, None, None)
         assert result.status == "resolved"
         assert result.intent.method_id == "05"
         scores = {row["method_id"]: row["score"] for row in result.trace.scores}
-        assert scores["05"] == pytest.approx(1.0)
-        assert scores["06"] == pytest.approx(0.5)
+        assert scores["05"] == pytest.approx(2.0)
+        assert scores["06"] == pytest.approx(1.0)
 
     def test_tied_scores_stay_ambiguous_with_readings(self) -> None:
         """Top clears the threshold but the margin does not: ambiguous, top-3 readings."""
@@ -231,13 +243,42 @@ class TestPhrasePath:
         )
         assert all(reading["method_name"] for reading in result.intent.readings)
 
-    def test_single_candidate_below_threshold_stays_ambiguous(self) -> None:
-        """One member in C but score under the threshold: ambiguous, one reading."""
+    def test_one_seeded_phrase_resolves_by_idf_specificity(self) -> None:
+        """Issue #447: a question that is one seeded phrase resolves.
+
+        The former phrase-hit share scored one hit of two authored
+        phrases 0.5 — under the 0.55 threshold — no matter how
+        specific the phrase was. The idf weighting scores a phrase no
+        other row authors 1.0, so the row's own seeded question
+        resolves on its own evidence, degraded or not.
+        """
         register = _register(_record("05", "Cluster method", CLUSTER_PHRASES))
+        result = route_question("Which cluster structure fits these records?", register, None, None)
+        assert result.status == "resolved"
+        assert result.degraded is False
+        assert result.intent.method_id == "05"
+        assert result.intent.confidence == pytest.approx(1.0)
+        assert result.intent.note is None
+        assert result.trace.mode == "phrase"
+        assert result.trace.scores[0]["score"] == pytest.approx(1.0)
+
+    def test_shared_phrase_evidence_stays_below_the_threshold(self) -> None:
+        """A phrase every row authors carries no signal: ambiguous, one reading.
+
+        df = N drives the normalized idf to 0.0, so the scores stay
+        under the threshold and the run stays honest about the tie.
+        """
+        phrases = ["Which cluster structure fits these records?", "What groups these records?"]
+        register = _register(
+            _record("05", "Cluster method", phrases),
+            _record("06", "Grouping method", phrases),
+            _record("07", "Sorting method", phrases),
+        )
         result = route_question("Which cluster structure fits these records?", register, None, None)
         assert result.status == "ambiguous"
         assert result.intent.method_id is None
-        assert len(result.intent.readings) == 1
+        assert result.intent.confidence == pytest.approx(0.0)
+        assert len(result.intent.readings) == 3
         assert result.intent.readings[0]["why"] == "Which cluster structure fits these records?"
 
     def test_fallback_pool_scores_all_phrase_rows_with_method_name_whys(self) -> None:
@@ -286,7 +327,9 @@ class TestPhrasePath:
             _record("05", "Cluster method", CLUSTER_PHRASES),
             _record("06", "Phrase-less method"),
         )
-        result = route_question("Which cluster structure fits these records?", register, None, None)
+        result = route_question(
+            "Tell me what matters in this corpus, please.", register, None, None
+        )
         assert result.status == "ambiguous"
         assert result.intent.ranked_method_ids == ["05"]
         assert all(row["method_id"] == "05" for row in result.trace.scores)
@@ -315,30 +358,65 @@ class TestPhrasePath:
 
 class TestDegradedEmbedding:
     def test_zero_vector_question_falls_back_to_phrase_scoring(self) -> None:
-        """A zero-vector question never fakes embedding confidence."""
+        """Stage 1 decides first; a dead embedder never gets consulted."""
         register = _register(_record("05", "Cluster method", CLUSTER_PHRASES))
         question = (
             "How do I cluster my documents by theme? Which cluster structure fits these records?"
         )
         result = route_question(question, register, ZeroEmbedder(), None)
         assert result.status == "resolved"
-        assert result.degraded is True
+        assert result.degraded is False
         assert result.trace.mode == "phrase"
-        assert result.intent.note == "degraded"
+        assert result.intent.note is None
         assert result.intent.confidence == pytest.approx(1.0)
         assert result.intent.method_id == "05"
 
-    def test_degraded_hit_share_uses_the_row_phrase_count(self) -> None:
-        """One hit across two authored phrases scores 0.5, not 1.0."""
+    def test_zero_vector_with_undecided_phrase_evidence_stays_degraded(self) -> None:
+        """Stage 2 needed + unusable: the phrase scores stand, run degraded.
+
+        The zero-vector fallback keeps its narrowed scope: when the
+        phrase evidence ties (df = N drives idf to 0.0), the router
+        needs stage 2, the dead embedder cannot serve it, and the run
+        honestly degrades instead of faking confidence.
+        """
+        phrases = ["Which cluster structure fits these records?", "What groups these records?"]
+        register = _register(
+            _record("05", "Cluster method", phrases),
+            _record("06", "Grouping method", phrases),
+            _record("07", "Sorting method", phrases),
+        )
+        result = route_question(
+            "Which cluster structure fits these records?", register, ZeroEmbedder(), None
+        )
+        assert result.status == "ambiguous"
+        assert result.degraded is True
+        assert result.trace.mode == "phrase"
+        assert result.intent.note == "degraded"
+        assert result.intent.confidence == pytest.approx(0.0)
+
+    def test_one_seeded_phrase_resolves_by_idf_specificity(self) -> None:
+        """Issue #447 root cause: one hit of two authored phrases now resolves.
+
+        The former phrase-hit share scored it 0.5 — under the 0.55
+        threshold — so a question that IS one seeded phrase could never
+        resolve. The idf weighting scores a phrase no other row authors
+        1.0: the row's own seeded question resolves on its own evidence.
+        """
         register = _cluster_register()
         result = route_question("Which cluster structure fits these records?", register, None, None)
-        assert result.trace.scores[0]["score"] == pytest.approx(0.5)
+        assert result.trace.scores[0]["score"] == pytest.approx(1.0)
+        assert result.status == "resolved"
+        assert result.intent.method_id == "05"
+        assert result.degraded is False
 
     def test_margin_boundary_passes_at_exact_arithmetic_equality(self) -> None:
-        """Seven hits versus six hits out of ten phrases: the exact gap is 0.10.
+        """Seven matches versus six; the exact idf gap must pass the margin.
 
-        Float subtraction yields 0.09999999999999998, so the decision must
-        hold the comparison to within a small tolerance (review round 1).
+        Float subtraction on summed idf weights can land just below the
+        margin, so the comparison holds to within a small tolerance
+        (review round 1). With unit idf (each phrase unique at N=2) the
+        gap is exactly 1.0, well clear of the 0.10 margin; the tolerance
+        still guards non-exact ln-ratio sums.
         """
         phrases_a = [
             f"Cluster question number {index} for the suite here?" for index in range(1, 11)
@@ -354,10 +432,20 @@ class TestDegradedEmbedding:
         result = route_question(question, register, None, None)
         assert result.trace.margin == 0.10
         scores = {row["method_id"]: row["score"] for row in result.trace.scores}
-        assert scores["05"] == pytest.approx(0.7)
-        assert scores["06"] == pytest.approx(0.6)
+        assert scores["05"] == pytest.approx(7.0)
+        assert scores["06"] == pytest.approx(6.0)
         assert result.status == "resolved"
         assert result.intent.method_id == "05"
+
+    def test_fast_path_resolves_without_calling_the_embedder(self) -> None:
+        """The optional two-stage fast path: decisive stage 1, zero embeds."""
+        register = _cluster_register()
+        question = "How do I cluster my documents by theme?"
+        embedder = CountingEmbedder()
+        result = route_question(question, register, embedder, None)
+        assert result.status == "resolved"
+        assert result.degraded is False
+        assert embedder.calls == 0
 
 
 # --------------------------------------------------------------------------
@@ -447,7 +535,7 @@ class TestSettings:
         assert result.trace.margin == 0.10
 
     def test_threshold_override_moves_the_decision(self) -> None:
-        """Three hits across five phrases score 0.6: default resolves, 0.8 does not."""
+        """Three matches score 3.0: default resolves, 4.0 does not."""
         register = self._five_phrase_register()
         question = (
             "How do I cluster my documents by theme? Which cluster structure fits these records? "
@@ -456,38 +544,33 @@ class TestSettings:
         default_result = route_question(question, register, None, None)
         assert default_result.status == "resolved"
         strict_result = route_question(
-            question, register, None, {"confidence_threshold": 0.8, "margin": 0.10}
+            question, register, None, {"confidence_threshold": 4.0, "margin": 0.10}
         )
         assert strict_result.status == "ambiguous"
-        assert strict_result.trace.threshold == 0.8
+        assert strict_result.trace.threshold == 4.0
 
     def test_margin_override_moves_the_decision(self) -> None:
-        """Top 1.0 vs second 0.8: default margin 0.10 resolves, 0.25 does not."""
+        """A 1.0 idf gap clears margin 0.10 but not margin 1.5.
+
+        The question matches two of row 05's phrases and one of row 06's
+        (unit idf, all unique at N=2), so 05 leads by exactly 1.0: the
+        default margin resolves, the strict margin stays ambiguous.
+        """
         register = _register(
-            _record("05", "Cluster method", ["How do I cluster my documents by theme?"]),
-            _record(
-                "06",
-                "Codebook assist",
-                [
-                    *CODEBOOK_PHRASES,
-                    "What topics drive this document set today?",
-                    "Where do these records group together naturally?",
-                    "Which records look alike to you here?",
-                ],
-            ),
+            _record("05", "Cluster method", CLUSTER_PHRASES),
+            _record("06", "Codebook assist", CODEBOOK_PHRASES),
         )
         question = (
-            "How do I cluster my documents by theme? How do I build a codebook for my interviews? "
-            "Can a method help me code these transcripts? What topics drive this document set "
-            "today? Where do these records group together naturally?"
+            "How do I cluster my documents by theme? Which cluster structure fits these records? "
+            "How do I build a codebook for my interviews?"
         )
         default_result = route_question(question, register, None, None)
         assert default_result.status == "resolved"
         strict_result = route_question(
-            question, register, None, {"confidence_threshold": 0.55, "margin": 0.25}
+            question, register, None, {"confidence_threshold": 0.55, "margin": 1.5}
         )
         assert strict_result.status == "ambiguous"
-        assert strict_result.trace.margin == 0.25
+        assert strict_result.trace.margin == 1.5
 
     def test_unusable_setting_value_falls_back_to_the_default(self) -> None:
         """A non-numeric knob value falls back; the route never crashes."""
@@ -525,17 +608,19 @@ class TestTraceAndRubricJoin:
         assert all(set(row) == {"method_id", "score"} for row in result.trace.scores)
 
     def test_trace_scores_order_by_score_desc_then_id_asc(self) -> None:
+        """Shared texts score 0 at N=2 (ln(N/df) = 0); unique evidence leads."""
         register = _register(
             _record("02", "Two of two", CLUSTER_PHRASES),
             _record("01", "One of two", CLUSTER_PHRASES + CODEBOOK_PHRASES),
         )
         question = (
-            "How do I cluster my documents by theme? Which cluster structure fits these records?"
+            "How do I cluster my documents by theme? Which cluster structure fits these records? "
+            "How do I build a codebook for my interviews?"
         )
         result = route_question(question, register, None, None)
         assert [(row["method_id"], row["score"]) for row in result.trace.scores] == [
-            ("02", pytest.approx(1.0)),
-            ("01", pytest.approx(0.5)),
+            ("01", pytest.approx(1.0)),
+            ("02", pytest.approx(0.0)),
         ]
 
     def test_ranked_rides_the_one_rubric_inside_the_candidate_branch(self) -> None:
