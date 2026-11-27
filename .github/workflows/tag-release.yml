@@ -14,12 +14,11 @@
 #      - release.yml         prerelease -> TestPyPI, final -> PyPI (OIDC)
 #      - changelog.yml       bot pull request that appends CHANGELOG.md
 #                            on master
-#      - production-sync.yml bot pull request master -> production
 #
 # Why a personal access token: GitHub does not start workflow runs for
 # events made with the workflow's own GITHUB_TOKEN (the same trap that
-# changelog.yml and production-sync.yml document). A release created
-# with that token would sit silent: no publish, no changelog, no sync.
+# changelog.yml documents). A release created
+# with that token would sit silent: no publish, no changelog.
 # The release is therefore created with the RELEASE_PAT secret, and an
 # event made with that token does start the downstream workflows.
 #
@@ -34,8 +33,8 @@
 # Guards, in order; each breach fails the run and names its reason:
 #   - Version lockstep: the tag without its leading v must equal the
 #     `version =` line in pyproject.toml.
-#   - Master ancestry: the tagged commit must sit on master. Release
-#     tags are cut there; production syncs from master afterwards.
+#   - Master ancestry: the tagged commit must sit on master; release
+#     tags are cut there.
 #   - Rerun safety: when a release with the tag's name already exists,
 #     the run exits clean and creates nothing.
 # A guard breach on a real tag push also opens an issue that names the
@@ -228,7 +227,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${RELEASE_PAT}" ]]; then
-            echo "::error::Secret RELEASE_PAT is not set. A release made with the workflow token would not start release.yml, changelog.yml, or production-sync.yml."
+            echo "::error::Secret RELEASE_PAT is not set. A release made with the workflow token would not start release.yml or changelog.yml."
             cat <<'SETUP'
           One-time setup:
             1. Create a fine-grained personal access token with
@@ -246,7 +245,7 @@ jobs:
           else
             gh release create "${TAG}" --title "${TAG}" --generate-notes
           fi
-          echo "Release ${TAG} created. release.yml, changelog.yml, and production-sync.yml now take over."
+          echo "Release ${TAG} created. release.yml and changelog.yml now take over."
 
       - name: Report a failed release creation on a tag push
         if: failure() && github.event_name == 'push' && steps.release.conclusion == 'failure'

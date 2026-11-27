@@ -584,8 +584,8 @@ A release needs one manual procedure. You run five steps. The chain after the ta
 1. Bump the version on develop. Branch `chore/release-<x>-<y>-<z>` off develop. Change two lines in one commit: `version` in `pyproject.toml`, and the root `version` line in `uv.lock`. Commit title: `chore: release X.Y.Z`. Open a PR to develop. Merge when CI is green.
 2. Merge develop into master. Open the PR with base `master`, head `develop`. Title it `chore: release X.Y.Z`. Full CI runs on this PR. Merge when green.
 3. Create the tag on master. `git tag vX.Y.Z <master-sha> && git push origin vX.Y.Z`. The version must equal the `pyproject.toml` version.
-4. Merge the two bot PRs. `changelog.yml` opens one into master. `production-sync.yml` opens one into production. Both run checks natively (the release token creates them). Merge each when green.
-5. Verify. The version shows on PyPI (TestPyPI for an `rc`). The docker image `X.Y.Z-pg17` exists. The production tip equals the master tip.
+4. Merge the changelog bot PR. `changelog.yml` opens it into master. It runs checks natively (the release token creates it). Merge when green.
+5. Verify. The version shows on PyPI (TestPyPI for an `rc`). The docker image `X.Y.Z-pg17` exists.
 
 The chain behind step 3:
 
@@ -594,14 +594,13 @@ tag push
    -> tag-release.yml: guards + GitHub Release
    -> release.yml: prerelease to TestPyPI, final to PyPI
    -> changelog.yml: bot PR -> master
-   -> production-sync.yml: bot PR -> production
 ```
 
 Rules that keep the chain alive:
 
 - Do the merge first. The tag push runs the workflow copy stored on the tagged commit. Until develop merges, master lacks `tag-release.yml`, and a tag push does nothing. No run appears, and no error appears.
 - A version with an `rc`, `a`, `b`, or `dev` part publishes to TestPyPI. A final version publishes to PyPI. Final publishes are permanent. A wrong one can only be yanked on pypi.org (owner UI).
-- `release.yml`, `changelog.yml`, and `production-sync.yml` run the copies on the default branch (develop). An edit to them takes effect only after it lands on develop. `tag-release.yml` runs the copy at the tagged commit.
+- `release.yml` and `changelog.yml` run the copies on the default branch (develop). An edit to them takes effect only after it lands on develop. `tag-release.yml` runs the copy at the tagged commit.
 - Nothing else carries the version. `openapi.py` reads it from the package. Do not edit version pins anywhere else.
 
 Manual drill: `tag-release.yml` also runs by hand. A manual run prints the release command. It creates nothing unless you set `dry_run` to false.
@@ -623,7 +622,6 @@ Failure signatures (symptom -> cause -> fix):
 | tag-release.yml opened an issue on the tag push | A guard failed (version mismatch, tag not on master, release exists) | Follow the issue. The release-exists guard exits clean on purpose. |
 | Bot PR has no checks | The PR predates the token fix, or came from the issue fallback | Close + reopen once, then merge. |
 | Bot PR step fails on the token grant | RELEASE_PAT lacks the pull-request permission | Owner updates the token grant, then re-runs failed jobs. |
-| Sync PR unmergeable: missing `Validate Commit Messages` check | master tip predates the push-trigger fix | After the release merge, the master push runs the check. If still missing, follow the recipe in the production-sync.yml header. |
 
 A final version publishes to PyPI.
 
