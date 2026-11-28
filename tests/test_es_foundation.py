@@ -431,6 +431,13 @@ async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
     try:
         await conn.execute((migrations / "016_research_domain.sql").read_text(encoding="utf-8"))
         await conn.execute((migrations / "035_research_unit_spans.sql").read_text(encoding="utf-8"))
+        # 051 adds the grade pair to chunk_codes and research_assignments,
+        # tables 016 owns. Replay it here so the session DB keeps the head
+        # shape: the assignment projector writes grade on every Recorded
+        # event, so a stale replay breaks every later research consumer.
+        await conn.execute(
+            (migrations / "051_coding_grade_columns.sql").read_text(encoding="utf-8")
+        )
     finally:
         await conn.close()
 
@@ -446,6 +453,13 @@ async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
         )
         assert unguarded == [], (
             f"re-apply left research tables WITHOUT row-level security: {[r[0] for r in unguarded]}"
+        )
+        grade_cols = await conn.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='research_assignments' AND column_name IN ('grade','grade_reason')"
+        )
+        assert len(grade_cols) == 2, (
+            "re-apply did not restore the assignment grade pair (migration 051)"
         )
         span_columns = await conn.fetch(
             "SELECT column_name FROM information_schema.columns "
