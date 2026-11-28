@@ -17,9 +17,21 @@
 # fails the build when the dist is missing — a UI-less image is never
 # produced silently.
 #
+# FEATURE EXTRAS (issue #632): the install below adds the `ml`,
+# `topics`, `classify`, and `otel` extras on top of the base wheel.
+# GLiNER extraction, the BERTopic toolkit, the sklearn classification
+# head, and real OpenTelemetry tracing then all work in the container.
+# The extras grow the image by roughly 3-4 GB (torch and the BERTopic
+# stack resolve from PyPI). First model use downloads the GLiNER
+# weights (~4 GB) from Hugging Face at runtime. They land in the
+# appuser cache (/home/appuser/.cache/huggingface); plan disk for both.
+#
 # Runtime shape:
 #   - installs the built wheel (UI dist + packaged config + migrations ship
 #     as package data; the wheel self-check below fails the build otherwise)
+#   - resolves the `ml`, `topics`, `classify`, and `otel` feature extras
+#     beside it (issue #632; the extras self-check below fails the build
+#     when any of them cannot import)
 #   - runs as a non-root user; the JSON-RPC socket lands in /tmp
 #   - entrypoint waits for Postgres, runs migrations, then serves HTTP
 #     on 0.0.0.0:${CORPUS_KB_PORT:-8010}
@@ -62,14 +74,33 @@ ENV PYTHONUNBUFFERED=1
 # libmagic1: the `magic` module behind unstructured partitioning loads it on
 # Debian (the CI Windows equivalent is python-magic-bin). No git, no curl:
 # the healthcheck and entrypoint use python only.
+# libgomp1 (issue #632): the feature extras ship OpenMP-linked wheels
+# (sklearn, hdbscan, torch). Slim images lack the OpenMP runtime, and
+# imports fail without it.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libmagic1 \
+ && apt-get install -y --no-install-recommends libmagic1 libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
+
+# One pass installs the wheel AND the feature extras (issue #632): the
+# local wheel satisfies the corpus-kb requirement, so pip never fetches
+# corpus-kb from PyPI. Only the extras' dependencies resolve from PyPI.
+# The glob keeps the build working across version bumps (the wheel
+# filename embeds the version).
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install /wheels/corpus_kb-*.whl \
+    pip install /wheels/corpus_kb-*.whl "corpus-kb[ml,topics,classify,otel]" \
  && rm -rf /wheels
+
+# Extras self-check: every feature extra must import, or the build
+# fails. gliner and gliner2 cover `ml`; bertopic covers `topics`;
+# sklearn covers `classify`; the OpenTelemetry SDK, the OTLP HTTP
+# exporter, and the OpenInference conventions cover `otel`. The torch
+# import is slow but proves the whole runtime stack ships complete.
+RUN python -c "import gliner, gliner2, bertopic, sklearn, \
+opentelemetry.sdk, opentelemetry.exporter.otlp.proto.http, \
+openinference.semantic_conventions; \
+print('extras self-check ok: ml + topics + classify + otel')"
 
 # Non-root by default (Synology security hygiene). UID is fixed so a bind
 # mount stays predictable; the home dir holds nothing durable (state lives
