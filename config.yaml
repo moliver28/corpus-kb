@@ -613,10 +613,46 @@ llm:
   model: qwen3:4b
   base_url: http://localhost:11434
 
+models:
+  tiers:
+    small:
+      provider: ollama
+      model: qwen3:4b
+      digest: ""
+      context_window: 32768
+      snapshot_date: "2026-11-25"
+    medium:
+      provider: ollama
+      model: qwen3:8b
+      digest: ""
+      context_window: 32768
+      snapshot_date: "2026-11-25"
+    frontier:
+      provider: ollama
+      model: qwen3:14b
+      digest: ""
+      context_window: 32768
+      snapshot_date: "2026-11-25"
+
 # Qualitative coding pipeline behind the /api/coding/* routes.
 coding:
-  coder: qwen3:8b
-  model: qwen3:8b
+  # Empty coder/model = unset (AM-10): the pair resolves through
+  # models.tiers via coding.tier; set values here to override the tier.
+  coder: ""
+  model: ""
+  tier: medium
+  judgment_seed: 0
+  cloud:
+    base_url: https://api.anthropic.com/v1/
+    api_key_env: ANTHROPIC_API_KEY
+    consent: false
+    models:
+      small: claude-haiku-4-5-20251001
+      medium: claude-sonnet-4-5-20250929
+      large: claude-opus-4-1-20250805
+  quality:
+    min_quality_cosine: 0.80
+    lid_weights_path: ""
   # TAO T0 (TD-16): directory for the codebook CSV tables. Empty
   # means coding_export writes no files.
   export_dir: ""
