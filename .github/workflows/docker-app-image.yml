@@ -1,0 +1,122 @@
+# Build and publish the Corpus-KB application image.
+#
+# Publishes ghcr.io/moliver28/corpus-kb-app with one tag per run:
+#   * edge      - rolling tag, moved by master pushes and bare dispatches
+#   * X.Y.Z     - immutable tag, from a pushed v* tag or the version input
+#
+# A master push never writes a version-shaped tag. A version push never
+# moves the rolling tag. A dispatch with a version input publishes that
+# one immutable tag and never moves edge. Consumers pin immutable tags;
+# compose pulls a version tag, so that tag must never be rewritten.
+#
+# Triggers:
+#   * workflow_dispatch  - on-demand builds; optional version input
+#   * push to master     - keeps the rolling edge tag fresh after merges
+#   * version tags (v*)  - immutable revision tags (X.Y.Z)
+# There is NO pull_request trigger: image builds never run on PR CI.
+#
+# This is the single-platform twin of docker-image.yml (postgres). The
+# app image is linux/amd64 only, so build-push-action tags and pushes
+# it in one step. No digest export or manifest merge is needed.
+#
+# The UI dist must exist inside the build context before the Docker
+# build; ui_dist/ is gitignored. So this workflow builds the SPA from
+# ui_src/ first, with the same Node/pnpm recipe CI uses.
+name: Build app image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag to publish (empty = rolling edge)'
+        required: false
+        type: string
+        default: ''
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+
+permissions:
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: moliver28/corpus-kb-app
+
+jobs:
+  build:
+    name: Build linux/amd64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ui_src/.nvmrc
+          cache: pnpm
+          cache-dependency-path: ui_src/pnpm-lock.yaml
+
+      - name: Build the SPA into the docker build context
+        run: |
+          pnpm -C ui_src install --frozen-lockfile
+          pnpm -C ui_src build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pick the publish tag
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          # A version push makes one immutable tag from the pushed tag.
+          # A dispatch with a version input makes one immutable tag too.
+          # Everything else (master push, bare dispatch) moves the rolling tag.
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [[ -z "$VERSION" ]]; then
+              echo "FAIL: Version tag '$GITHUB_REF_NAME' has no version after the v prefix."
+              exit 1
+            fi
+            echo "PUBLISH_TAG=${VERSION}" >> "$GITHUB_ENV"
+          elif [[ -n "$VERSION_INPUT" ]]; then
+            echo "PUBLISH_TAG=${VERSION_INPUT}" >> "$GITHUB_ENV"
+          else
+            echo "PUBLISH_TAG=edge" >> "$GITHUB_ENV"
+          fi
+
+      - name: Extract image metadata and tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.PUBLISH_TAG }}
+
+      - name: Build and push the app image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=app-linux-amd64
+          cache-to: type=gha,mode=max,scope=app-linux-amd64
