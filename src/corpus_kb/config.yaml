@@ -613,11 +613,6 @@ llm:
   model: qwen3:4b
   base_url: http://localhost:11434
 
-# Model tiers (TAO T1, TD-04): the bands the coder's coding.tier resolves
-# through (coding/model_tiers.py is the typed reader). Local bands:
-# small <= 4B, medium > 4B and < 27B, frontier >= 27B parameters.
-# digest fills when the runtime reports one; it ships empty, never
-# invented.
 models:
   tiers:
     small:
@@ -641,19 +636,12 @@ models:
 
 # Qualitative coding pipeline behind the /api/coding/* routes.
 coding:
-  coder: qwen3:8b
-  model: qwen3:8b
-  # TAO T1 (TD-06): the rung the coder starts from; resolved through
-  # models.tiers. The T2 pilot sets the default from measured evidence.
+  # Empty coder/model = unset (AM-10): the pair resolves through
+  # models.tiers via coding.tier; set values here to override the tier.
+  coder: ""
+  model: ""
   tier: medium
-  # TAO T1 (TD-06): 0 sends no judgment-sampling seed (today's behavior);
-  # above 0 binds the seed where the endpoint capability flag allows it.
   judgment_seed: 0
-  # TAO T1 (TD-05): cloud rungs, off by default. Consent is necessary,
-  # not sufficient: a restricted table never reaches a cloud rung even
-  # with consent true. Disclosure: no Claude model fits the TD-04
-  # cloud-small price band (<= $0.15 per 1M input tokens); the three keys
-  # are ordinal ladder positions and the T2 pilot re-snapshots both.
   cloud:
     base_url: https://api.anthropic.com/v1/
     api_key_env: ANTHROPIC_API_KEY
@@ -662,10 +650,6 @@ coding:
       small: claude-haiku-4-5-20251001
       medium: claude-sonnet-4-5-20250929
       large: claude-opus-4-1-20250805
-  # TAO T1 (TD-12): translation-quality gate. min_quality_cosine blocks
-  # grade A below the floor (owned convention 0.80; the T2 pilot
-  # calibrates). lid_weights_path names a site-provided fastText
-  # lid.176.bin (CC-BY-SA 3.0); empty means language ID is not measured.
   quality:
     min_quality_cosine: 0.80
     lid_weights_path: ""

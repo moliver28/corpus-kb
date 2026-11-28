@@ -1,17 +1,4 @@
-"""Cloud coder client (TD-05, R1): one OpenAI chat-completions client.
-
-One client over httpx (the repo's declared HTTP library); no vendor SDK.
-Default provider: Anthropic Claude through the compatibility base URL
-(owner ruling "assume claude code", 2026-11-26). Consent is necessary,
-not sufficient (C7): the call refuses without ``coding.cloud.consent``
-and refuses a unit from a restricted table even with consent (AM-04);
-the typed refusals name the key / the table. Capability flags (TD-05
-point 7, platform.claude.com 2026-11-26): ``logprobs``, ``seed``, and
-``n_samples`` false, ``temperature_zero`` false (temperature floors at
-1), ``json_schema`` strict. A signal the endpoint cannot return is not
-measured, never defaulted. The first cloud call writes one egress
-record (no text) for the step ledger.
-"""
+"""Cloud coder client (TD-05): one httpx chat-completions call behind consent + restriction."""
 
 from __future__ import annotations
 
@@ -36,11 +23,8 @@ __all__ = [
 
 CONSENT_KEY = "coding.cloud.consent"
 
-#: Shipped defaults (refine D-6, grounded 2026-11-27): dated Claude
-#: snapshots through the compatibility layer, consent off. Disclosure: no
-#: Claude model fits the TD-04 cloud-small band (<= $0.15 per 1M input
-#: tokens); the three keys are ordinal ladder positions and the T2 pilot
-#: re-snapshots both.
+#: Dated Claude snapshots (D-6, grounded 2026-11-27), consent off. No Claude model
+#: fits the cloud-small band (<= $0.15 per 1M input); T2 re-snapshots.
 CLOUD_CONFIG_DEFAULTS: dict[str, Any] = {
     "base_url": "https://api.anthropic.com/v1/",
     "api_key_env": "ANTHROPIC_API_KEY",
@@ -52,9 +36,7 @@ CLOUD_CONFIG_DEFAULTS: dict[str, Any] = {
     },
 }
 
-#: Capability flags for the default provider's chat-completions endpoint.
-#: ``json_schema`` true (strict); the rest false. Data table plus one
-#: generic check (TD-18 recount).
+#: Capability flags for the endpoint (TD-18): json_schema strict, the rest false.
 CAPABILITIES: dict[str, bool] = {
     "logprobs": False,
     "seed": False,
@@ -65,41 +47,33 @@ CAPABILITIES: dict[str, bool] = {
 
 
 class CloudConsentError(ConfigError):
-    """A cloud call was refused: ``coding.cloud.consent`` is not true."""
+    """Cloud call refused: coding.cloud.consent is not true."""
 
 
 class CloudRestrictedError(WriteRefusedError):
-    """A unit from a restricted table never reaches a cloud rung."""
+    """A unit from a restricted table never reaches a cloud rung (AM-04)."""
 
 
 def capability(flag: str) -> bool:
-    """One endpoint capability flag; an unknown flag fails loud."""
     if flag not in CAPABILITIES:
         raise ConfigError(f"unknown cloud capability flag {flag!r}")
     return CAPABILITIES[flag]
 
 
 def check_consent(cloud_cfg: Mapping[str, Any]) -> None:
-    """Refuse a cloud call unless ``coding.cloud.consent`` is exactly true."""
     if cloud_cfg.get("consent") is not True:
-        raise CloudConsentError(
-            f"Cloud coding is refused: set {CONSENT_KEY} to true in config.yaml first."
-        )
+        raise CloudConsentError(f"Refused: set {CONSENT_KEY} to true in config.yaml first.")
 
 
 def check_restricted(restricted: bool, table: str) -> None:
-    """Refuse when the unit's table is marked restricted; the refusal names it."""
     if restricted:
         raise CloudRestrictedError(
-            f"Table {table!r} is marked restricted; its units never reach a cloud rung."
+            f"Table {table!r} is restricted; units never reach a cloud rung."
         )
 
 
 def resolve_api_key(cloud_cfg: Mapping[str, Any]) -> str:
-    """The key from the environment variable ``coding.cloud.api_key_env``.
-
-    The key never reaches a log, a trace row, or an envelope (C7).
-    """
+    """Key from the coding.cloud.api_key_env variable; never logged (C7)."""
     env_name = str(cloud_cfg.get("api_key_env") or "")
     if not env_name:
         raise ConfigError("coding.cloud.api_key_env must name an environment variable")
@@ -112,7 +86,7 @@ def resolve_api_key(cloud_cfg: Mapping[str, Any]) -> str:
 def egress_record(
     provider: str, model: str, n_units: int, n_bytes: int, restriction: str
 ) -> dict[str, Any]:
-    """One egress record for the step ledger: counts only, never text (C7)."""
+    """Counts only, never text (C7)."""
     return {
         "provider": provider,
         "model": model,
@@ -136,14 +110,7 @@ async def cloud_complete(
     transport: httpx.AsyncTransport | None = None,
     timeout_seconds: float = 120.0,
 ) -> dict[str, Any]:
-    """One chat-completions call behind consent + restriction guards.
-
-    The payload never carries ``logprobs``, ``seed``, or ``n`` greater
-    than one (capability flags), and temperature is floored at 1 because
-    ``temperature_zero`` is false on this endpoint. ``restricted`` plus
-    ``table`` carry the de-identification status check result. The answer
-    carries the reply text, the usage block, and the egress record.
-    """
+    """Guarded call; payload never carries logprobs/seed/n>1, temperature floored at 1."""
     check_consent(cloud_cfg)
     check_restricted(restricted, table)
     api_key = resolve_api_key(cloud_cfg)
@@ -164,9 +131,9 @@ async def cloud_complete(
         response = await client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
         response.raise_for_status()
         body = response.json()
-    record = egress_record(
-        "anthropic-compat", model, n_units, n_bytes, "refused" if restricted else "clear"
-    )
+    # check_restricted already refused restricted units above, so this
+    # egress row is always a clear one (the dead "refused" branch removed).
+    record = egress_record("anthropic-compat", model, n_units, n_bytes, "clear")
     content = ""
     choices = body.get("choices") if isinstance(body, dict) else None
     if isinstance(choices, list) and choices:

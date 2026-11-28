@@ -4,10 +4,7 @@ per-code output types plus their deterministic validator.
 Pure text and data transforms only. The live model call lives in
 coder_client.py; dispatch (DB reads, routing, writes) lives in
 coder_dispatch.py. TAO T1 (TD-03): the window body renders through the
-prompt registry (``coder_cell``; version + digest ride every dispatch);
-the inline tail moved verbatim into ``coding/prompts/coder_cell.yaml``
-(D-8: full contract and worked example in the file, call data as
-``{{variables}}``).
+prompt registry (``coder_cell``; the inline tail moved verbatim into the YAML, D-8).
 """
 
 from __future__ import annotations
@@ -86,12 +83,7 @@ def _candidate_block(code_rows: list[dict[str, Any]]) -> str:
 
 
 def chained_variable(qa_context: str | None, text: str = "") -> str:
-    """The ``chained_context`` variable value: labeled slot, or empty.
-
-    The label rides INSIDE the variable (decision D-8), so a unit without
-    context renders byte-identically to the pre-registry layout, and the
-    frame estimate can reserve the label's tokens with an empty ``text``.
-    """
+    """Labeled slot (D-8); empty text reserves the label's frame tokens."""
     if qa_context is None:
         return ""
     return f"\n\n{_CONTEXT_LABEL}\n{text}"
@@ -100,11 +92,7 @@ def chained_variable(qa_context: str | None, text: str = "") -> str:
 def build_window_prompt(
     code_rows: list[dict[str, Any]], chunk_text: str, chained_context: str
 ) -> RenderedPrompt:
-    """Render the ``coder_cell`` prompt from the registry (TD-03).
-
-    ``chained_context`` arrives already composed (``chained_variable``);
-    the renderer substitutes the three declared variables.
-    """
+    """Render the ``coder_cell`` prompt from the registry (TD-03)."""
     return render_prompt(
         "coder_cell",
         {
@@ -133,13 +121,7 @@ class CoderWindowOutput:
 
 
 def validate_coder_output(output: CoderWindowOutput) -> tuple[bool, str]:
-    """Deterministic validator for ONE per-code model decision.
-
-    Checks: decision in {'assign', 'reject'}; confidence in [0.0, 1.0];
-    evidence_quote present on assign. The verbatim-quote gate (Task 6)
-    runs separately in dispatch_chunk (it needs the chunk text and
-    produces a repaired quote). Returns (is_valid, error_message).
-    """
+    """Validate ONE decision; the verbatim-quote gate runs in dispatch_chunk."""
     if output.decision not in ("assign", "reject"):
         return False, f"Invalid decision: {output.decision}"
 
@@ -204,28 +186,21 @@ def parse_decisions(
     return parsed, ""
 
 
-def build_window(
-    chunk_text: str,
+def build_window_prompt_fitted(
     code_rows: list[dict[str, Any]],
+    chunk_text: str,
     qa_context: str | None = None,
     max_tokens: int | None = None,
-) -> str:
-    """Render the per-agent coder window (contract items 1, 2, 3, 5, 6, 7, 8).
+) -> RenderedPrompt:
+    """Fit the window to the hard ceiling, then render via the registry.
 
-    Carries ONLY brief_definition / inclusion_criteria / exclusion_criteria
-    per candidate code: never `theory`, never the full `examples` list.
-    `qa_context` is its own labeled section -- never spliced into
-    `chunk_text` -- so the quote gate checks the real transcript. The
-    window never exceeds `max_tokens` (contract item 5): the anchor
-    (registry-rendered) is never cut, the context yields before the chunk,
-    cuts carry a "[truncated]" marker. ValueError when the ceiling cannot
-    hold the fixed sections or the chunk.
+    The contract item 5 rules: the anchor is never cut, the context yields
+    before the chunk, cuts carry "[truncated]", and a ceiling that cannot
+    hold the chunk raises ValueError. The digest covers the FITTED variable
+    values, so it binds the body actually sent (momus P1, T1 fix round) —
+    dispatch renders through this, never through the raw pieces.
     """
     ceiling = DEFAULT_MAX_WINDOW_TOKENS if max_tokens is None else max_tokens
-    # The fixed-frame token cost is measured without the chunk and context
-    # TEXT but with the context label reserved (the pre-registry estimate
-    # counted the label in the fixed sections); the fitted pieces then land
-    # inside the reserved budget.
     frame = build_window_prompt(code_rows, "", chained_variable(qa_context)).rendered
     fixed = estimate_tokens(frame)
     budget = reserve_budget(ceiling, fixed)
@@ -239,5 +214,22 @@ def build_window(
         context_fit = fit_to_tokens(qa_context, budget - estimate_tokens(chunk_fit))
     # No fitted context means the label yields too (the pre-registry rule).
     chained = "" if not context_fit else chained_variable(qa_context, context_fit)
-    rendered = build_window_prompt(code_rows, chunk_fit, chained)
-    return rendered.rendered.rstrip("\n")
+    return build_window_prompt(code_rows, chunk_fit, chained)
+
+
+def build_window(
+    chunk_text: str,
+    code_rows: list[dict[str, Any]],
+    qa_context: str | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """Render the per-agent coder window (contract items 1, 2, 3, 5, 6, 7, 8).
+
+    Candidate codes carry ONLY definition/criteria fields. `qa_context` is
+    its own labeled section, so the quote gate checks the real transcript.
+    This is the fitted registry render flattened to its text; the ceiling
+    rules live on ``build_window_prompt_fitted``.
+    """
+    return build_window_prompt_fitted(
+        code_rows, chunk_text, qa_context, max_tokens
+    ).rendered.rstrip("\n")

@@ -78,10 +78,10 @@ async def test_duplicate_include_term_across_codes_is_refused(tmp_path: Path) ->
 async def test_reload_replaces_earlier_load_authored_rows(tmp_path: Path) -> None:
     """T1 pin (athena row 47): a new version's authored keywords supersede.
 
-    The one-active-inclusion index forces replace semantics on reload, so
-    an authored term an earlier load claimed does NOT refuse a new load —
-    the earlier active row retires first (refine D-1, retire-on-reload).
-    Same-document duplicates still refuse (the claims check, next test).
+    A reload retires the earlier active rows before the new inserts
+    (refine D-1, retire-on-reload), so an authored term an earlier load
+    claimed does NOT refuse the new load. Same-document duplicates still
+    refuse (the claims check, next test).
     """
     gw = await _gateway(tmp_path)
     await load_codebook(_codebook({"C1": ["safety"]}), gw, str(TENANT), _embed)
@@ -101,6 +101,31 @@ async def test_reload_replaces_earlier_load_authored_rows(tmp_path: Path) -> Non
     keywords_csv = (out / "keywords.csv").read_text(encoding="utf-8").splitlines()
     assert "safety,C1,inclusion,codebook,retired" in keywords_csv
     assert "Safety,C3,inclusion,codebook,active" in keywords_csv
+    await gw.close()
+
+
+async def test_same_pk_bump_reactivates_the_kept_row(tmp_path: Path) -> None:
+    """AM-08 (P1): a version bump that keeps a keyword's PK re-activates it.
+
+    v1 loads C1 with ``safety``; a CHANGED v2 keeps C1 + ``safety`` (the
+    normal codebook-evolution case). The PK (keyword, code_id, kind,
+    tenant_id) survives the bump, so the reload upsert must flip the
+    just-retired row back to active — one row, active, no duplicate.
+    """
+    gw = await _gateway(tmp_path)
+    await load_codebook(_codebook({"C1": ["safety"]}), gw, str(TENANT), _embed)
+    changed = _codebook({"C1": ["safety"]})
+    categories = changed["categories"]
+    assert isinstance(categories, list) and bool(categories)
+    first = categories[0]
+    assert isinstance(first, dict)
+    first["brief_definition"] = "definition changed for v2"
+    await load_codebook(changed, gw, str(TENANT), _embed)
+    rows_c1 = await _keyword_rows(gw, "C1")
+    assert rows_c1 == [
+        ("never", "exclusion", "codebook:active"),
+        ("safety", "inclusion", "codebook:active"),
+    ]
     await gw.close()
 
 

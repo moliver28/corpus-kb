@@ -18,6 +18,14 @@ ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS grade_reason text
         'escalated_next_rung', 'signals_contradict_decision',
         'structure_canary_failed', 'translation_quality_failed'));
 
+-- TD-03 point 4 (AM-12): durable prompt provenance on the coder path.
+-- The chunk_codes writer stores the rendered prompt's id/version/digest
+-- triple so an old row stays attributable after the prompts move. All
+-- three are NULLable: pre-T1 rows carry NULL.
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_id text;
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_version text;
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_digest text;
+
 ALTER TABLE final_codes ADD COLUMN IF NOT EXISTS grade text;
 ALTER TABLE final_codes ADD COLUMN IF NOT EXISTS grade_reason text
     CONSTRAINT final_codes_grade_reason_check

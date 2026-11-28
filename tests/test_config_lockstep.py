@@ -117,6 +117,10 @@ class TestTaoT1Leaves:
         "models.tiers.small.snapshot_date": "2026-11-25",
         "models.tiers.medium.model": "qwen3:8b",
         "models.tiers.frontier.model": "qwen3:14b",
+        # AM-10: the shipped legacy keys default to empty (= unset) so the
+        # coding.tier selector steers; lockstep pins both trees to "".
+        "coding.coder": "",
+        "coding.model": "",
         "coding.tier": "medium",
         "coding.judgment_seed": 0,
         "coding.cloud.base_url": "https://api.anthropic.com/v1/",

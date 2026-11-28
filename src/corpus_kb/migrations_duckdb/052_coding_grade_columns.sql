@@ -14,6 +14,12 @@
 ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS grade TEXT;
 ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS grade_reason TEXT;
 
+-- TD-03 point 4 (AM-12): durable prompt provenance on the coder path
+-- (mirror of migrations/051). NULLable: pre-T1 rows carry NULL.
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_id TEXT;
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_version TEXT;
+ALTER TABLE chunk_codes ADD COLUMN IF NOT EXISTS prompt_digest TEXT;
+
 ALTER TABLE final_codes ADD COLUMN IF NOT EXISTS grade TEXT;
 ALTER TABLE final_codes ADD COLUMN IF NOT EXISTS grade_reason TEXT;
 

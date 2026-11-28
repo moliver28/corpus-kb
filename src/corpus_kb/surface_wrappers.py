@@ -17,9 +17,7 @@ import importlib.util
 from pathlib import Path as _Path
 from typing import NamedTuple
 
-# --------------------------------------------------------------------------
-# Harness wrappers: the generated command pack
-# --------------------------------------------------------------------------
+# -- Harness wrappers: the generated command pack ---------------------------
 
 
 class Wrapper(NamedTuple):
@@ -919,7 +917,7 @@ WRAPPERS: tuple[Wrapper, ...] = (
         body=_ACTIVE_LEARN_BODY,
         covers=("active-learn-next",),
     ),
-    # -- Chunk-coding ops (issue #350): one card for the eight coding ops ---
+    # -- Chunk-coding ops (issue #350): one card for the coding ops --------
     Wrapper(
         name="corpus-coding-ops",
         title="corpus-coding-ops",
@@ -938,6 +936,7 @@ WRAPPERS: tuple[Wrapper, ...] = (
             "coding-saturation",
             "coding-status",
             "coding-export",
+            "prompt-render",
         ),
     ),
     Wrapper(

@@ -21,8 +21,7 @@ from corpus_kb.coding.coder_window import (
     CODER_WINDOW_CONTRACT,
     MAX_CANDIDATE_CODES,
     CoderWindowOutput,
-    build_window_prompt,
-    chained_variable,
+    build_window_prompt_fitted,
     parse_decisions,
     validate_coder_output,
 )
@@ -95,8 +94,7 @@ async def dispatch_chunk(
         chunk_id: Chunk to code
         code_ids: Candidate code IDs (<=5; more raises ValueError)
         coder: Coder identifier (e.g., model name or user)
-        model: Model name; None resolves ``coding.tier`` through
-            ``models.tiers`` (TD-06; ``model_tiers.resolve_coder_models``)
+        model: Model name; None resolves coding.tier (TD-06, model_tiers).
         call_fn: Async callable(window_text) -> response dict. Injected by tests;
             under the U35 mean path each invocation is read as one independent
             draw (a live call_ollama uses JUDGMENT_SAMPLE_TEMPERATURE for the
@@ -132,16 +130,12 @@ async def dispatch_chunk(
         return unresolved
 
     # Phase 2 (model): outside any transaction, since a generation takes seconds.
-    prompt = build_window_prompt(
-        code_rows, chunk_text, chained_variable(qa_context, qa_context or "")
-    )
+    # The window is FITTED to the hard ceiling before the registry render
+    # (momus P1): no raw overflow ships, cuts carry "[truncated]", and the
+    # prompt digest binds the fitted body actually sent.
+    prompt = build_window_prompt_fitted(code_rows, chunk_text, qa_context)
     window = prompt.rendered.rstrip("\n")
     raw = await (call_fn(window) if call_fn is not None else call_ollama(window, model))
-    prompt_meta: dict[str, Any] = {
-        "prompt_id": prompt.prompt_id,
-        "prompt_version": prompt.prompt_version,
-        "prompt_digest": prompt.prompt_digest,
-    }
 
     decisions, error = parse_decisions(raw, [r["code_id"] for r in code_rows])
     if error:
@@ -181,9 +175,11 @@ async def dispatch_chunk(
                 judgment=(judgment_by_code.get(row["code_id"]) if judgment_by_code else None),
                 bands=bands,
                 paradigm=paradigm,
+                prompt_id=prompt.prompt_id,
+                prompt_version=prompt.prompt_version,
+                prompt_digest=prompt.prompt_digest,
             )
-            # TD-03 point 4: every model call carries the prompt provenance.
-            results.append({**result, **prompt_meta})
+            results.append(result)
 
     return {
         "status": "success",

@@ -1,10 +1,4 @@
-"""Feature config defaults (W5-1 split): the rest of the default tree.
-
-The literal moved verbatim out of ``config.py``; the ``master`` block is
-the W5 addition (one config-lockstep commit). The ``ui.spa`` constants
-live here because the ``ui.spa`` leaves reference them; ``config.py``
-imports them back, so one source serves both.
-"""
+"""Feature config defaults (W5-1 split): the rest of the default tree, verbatim from config.py."""
 
 from __future__ import annotations
 
@@ -26,23 +20,23 @@ _FEATURE_CONFIG: dict[str, object] = {
         "model": "qwen3:4b",
         "base_url": "http://localhost:11434",
     },
-    # TAO T1 (TD-04): the local model bands coding.tier resolves through
-    # (coding/model_tiers.py is the typed reader).
+    # TAO T1 (TD-04): bands coding.tier resolves through (reader coding/model_tiers.py).
     "models": {
         "tiers": MODEL_TIERS_DEFAULTS,
     },
     "coding": {
-        "coder": "qwen3:8b",
-        "model": "qwen3:8b",
-        # TAO T1 (TD-06): the rung the coder starts from; resolved through
-        # models.tiers (coding/model_tiers.py is the typed reader).
+        # "" = unset (AM-10): the shipped defaults never shadow coding.tier;
+        # the coder/model pair resolves through models.tiers (qwen3:8b on
+        # the default medium tier). User-set values still override.
+        "coder": "",
+        "model": "",
+        # TD-06: start rung; resolved through models.tiers.
         "tier": "medium",
-        # TAO T1 (TD-06/D-7): 0 sends no seed (today's behavior); above 0
-        # binds the judgment-sampling seed where the endpoint allows it.
+        # TD-06/D-7: 0 sends no judgment-sampling seed; above 0 binds it.
         "judgment_seed": 0,
-        # TAO T1 (TD-05): cloud rungs behind consent (refine D-6).
+        # TD-05: cloud rungs behind consent (refine D-6).
         "cloud": CLOUD_CONFIG_DEFAULTS,
-        # TAO T1 (TD-12): quality floor + site-provided LID weights.
+        # TD-12: quality floor + site-provided LID weights.
         "quality": QUALITY_CONFIG_DEFAULTS,
         # TAO T0 (TD-16): directory for the codebook CSV tables. Empty
         # means coding_export writes no files.

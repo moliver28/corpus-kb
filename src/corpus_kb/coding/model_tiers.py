@@ -1,12 +1,4 @@
-"""Model tiers (TD-04, R3): the ``coding.tier`` selector and ``models.tiers``.
-
-A tier leaf reads as ``models.tiers.small.model`` and so on. Local bands:
-small at most 4B parameters, medium above 4B below 27B, frontier 27B or
-more. The coder reads its rung from ``coding.tier`` here — the one
-selector the five former pin sites resolve through (athena R-17). The
-legacy ``coding.model``/``coding.coder`` keys stay honored as explicit
-overrides; when neither is set the tier's model is the pick.
-"""
+"""Model tiers (TD-04): the coding.tier selector over models.tiers, legacy overrides honored."""
 
 from __future__ import annotations
 
@@ -30,8 +22,7 @@ CODER_KEY = "coding.coder"
 MODEL_KEY = "coding.model"
 TIERS_BLOCK_KEY = "models.tiers"
 
-#: The shipped snapshot (TD-04 point 3, S6 2026-11-25). ``digest`` fills
-#: when the runtime reports one; it ships empty, never invented.
+#: Shipped models.tiers.* snapshot (TD-04 point 3, S6 2026-11-25); digest fills at runtime.
 MODEL_TIERS_DEFAULTS: dict[str, dict[str, Any]] = {
     "small": {
         "provider": "ollama",
@@ -58,14 +49,16 @@ MODEL_TIERS_DEFAULTS: dict[str, dict[str, Any]] = {
 
 
 def resolve_tier(tier: str, config: dict[str, Any]) -> dict[str, Any]:
-    """One tier's row out of ``models.tiers``; an unknown name fails loud.
+    """One tier row; an absent models block falls back to shipped defaults.
 
-    A config tree with NO ``models`` block at all (a pre-T1 user config,
-    or a minimal test tree) resolves against the shipped defaults; an
-    EXPLICITLY wrong tier name still refuses.
+    A pre-T1 config with no ``models`` block resolves against the shipped
+    snapshot. A PRESENT-but-non-mapping ``models.tiers`` block fails loud
+    instead of silently looking shipped (momus one-liner, T1 fix round).
     """
     block = config.get("models")
     tiers = block.get("tiers") if isinstance(block, dict) else None
+    if tiers is not None and not isinstance(tiers, dict):
+        raise ConfigError(f"{TIERS_BLOCK_KEY} must be a mapping of tier rows")
     if not isinstance(tiers, dict) or tier not in tiers:
         if not isinstance(tiers, dict) and tier in MODEL_TIERS_DEFAULTS:
             return dict(MODEL_TIERS_DEFAULTS[tier])
@@ -82,11 +75,11 @@ def resolve_tier(tier: str, config: dict[str, Any]) -> dict[str, Any]:
 def resolve_coder_models(
     coding_cfg: dict[str, Any], config: dict[str, Any] | None = None
 ) -> tuple[str, str]:
-    """The ``(coder, model)`` pair the coding pipeline runs on.
+    """The (coder, model) pair; an explicit non-empty override wins.
 
-    An explicit ``coding.model``/``coding.coder`` override wins; otherwise
-    ``coding.tier`` resolves through ``models.tiers`` and both tags take
-    the tier's model.
+    Empty or None ``coding.model``/``coding.coder`` values count as unset
+    (AM-10): the shipped defaults are empty so ``coding.tier`` steers out
+    of the box. User-set values still take precedence over the tier.
     """
     model = str(coding_cfg.get("model") or "")
     coder = str(coding_cfg.get("coder") or "")
@@ -100,7 +93,6 @@ def resolve_coder_models(
 
 
 def default_coder_models() -> tuple[str, str]:
-    """The pair from the loaded runtime config (the wiring sites' helper)."""
     from corpus_kb.config import load_config
 
     cfg = load_config()

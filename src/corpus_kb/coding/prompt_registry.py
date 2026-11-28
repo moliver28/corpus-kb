@@ -1,16 +1,4 @@
-"""Prompt registry (TD-03, R2): one YAML 1.2 file per prompt, strict variables.
-
-Header keys: ``id``, ``version``, ``kind`` (``cell`` or ``group_boundary``),
-``changelog``, ``variables``, ``defaults``, ``body`` (AR-5). The body holds
-``{{name}}`` placeholders and nothing that executes (N8). The renderer
-checks that the supplied variables equal the declared set, fills declared
-defaults, substitutes, and answers a SHA-256 digest over the id, the
-version, and the variable-value digests. Callers record the triple in the
-step ledger (TD-13). This is the shared loader for the W6C prompts too.
-The typed errors are domain-local taxonomy subclasses (``CodebookError``
-precedent): ``PromptRenderError`` maps to ``validation_error`` and
-``PromptNotFoundError`` to ``not_found``; ``errors.py`` stays untouched.
-"""
+"""Prompt registry (TD-03): one YAML file per prompt, strict variables, SHA-256 digest."""
 
 from __future__ import annotations
 
@@ -43,18 +31,15 @@ _VARIABLE_KEYS = {"name", "description", "required", "default"}
 
 
 class PromptNotFoundError(NotFoundError):
-    """No registry prompt carries this id."""
+    pass
 
 
 class PromptRenderError(ValidationError):
-    """The prompt render failed: bad file, missing required variable, or an
-    unknown variable. The message names the prompt and the problem."""
+    """Bad prompt file, missing required variable, or unknown variable."""
 
 
 @dataclass(frozen=True)
 class PromptVariable:
-    """One declared body variable (TD-03 point 1)."""
-
     name: str
     description: str
     required: bool
@@ -63,8 +48,6 @@ class PromptVariable:
 
 @dataclass(frozen=True)
 class PromptSpec:
-    """One loaded prompt file: header plus body."""
-
     id: str
     version: str
     kind: str
@@ -76,8 +59,6 @@ class PromptSpec:
 
 @dataclass(frozen=True)
 class RenderedPrompt:
-    """One render: the text plus the provenance triple the ledger records."""
-
     prompt_id: str
     prompt_version: str
     prompt_kind: str
@@ -87,12 +68,10 @@ class RenderedPrompt:
 
 
 def _digest(text: str) -> str:
-    """SHA-256 hex digest over UTF-8 bytes (FIPS 180-4, AR-6)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _variable(raw: object, prompt_id: str) -> PromptVariable:
-    """One declared variable row, validated (unknown keys fail loud)."""
     if not isinstance(raw, dict):
         raise PromptRenderError(f"prompt {prompt_id}: each variable must be an object")
     unknown = set(raw) - _VARIABLE_KEYS
@@ -111,7 +90,6 @@ def _variable(raw: object, prompt_id: str) -> PromptVariable:
 
 
 def _spec_from_doc(prompt_id: str, doc: object) -> PromptSpec:
-    """Validate one parsed YAML document into a PromptSpec (pure)."""
     if not isinstance(doc, dict):
         raise PromptRenderError(f"prompt {prompt_id}: file must hold one YAML object")
     unknown = set(doc) - _HEADER_KEYS
@@ -158,7 +136,6 @@ def _spec_from_doc(prompt_id: str, doc: object) -> PromptSpec:
 
 @cache
 def load_prompt(prompt_id: str) -> PromptSpec:
-    """Load and validate one prompt file from the packaged ``prompts/`` dir."""
     if not _ID_PATTERN.fullmatch(prompt_id):
         raise PromptNotFoundError(f"no prompt named {prompt_id!r}")
     from importlib import resources
@@ -174,12 +151,7 @@ def load_prompt(prompt_id: str) -> PromptSpec:
 
 
 def render_prompt(prompt_id: str, variables: dict[str, Any] | None) -> RenderedPrompt:
-    """Render one prompt: exact variable-set check, defaults, digest.
-
-    The supplied keys must equal the declared set: an unknown key and a
-    missing required key are typed errors (TD-03 point 3). Declared
-    optional variables fill from their defaults.
-    """
+    """Exact variable-set equality, defaults fill, digest (TD-03 point 3)."""
     spec = load_prompt(prompt_id)
     supplied = variables if isinstance(variables, dict) else {}
     declared = {v.name for v in spec.variables}

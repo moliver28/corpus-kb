@@ -213,6 +213,20 @@ async def test_config_key_enables_mean(monkeypatch: pytest.MonkeyPatch) -> None:
     assert row["judgment"]["used_mean"] is True
 
 
+def test_judgment_seed_reads_the_plain_leaf_key() -> None:
+    """momus P1 (fix round): the seed reader reads the coding-block leaf.
+
+    The reader resolves against the already-unpacked ``coding`` sub-dict,
+    so only the plain ``judgment_seed`` leaf can match; the dotted form is
+    the config leaf's name, never a key inside ``coding``. Leaf 42 binds
+    42; unset and 0 bind None (0 = off).
+    """
+    assert judgment_sampling.judgment_seed({"coding": {"judgment_seed": 42}}) == 42
+    assert judgment_sampling.judgment_seed({"coding": {}}) is None
+    assert judgment_sampling.judgment_seed({"coding": {"judgment_seed": 0}}) is None
+    assert judgment_sampling.judgment_seed({}) is None
+
+
 async def test_live_path_temperature_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     """call_fn=None: greedy generation at temperature 0, draws at 0.7."""
     temperatures: list[float] = []

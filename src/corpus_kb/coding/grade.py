@@ -1,28 +1,4 @@
-"""Graded cells (TD-07, TD-08): one U/A/B/C grade per coded cell.
-
-The grade is a summary beside the existing route; it never replaces the
-route (athena G-01: this module adds the new signals on top of
-``route_for_review``, it does not restate the router). Rules, in order:
-
-- **U, undetermined**: the ``reflexive`` paradigm (TD-08), an assign whose
-  quote failed the verbatim gate, fewer than ``routing.min_calibration_n``
-  seeds, a required signal not measured, or translation quality not
-  measured on a translated unit. U never auto-accepts.
-- **A**: the conformal set is a singleton, the error bound is at or below
-  the target risk, the quote gate passed, and the translation gate passed
-  when the unit is translated.
-- **B, tentative**: evidence exists and is not enough for A — the
-  conformal set has more than one label, the error bound is above the
-  target, or quality sits below the floor (D-4 caps at B and routes to
-  review).
-- **C, not accepted**: the signals contradict the decision, or the
-  structure canary failed.
-
-The ``grade_reason`` closed list is the migration CHECK list (D-10). The
-AM-07 pin lives here: ``reflexive_route`` maps every accept-ending route
-to ``manual_review``, so no route ends in an accept without a human.
-Every number is an owned convention until a seed set shows it (C12).
-"""
+"""Graded cells (TD-07): U/A/B/C beside the route; reflexive never auto-accepts (AM-07)."""
 
 from __future__ import annotations
 
@@ -40,7 +16,7 @@ __all__ = [
 
 Grade = Literal["A", "B", "C", "U"]
 
-#: The closed reason list; the migration CHECK enforces exactly this set.
+#: The closed reason list; the migration CHECK enforces exactly this set (D-10).
 GRADE_REASONS: tuple[str, ...] = (
     "insufficient_calibration_seeds",
     "signal_not_measured",
@@ -64,8 +40,6 @@ TRANSLATION_NOT_MEASURED = "not_measured"
 
 @dataclass(frozen=True)
 class GradeSignals:
-    """Every signal available for one coded cell; absent ones stay None."""
-
     decision: str = "assign"
     paradigm: str | None = None
     quote_ok: bool = True
@@ -81,17 +55,17 @@ class GradeSignals:
 
 @dataclass(frozen=True)
 class GradeResult:
-    """One grade plus its reason from the closed list."""
-
     grade: Grade
     reason: str
 
 
 def grade_cell(signals: GradeSignals) -> GradeResult:
-    """One cell's grade per the TD-07 rules, in the documented order."""
+    """One cell's grade per the TD-07 rule order."""
     if signals.paradigm == "reflexive":
         return GradeResult("U", "reflexive_paradigm")
-    if signals.decision == "assign" and not signals.quote_ok:
+    # TD-07 point 3: the quote gate is one of the four A conditions, for
+    # every decision — an unverified quote fails rejects too (AM-09).
+    if not signals.quote_ok:
         return GradeResult("U", "quote_not_verified")
     if not signals.structure_canary_ok:
         return GradeResult("C", "structure_canary_failed")
@@ -109,18 +83,15 @@ def grade_cell(signals: GradeSignals) -> GradeResult:
         return GradeResult("U", "signal_not_measured")
     if signals.conformal_singleton and signals.error_bound <= signals.target_risk:
         if signals.translation_state == TRANSLATION_BELOW_FLOOR:
+            # D-4 implements the grade-side cap only: below floor grades B.
+            # The route consequence lands with grade-aware routing (T2).
             return GradeResult("B", "translation_quality_failed")
         return GradeResult("A", "eligible_auto_accept")
     return GradeResult("B", "error_bound_above_target")
 
 
 def grade_conformal(set_size: int | None) -> GradeResult:
-    """The grade from a conformal set size alone (the deductive path's seam).
-
-    A measured multi-label set is B (evidence exists, A is impossible); a
-    singleton without the error bound is U (a required signal is not
-    measured); no set at all is U.
-    """
+    """Grade from a conformal set size alone (the deductive path's seam)."""
     if set_size is None:
         return GradeResult("U", "signal_not_measured")
     if set_size > 1:
@@ -132,11 +103,7 @@ _ACCEPT_ROUTES = {"high-conf-accept", "high-conf-reject"}
 
 
 def reflexive_route(route: str) -> str:
-    """TD-08: in the reflexive paradigm no route ends in an accept.
-
-    Both accept-ending routes land in manual review; the review routes
-    keep their names (the existing route names do not change).
-    """
+    """Reflexive law (AM-07): no route ends in an accept without a human."""
     if route in _ACCEPT_ROUTES:
         return "manual_review"
     return route

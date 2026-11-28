@@ -1,17 +1,7 @@
 """The operation catalogue: the chunk-coding family (issue #350).
 
-The six chunk-coding routes the plugin reached only through hard-coded
-HTTP posts (``/api/coding/*``), plus the two reads plugin 0.6.0 built by
-hand (``coding_status`` from four SQL queries, ``coding_export`` from
-hand-written SQL + JSON-to-CSV), each as ONE registry row with four
-surfaces. The existing routes and request bodies stay byte-compatible:
-the rows pin what already ships.
-
-The shared function is the tool layer in ``tools.coding_tools``; the
-pipeline itself is ``handlers.coding_handler.CodingHandler`` (status and
-export bodies live in ``handlers.coding_status_ops``). Registry-first
-rule: change the row first, then the surfaces, then the gates. All
-strings are plain English (ASD-STE100).
+One registry row with four surfaces per op; tool layer in tools.coding_tools;
+pipeline in handlers.coding_handler. Registry-first: row first, then surfaces, then gates.
 """
 
 from __future__ import annotations

@@ -133,5 +133,6 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-coding-ops` | `corpus-kb coding saturation` | `coding_saturation` | Report the ISR saturation signal and the batch stop rule. |
 | `corpus-coding-ops` | `corpus-kb coding status` | `coding_status` | Corpus counts, saturation ratio, coverage by disposition, routes. |
 | `corpus-coding-ops` | `corpus-kb coding export` | `coding_export` | Accepted codes joined with chunk text and document source, as rows. |
+| `corpus-coding-ops` | `corpus-kb coding prompt-render` | `prompt_render` | Render one registry prompt; answers the text and its digest. |
 | `corpus-events` | `corpus-kb events` | `events_summary` | Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only). |
 <!-- corpus-harness:research-commands:end -->

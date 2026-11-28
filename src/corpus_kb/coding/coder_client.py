@@ -40,8 +40,7 @@ def _generate(
     client timeout is load-bearing (see CODER_GENERATE_TIMEOUT_SECONDS).
     ``temperature`` defaults to the greedy 0 — the U35 judgment-distribution
     sampling path is the only caller that raises it. ``seed`` rides the
-    options only when given (T1 ``coding.judgment_seed``; Ollama accepts
-    one, so the endpoint capability flag allows the bind).
+    options only when given (T1 ``coding.judgment_seed``).
     """
     from ollama import Client
 
@@ -80,8 +79,7 @@ async def call_ollama(
     typed by the ollama client, so `.response` / `.logprobs` are read via getattr
     with a dict fallback. ``temperature`` defaults to greedy 0 (the historical
     request shape); dispatch_chunk's U35 judgment-distribution mean passes a
-    sampling temperature for its extra draws. ``seed`` (T1) binds the
-    judgment-sampling seed when ``coding.judgment_seed`` is above zero.
+    sampling temperature for its extra draws. ``seed`` (T1) binds judgment_seed.
 
     Degrade contract (mirrors OllamaJudge in src/rag/judge.py): never raises into
     the caller. A transport failure or a non-JSON reply returns

@@ -211,12 +211,7 @@ async def prompt_render(
     config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
 ) -> dict[str, Any]:
-    """Render one registry prompt; answers the text and its digest (TD-03).
-
-    The render is pure and runs BEFORE the ledger window; its provenance
-    triple lands on the ``analysis_steps`` row (TD-13). A bad id or a
-    variable mismatch raises the typed registry error.
-    """
+    """Render one registry prompt; answers the text and its digest (TD-03)."""
     load_config_or_pass(config)
     tenant = uuid_arg(tenant_id, "tenant_id")
     from corpus_kb.coding.prompt_registry import render_prompt

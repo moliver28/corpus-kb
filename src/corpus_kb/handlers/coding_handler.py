@@ -1,16 +1,9 @@
 """Coding handler — deductive coding pipeline behind the /api/coding/* routes.
 
-Wraps the real corpus_kb.coding modules:
-  - handle_embed_codebook: codebook_loader.load_codebook (validate, embed, write)
-  - handle_pool: pooling keyword hits + similarity + coverage reconciliation
-  - handle_code_batch: coder_dispatch.dispatch_chunk per requested cell
-  - handle_reliability: reliability_sampling + vendored Krippendorff alpha
-
-The operation bodies live in :mod:`coding_ops`; this module keeps the
-embed path, the monkeypatch-pinned call sites (tests patch them HERE),
-the thin delegating methods, and the singleton. Ported from the recovered
-bundle handler (blob d7293052); ``instruct`` resolves defensively until
-the Embedder Protocol lands. TAO T1: coder/model defaults resolve through
+Wraps corpus_kb.coding: embed_codebook, pool, code_batch (dispatch_chunk per
+cell), reliability. Operation bodies live in coding_ops; this module keeps the
+embed path, the monkeypatch-pinned call sites (tests patch HERE), the thin
+delegators, the singleton. TAO T1: coder/model defaults resolve through
 ``coding.tier`` (model_tiers).
 """
 

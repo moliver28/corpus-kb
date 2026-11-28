@@ -39,21 +39,23 @@ __all__ = [
 JUDGMENT_MEAN_SAMPLES = 4
 JUDGMENT_SAMPLE_TEMPERATURE = 0.7
 
-# T1 seed bind (TD-06, refine D-7): ``coding.judgment_seed`` is 0 by
-# default (no seed sent — today's behavior); a value above 0 binds the
-# seed on the live sampling calls, where the endpoint capability flag
-# allows it (Ollama accepts a seed; the cloud client's flag is false).
+# T1 seed bind (TD-06, D-7): 0 sends no seed; above 0 binds it (Ollama accepts one).
 JUDGMENT_SEED_KEY = "coding.judgment_seed"
 
 
 def judgment_seed(config: dict[str, object] | None = None) -> int | None:
-    """The bound judgment-sampling seed, or None when unset (0 = off)."""
+    """The bound judgment-sampling seed, or None when unset (0 = off).
+
+    The dotted constant names the config leaf for the parity gate; the
+    lookup itself uses the plain leaf key on the already-unpacked coding
+    block (momus P1, T1 fix round — the dotted form never matches here).
+    """
     cfg = config if config is not None else load_config()
     coding = cfg.get("coding", {})
     if not isinstance(coding, dict):
         return None
     try:
-        seed = int(coding.get(JUDGMENT_SEED_KEY) or 0)
+        seed = int(coding.get(JUDGMENT_SEED_KEY.rsplit(".", 1)[-1]) or 0)
     except (TypeError, ValueError):
         return None
     return seed or None

@@ -39,6 +39,7 @@ from corpus_kb.coding.pooling import (
 )
 from corpus_kb.coding.saturation_query import compute_saturation
 from corpus_kb.coding.speaker_role_projection import classify_speaker_roles
+from corpus_kb.handlers import coding_ops
 from corpus_kb.handlers.coding_handler import CodingHandler
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
@@ -304,6 +305,87 @@ async def test_dispatch_run_lifecycle_duplicate_and_status_flip(tmp_path: Path) 
         str(chunk),
     )
     assert flipped is not None and flipped["status"] == "rejected"
+
+
+async def test_dispatch_fits_the_window_and_binds_prompt_provenance(tmp_path: Path) -> None:
+    """momus P1 + TD-03 point 4 (fix round): the shipped window is the FITTED
+    render (cuts carry "[truncated]"), and the prompt triple lands on the
+    coded row with the digest of exactly the body that was sent."""
+    gw = await _gateway(tmp_path)
+    await _load(gw)
+    big_text = "Management has our trust. " * 3_000  # far over the 6k-token ceiling
+    chunk = await _seed_document(gw, "d1", str(uuid4()), big_text)
+    windows: list[str] = []
+
+    async def capture(window: str) -> dict[str, Any]:
+        windows.append(window)
+        return _coder_reply("assign", "Management has our trust.")
+
+    result = await dispatch_chunk(gw, TENANT, chunk, ["C1"], call_fn=capture)
+    assert result["status"] == "success"
+    assert "[truncated]" in windows[0]  # the fitted body shipped, not the raw chunk
+    row = result["results"][0]
+    assert row["prompt_id"] == "coder_cell"
+    assert len(row["prompt_digest"]) == 64
+    stored = await gw.fetchrow(
+        "SELECT prompt_id, prompt_version, prompt_digest FROM chunk_codes"
+        " WHERE tenant_id=$1 AND chunk_id=$2",
+        str(TENANT),
+        str(chunk),
+    )
+    assert stored is not None
+    assert stored["prompt_id"] == "coder_cell"
+    assert stored["prompt_digest"] == row["prompt_digest"]
+    await gw.close()
+
+
+async def test_reflexive_codebook_batch_grades_u_and_routes_review(tmp_path: Path) -> None:
+    """Ruling 9a (fix round): the batch entry resolves the paradigm from the
+    active codebook_versions row. A reflexive run grades U and routes
+    manual_review end-to-end; a codebook-paradigm run is unchanged."""
+    gw = await _gateway(tmp_path)
+    await _load(gw)
+    chunk = await _seed_document(gw, "d1", str(uuid4()), CHUNK_TEXT)
+    reply = _coder_fn("assign", "trust in management")
+
+    plain = await coding_ops.code_batch(
+        gw,
+        TENANT,
+        [{"chunk_id": chunk, "code_ids": ["C1"]}],
+        coder="test-coder",
+        model="test-model",
+        call_fn=reply,
+        batch_id="b1",
+        coding_pass=1,
+        bands=None,
+    )
+    row = plain["results"][0]["results"][0]
+    assert row["route"] == "high-conf-accept"  # non-reflexive behavior identical
+    assert (row["grade"], row["grade_reason"]) == ("U", "insufficient_calibration_seeds")
+
+    reflexive_doc = {**_CODEBOOK, "paradigm": "reflexive"}
+    await load_codebook(reflexive_doc, gw, str(TENANT), _embed)
+    reflexive = await coding_ops.code_batch(
+        gw,
+        TENANT,
+        [{"chunk_id": chunk, "code_ids": ["C1"]}],
+        coder="test-coder",
+        model="test-model",
+        call_fn=reply,
+        batch_id="b2",
+        coding_pass=2,
+        bands=None,
+    )
+    row2 = reflexive["results"][0]["results"][0]
+    assert row2["route"] == "manual_review"  # TD-08: no accept without a human
+    assert (row2["grade"], row2["grade_reason"]) == ("U", "reflexive_paradigm")
+    final = await gw.fetchrow(
+        "SELECT status FROM final_codes WHERE tenant_id=$1 AND chunk_id=$2",
+        str(TENANT),
+        str(chunk),
+    )
+    assert final is not None and final["status"] == "manual_review"
+    await gw.close()
 
 
 async def test_reliability_and_saturation_through_handler(tmp_path: Path) -> None:

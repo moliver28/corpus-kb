@@ -9,7 +9,11 @@ from corpus_kb.coding.coder_dispatch import (
     CoderWindowOutput,
     validate_coder_output,
 )
-from corpus_kb.coding.coder_window import build_window
+from corpus_kb.coding.coder_window import (
+    build_window,
+    build_window_prompt,
+    build_window_prompt_fitted,
+)
 
 _CODE_ROW = {
     "code_id": "CTRL-001",
@@ -203,3 +207,23 @@ def test_build_window_rejects_impossible_ceiling() -> None:
     """A ceiling below the fixed scaffolding raises instead of emitting junk."""
     with pytest.raises(ValueError, match="ceiling"):
         build_window("any turn", [_CODE_ROW], max_tokens=10)
+
+
+def test_fitted_render_digest_binds_the_truncated_body() -> None:
+    """momus P1 (fix round): dispatch's fitted render carries the truncation
+    marker and a digest that covers the FITTED values, so it can never bind
+    the raw oversized pieces."""
+    big = "word " * 20_000
+    fitted = build_window_prompt_fitted([_CODE_ROW], big, None, max_tokens=2_000)
+    raw = build_window_prompt([_CODE_ROW], big, "")
+    assert "[truncated]" in fitted.rendered
+    assert fitted.prompt_digest != raw.prompt_digest
+    assert fitted.rendered.rstrip("\n") == build_window(big, [_CODE_ROW], max_tokens=2_000)
+
+
+def test_fitted_render_untouched_when_under_ceiling() -> None:
+    """A window that fits renders identically to the raw render."""
+    fitted = build_window_prompt_fitted([_CODE_ROW], "a short turn", None)
+    raw = build_window_prompt([_CODE_ROW], "a short turn", "")
+    assert fitted.rendered.rstrip("\n") == raw.rendered.rstrip("\n")
+    assert fitted.prompt_digest == raw.prompt_digest

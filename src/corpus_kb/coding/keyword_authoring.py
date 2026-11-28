@@ -29,14 +29,11 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 async def retire_code_keywords(conn: ScopedConn, tenant: str) -> int:
-    """Retire every active authored keyword row (the reload pin, athena row 47).
+    """Retire every active authored keyword row (reload pin, athena row 47; refine D-1).
 
-    A new codebook version's authored keywords replace the previous
-    version's wholesale: the one-active-inclusion-keyword-per-tenant index
-    (migration 012) forces delete-then-insert semantics anyway, so the
-    loader calls this BEFORE the new version's inserts (refine D-1).
-    Synthesized rows keep their own lifecycle (``source`` separates them).
-    Answers the number of retired rows.
+    The reload semantics are retire-then-reactivate, not delete-then-insert:
+    the inserts below re-activate any row whose primary key survives the
+    bump, so the retired audit trace stays (AM-08).
     """
     status = await conn.execute(
         "UPDATE code_keywords SET status='retired'"
@@ -54,8 +51,10 @@ async def write_codebook_keywords(
     Refuses a duplicate active include term across codes with a typed
     CodebookError naming the term and both codes: the one-active-inclusion-
     keyword-per-tenant index (migration 012) makes the conflict real
-    (athena G-11). Exclusion rows carry no such constraint. Idempotent via
-    the table's primary key. Called inside the loader's write transaction.
+    (athena G-11). Exclusion rows carry no such constraint. A row whose
+    primary key survives the reload is re-activated, not duplicated
+    (AM-08): the loader retires first, then this upsert flips the kept
+    row back to active. Called inside the loader's write transaction.
     """
     claims: dict[str, str] = {}
     for code, _dv, _pv in embedded:
@@ -70,7 +69,9 @@ async def write_codebook_keywords(
                     claims[str(term).lower()] = code_id
                 await conn.execute(
                     "INSERT INTO code_keywords (keyword, code_id, tenant_id, kind, source, status)"
-                    " VALUES ($1, $2, $3, $4, 'codebook', 'active') ON CONFLICT DO NOTHING",
+                    " VALUES ($1, $2, $3, $4, 'codebook', 'active')"
+                    " ON CONFLICT (keyword, code_id, kind, tenant_id)"
+                    " DO UPDATE SET status='active'",
                     term,
                     code_id,
                     tenant,

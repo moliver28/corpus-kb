@@ -47,6 +47,9 @@ async def _write_cell(
     judgment: JudgmentMeanResult | None,
     bands: Bands,
     paradigm: str | None = None,
+    prompt_id: str,
+    prompt_version: str,
+    prompt_digest: str,
 ) -> dict[str, Any]:
     """Gate, route and persist ONE (chunk, code) cell; return its result row.
 
@@ -78,9 +81,7 @@ async def _write_cell(
         quote_ok=quote_ok,
         bands=bands,
     )
-    # T1 grade (TD-07): a summary beside the route. The coder batch path
-    # has no calibration split yet, so the honest grade is U until the
-    # T2 pilot feeds one (grade_cell documents the rule order).
+    # T1 grade (TD-07): honest U until the T2 pilot feeds a calibration split.
     graded = grade_cell(
         GradeSignals(
             decision=output.decision,
@@ -100,8 +101,8 @@ async def _write_cell(
         """INSERT INTO chunk_codes
              (chunk_id, code_id, tenant_id, pass, batch_id, coder, model, decision,
               confidence, tier_signals, rationale, evidence_quote, route, qa_context_used,
-              grade, grade_reason)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+              grade, grade_reason, prompt_id, prompt_version, prompt_digest)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
            ON CONFLICT DO NOTHING
            RETURNING chunk_id""",
         chunk_id,
@@ -120,6 +121,10 @@ async def _write_cell(
         qa_used,
         graded.grade,
         graded.reason,
+        # TD-03 point 4 (AM-12): durable prompt provenance on the coded row.
+        prompt_id,
+        prompt_version,
+        prompt_digest,
     )
     status = _final_status(routed.route)
     # No new audit row means this (chunk, code, coder, pass) was already
@@ -157,6 +162,9 @@ async def _write_cell(
         "tier_signals": asdict(signals),
         "grade": graded.grade,
         "grade_reason": graded.reason,
+        "prompt_id": prompt_id,
+        "prompt_version": prompt_version,
+        "prompt_digest": prompt_digest,
         "written": inserted is not None,
         "duplicate": inserted is None,
         "qa_context_used": qa_used,

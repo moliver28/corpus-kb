@@ -87,6 +87,14 @@ truncation
 IrrCodeVerdict
 prevalence_affected
 
+# Quality-gate Protocols (coding/_quality_types, the lazy [quality] seam,
+# house pattern _latechunk_types): the real sentence-transformers/fasttext
+# libraries consume these signatures; our code never names the params.
+sentences
+name
+path
+text
+
 # Protocol keyword-only parameters that mirror real upstream signatures
 # (tier_b's SetFitModel.fit; the engine's topics_over_time seam). The
 # names must match the real calls; vulture sees only the Protocol text.
@@ -700,9 +708,10 @@ TRANSLATION_OK
 TranslatePort.translate
 W6BPort.translate
 
-# The per-agent window wrapper: dispatch renders via build_window_prompt
-# (it needs the render digest); build_window is the public ceiling API the
-# tests exercise. The quality key constants carry the parity-gate tokens.
+# The per-agent window wrapper: dispatch renders via build_window_prompt_fitted
+# (it needs the render digest of the fitted body); build_window stays the
+# flattened text form the ceiling tests exercise. The quality key constants
+# carry the parity-gate tokens.
 build_window
 MIN_QUALITY_COSINE_KEY
 LID_WEIGHTS_KEY

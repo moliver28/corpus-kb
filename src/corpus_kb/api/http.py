@@ -1,15 +1,10 @@
 """HTTP adapter — FastAPI REST API for Corpus-KB.
 
-Composition root only: it builds the FastAPI app (a Starlette subclass,
-so plain Route objects and the TestClient are unchanged) from the
-per-family route modules (zero-drift split of the single route table).
-
-Thin adapters: parse JSON → construct Pydantic command/query → call handler → JSONResponse.
-
-Every route is wrapped in ``@route_errors`` (api._body): ONE error path.
-A ``CorpusError`` answers with its own status; a known exception class
-answers through ``errors.ERROR_MAP``; anything else is a 500
-``internal_error``. The failure envelope is ``{status, error, error_type}``.
+Composition root: builds the FastAPI app from the per-family route modules.
+Thin adapters: parse JSON → Pydantic command/query → handler → JSONResponse.
+Every route is wrapped in ``@route_errors`` (api._body): ONE error path; a
+``CorpusError`` answers with its own status; anything else is a 500
+``internal_error`` with envelope ``{status, error, error_type}``.
 
 Route families (the Route order below is the original single-file order):
   api/routes_ingest.py         POST /api/ingest/{file,text,directory,url}

@@ -40,9 +40,7 @@ async def run_step(
 
     The row opens ``running`` and completes only after ``op`` returns; a
     raised op records ``failed``, then the error propagates. Ledger
-    trouble never breaks the op. ``prompt_meta`` (optional
-    ``prompt_id``/``prompt_version``/``prompt_digest``) lands on the
-    ledger row's prompt columns (TD-13).
+    trouble never breaks the op. ``prompt_meta`` rides the ledger row (TD-13).
     """
     step_id: UUID | None = None
     meta = dict(prompt_meta or {})

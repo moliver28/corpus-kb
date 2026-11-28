@@ -1,25 +1,11 @@
 """Deductive coding-run pipeline (todo 14, v5 §8) — the `coding run` surface.
 
-Layering contract (r11), mirrored in docs/research/research-math.md:
-  * tau (per-code, calibrated) is the DECISION rule on raw cosine;
-  * temperature/ECE calibrate the REPORTED confidence only — never move tau;
-  * conformal prediction sets are the GUARANTEE layer — routing only;
-  * gray-zone band, margin, and conformal set-size are ROUTING triggers.
-
-Orchestration: read models in (units, exchanges, code_registry) ->
-CodingRun / CodingAssignment events out via ResearchHandler. Prototypes are
-rebuilt at run time from exemplar text_sha256 refs; gold units scored for
-the conformal calibration split use leave-one-out prototype rebuilds — a
-gold exemplar is never scored against a medoid chosen from it.
-
-Tier-3 wiring (issue #132): every run computes the combined review priority
-and closed-enum routing reasons into the checkpoint's ``review_priority``
-block. With ``coding.uncertainty.tier3_enabled`` the flagged minority is
-escalated: resampled rationales and entailment verdicts are measured
-through the degrading clients in ``coding/uncertainty/``, and the flagged
-units' semantic entropy rides their assignment events into
-research_signals. Escalation is OFF by default — the engine stays
-deterministic and LLM-free unless the owner turns it on.
+Layering contract (r11): tau is the DECISION rule; temperature/ECE calibrate
+reported confidence only; conformal sets are the GUARANTEE layer; gray-zone,
+margin, and set-size are ROUTING triggers. Prototypes rebuild at run time from
+exemplars; gold units use leave-one-out rebuilds. Tier-3 (issue #132) escalates
+the flagged minority through coding/uncertainty/ when tier3_enabled; OFF by
+default — the engine stays deterministic and LLM-free.
 """
 
 from __future__ import annotations

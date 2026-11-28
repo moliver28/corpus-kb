@@ -65,3 +65,30 @@ def test_default_coder_models_reads_runtime_config() -> None:
     # The shipped default is the medium tier's model (the current coder).
     assert model == resolve_tier("medium", _config())["model"]
     assert coder == model
+
+
+def test_empty_legacy_keys_count_as_unset() -> None:
+    """AM-10: empty-string values behave exactly like absent keys."""
+    coding: dict[str, Any] = {"model": "", "coder": "", "tier": "frontier"}
+    assert resolve_coder_models(coding, _config()) == ("qwen3:14b", "qwen3:14b")
+
+
+def test_tier_wins_on_the_full_default_config() -> None:
+    """AM-10: the shipped coder/model defaults are empty, so coding.tier
+    steers on a default install — set tier=small and the tier's model wins."""
+    from corpus_kb.config import get_default_config
+
+    cfg = get_default_config()
+    coding_block = cfg.get("coding")
+    assert isinstance(coding_block, dict)
+    coding = dict(coding_block)
+    assert coding["coder"] == "" and coding["model"] == ""
+    coding["tier"] = "small"
+    coder, model = resolve_coder_models(coding, cfg)
+    assert (coder, model) == ("qwen3:4b", "qwen3:4b")
+
+
+def test_non_dict_tiers_block_fails_loud() -> None:
+    """A present-but-non-mapping models.tiers block refuses (momus one-liner)."""
+    with pytest.raises(ConfigError, match="mapping"):
+        resolve_tier("medium", {"models": {"tiers": "broken"}})

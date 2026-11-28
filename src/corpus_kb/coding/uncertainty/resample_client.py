@@ -1,16 +1,10 @@
 """Fixed-prompt rationale resampling for tier-3 escalation (issue #132).
 
-The escalated minority of a deductive run gets N resampled coding
-rationales. The prompt is FIXED per unit; only the seed varies, so the
-samples stay same-distribution (Oracle A r7). TAO T1 (TD-03): the prompt
-lives in ``coding/prompts/resample.yaml`` and renders through the prompt
-registry. This is the live path the cascade consumes through
-``run_deductive``; tests inject fakes at that call seam and never reach
-this module.
-
-Degrade contract mirrors ``nli_client``: never raises into the caller.
-A failed sample is dropped; an empty return tells the cascade the unit
-is NOT MEASURED, so no semantic entropy is fabricated.
+The escalated minority gets N resampled rationales; the prompt is FIXED per
+unit, only the seed varies (Oracle A r7). TAO T1 (TD-03): the prompt lives in
+``coding/prompts/resample.yaml`` (registry render). Degrade contract mirrors
+``nli_client``: never raises; a failed sample is dropped; an empty return
+says NOT MEASURED, so no semantic entropy is fabricated.
 """
 
 from __future__ import annotations

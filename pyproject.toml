@@ -464,6 +464,10 @@ DEP002 = [
     "graphqlite",
     "langextract",
     "sentence-transformers",
+    # The [quality] extra (TD-12): translation_quality reaches both members
+    # through the typed importlib seam (coding/_quality_types, the
+    # _latechunk_types house pattern), so deptry cannot see the import edge.
+    "fasttext-wheel",
     "transformers",
     "torch",
     "umap-learn",

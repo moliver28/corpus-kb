@@ -168,6 +168,24 @@ async def _write_codes(
         )
 
 
+async def active_paradigm(pool: CodingStore, tenant: str) -> str | None:
+    """The active codebook version's paradigm; None when no version exists.
+
+    "Active" is the newest codebook_versions row for the tenant (same
+    ordering ``research.cycle_reads.latest_version_id`` uses). The batch
+    coding entry reads this once per batch and passes it down, so a
+    reflexive codebook grades U and routes manual_review end-to-end
+    (ruling 9a, T1 fix round).
+    """
+    async with tenant_scope(pool, tenant) as conn:
+        row = await conn.fetchrow(
+            "SELECT paradigm FROM codebook_versions WHERE tenant_id=$1"
+            " ORDER BY created_at DESC, version_id DESC LIMIT 1",
+            tenant,
+        )
+    return str(row["paradigm"]) if row is not None else None
+
+
 async def load_codebook(
     doc: dict[str, Any],
     pool: CodingStore,
@@ -222,9 +240,7 @@ async def load_codebook(
     if embedded:
         async with tenant_scope(pool, tenant) as conn:
             await _write_codes(conn, version_id, tenant, embedded, insert_sql)
-            # T1 pin (athena row 47): a new version's authored keywords
-            # replace the previous version's, BEFORE the new inserts (the
-            # one-active-inclusion index forces replace semantics anyway).
+            # T1 pin (athena row 47): retire the old authored rows BEFORE the new inserts.
             await retire_code_keywords(conn, tenant)
             await write_codebook_keywords(conn, tenant, embedded)
 

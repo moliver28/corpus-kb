@@ -41,9 +41,7 @@ VALID_PARADIGMS = {"codebook", "reflexive"}
 
 KEYWORD_KEYS = {"include", "exclude"}
 
-# TAO T1 (TD-03): the theory prompt moved into coding/prompts/theory.yaml;
-# propose_theory renders it through the prompt registry (one renderer, one
-# header convention). THEOREY_PROMPT_ID pins the registry id.
+# TAO T1 (TD-03): the theory prompt lives in coding/prompts/theory.yaml (registry render).
 THEORY_PROMPT_ID = "theory"
 
 
@@ -165,8 +163,6 @@ async def propose_theory(
     inclusion = code.get("inclusion_criteria", "")
     exclusion = code.get("exclusion_criteria", "")
 
-    # The registry render replaces the old .replace chain (which existed
-    # because .format would interpolate the prompt's literal JSON braces).
     prompt = render_prompt(
         THEORY_PROMPT_ID,
         {"definition": definition, "inclusion": inclusion, "exclusion": exclusion},

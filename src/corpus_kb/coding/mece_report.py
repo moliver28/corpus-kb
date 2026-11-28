@@ -1,12 +1,9 @@
 """MECE math over fetched coding state (TD-11, R9b) — pure, no I/O.
 
-Composes the repo's existing math: ``research/overlap``,
-``research/exhaustiveness``, ``research/cluster_stability``. The embedder
-name rides every report (S9). Every share carries its n and a Wilson 95
-percent interval (AM-02); the three continuous metrics carry a 95
-percent bootstrap interval (TAO-T0-01): pair distances, chunk resamples,
-and the ARI seed spread. Stored vectors only (wave law); the DB reads
-live in :mod:`corpus_kb.coding.report_reads`.
+Composes research/overlap, research/exhaustiveness, research/cluster_stability.
+Embedder name rides every report (S9); shares carry n + Wilson interval (AM-02);
+continuous metrics carry a bootstrap interval (TAO-T0-01). Stored vectors only
+(wave law); the DB reads live in coding.report_reads.
 """
 
 from __future__ import annotations
@@ -57,7 +54,6 @@ def share(hits: int, n: int) -> dict[str, object]:
 
 
 def percentile_interval(values: list[float]) -> list[float] | None:
-    """The 2.5/97.5 percentile band over one bootstrap distribution."""
     if not values:
         return None
     low = float(np.percentile(np.asarray(values, dtype=float), 2.5))
@@ -75,10 +71,7 @@ def _bootstrap_mean_interval(values: list[float], rng: np.random.Generator) -> l
 
 
 def parse_vector(raw: object) -> list[float] | None:
-    """Stored vector -> floats; None when absent, unparsable, or all zeros.
-
-    Shapes: a pgvector literal (asyncpg), a list (JSON), a tuple (DuckDB).
-    """
+    """Stored vector -> floats; None when absent, unparsable, or all zeros."""
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)

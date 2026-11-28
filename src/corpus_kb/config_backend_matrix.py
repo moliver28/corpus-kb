@@ -1,11 +1,7 @@
-"""Config-leaf x backend declaration matrix (parity program PR-9, rule 12).
+"""Config-leaf x backend declaration matrix (PR-9 rule 12): keys|behavior|reader|note|token|bind.
 
-ONE declarative row per config leaf in ``get_default_config()`` and the
-packaged ``config.yaml``. ``scripts/config_backend_parity_gate.py`` fails
-when either source and this table disagree, when a reader file lacks its
-grep token (the dead-key check), or when a refusal row lost its binding
-test. STRICTLY DATA + STDLIB: loaded by path, so no corpus_kb import.
-``_RAW`` records are ``keys|behavior|reader|note|token|bind``.
+``scripts/config_backend_parity_gate.py`` fails on set drift, a missing
+reader grep token, or an unbound refusal row. Data + stdlib only.
 """
 
 from __future__ import annotations
@@ -18,8 +14,6 @@ BOTH = ("postgres", "duckdb")
 
 
 class ConfigBackendRow(NamedTuple):
-    """One config leaf's backend declaration (see module docstring)."""
-
     key: str
     backends: tuple[str, ...]
     behavior: str
@@ -45,8 +39,7 @@ _RAW: list[str] = [
     "cache.deductive_enabled cache.enabled|honored|research/deductive_run.py|Cache gates||",
     "cache.inductive_enabled|honored|research/exact_cache.py|Inductive exact-cache gate|"
     "inductive_enabled|",
-    "coding.coder coding.model coding.tier|honored|coding/model_tiers.py|"
-    "Coder pick; tier-resolved first rung (T1, TD-06)|coding.model|",
+    "coding.coder coding.model coding.tier|honored|coding/model_tiers.py|Tier pick|coding.model|",
     "coding.export_dir|honored|coding/export_tables.py|Codebook CSV table dir||",
     'llm.base_url|honored|handlers/llm_handler.py||_str_or_default(llm, "base_url"|',
     'llm.model|honored|api/routes_v1.py||llm_section.get("model"|',

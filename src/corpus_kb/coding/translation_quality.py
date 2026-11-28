@@ -1,18 +1,4 @@
-"""Translation quality signal (TD-12 point 3, R8): cosine + LID, in-module.
-
-Cosine between source and translation in a multilingual sentence space
-(LaBSE) plus a language-ID probability computed here (fastText
-``lid.176.bin``); no W6B dependency — W6B's detect stage stores a code,
-not a probability (athena G-13). Licenses (AM-05, 2026-11-26): LaBSE
-Apache-2.0; ``lid.176.bin`` CC-BY-SA 3.0. The 217-language HF fastText
-variant is CC-BY-NC-4.0 — a different artifact, never a default. A
-missing extra, weights file, or failed import answers ``not_measured`` —
-no crash, no fabricated score. Extra ``[quality]``: lazy imports,
-extras-less CI stays green (R18, ``latechunk`` precedent). A score below
-``coding.quality.min_quality_cosine`` blocks grade A and routes to a
-bilingual reader (owned convention, S10; floor 0.80, D-4). The translate
-operation is W6B's general op; this module only scores and gates.
-"""
+"""Translation quality (TD-12): LaBSE cosine + fastText LID; honest not_measured (AM-05)."""
 
 from __future__ import annotations
 
@@ -21,7 +7,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from corpus_kb.coding._quality_types import (
+    EncoderLike,
+    import_fasttext,
+    import_sentence_transformers,
+)
 from corpus_kb.errors import DependencyMissingError
+
+# Cached LaBSE encoder (momus, T1 fix round): one process-wide instance
+# instead of one per assess_translation call. None = the extra is absent.
+_LABSE_MODEL: EncoderLike | None = None
 
 __all__ = [
     "QUALITY_CONFIG_DEFAULTS",
@@ -34,7 +29,8 @@ __all__ = [
 MIN_QUALITY_COSINE_KEY = "coding.quality.min_quality_cosine"
 LID_WEIGHTS_KEY = "coding.quality.lid_weights_path"
 
-#: Registry rows for the exact artifacts this module names (AM-05).
+#: Registry rows for the exact artifacts this module names (AM-05, checked 2026-11-26).
+#: The 217-language HF fastText variant is CC-BY-NC-4.0 — a different artifact, never a default.
 LABSE_LICENSE = "Apache-2.0"
 LID_LICENSE = "CC-BY-SA-3.0"
 
@@ -49,42 +45,30 @@ STATE_NOT_MEASURED = "not_measured"
 
 
 class TranslationUnavailableError(DependencyMissingError):
-    """The W6B translate op is not merged; no translate backend is wired."""
+    pass
 
 
 class TranslatePort(Protocol):
-    """Consumer-side seam over the W6B general translate contract (D-2).
+    """Consumer-side seam over the W6B general translate contract (D-2)."""
 
-    Text in, target language, backend choice (argos default local); the
-    W6B merge supplies the implementation and its cache.
-    """
-
-    async def translate(self, text: str, target_language: str, backend: str = "argos") -> str:
-        """Translate one text; answers the translation."""
-        ...
+    async def translate(self, text: str, target_language: str, backend: str = "argos") -> str: ...
 
 
 class W6BPort:
     """Default adapter: raises until the W6B merge fills the seam."""
 
     async def translate(self, text: str, target_language: str, backend: str = "argos") -> str:
-        """Never translates: the seam stays empty until W6B lands."""
-        raise TranslationUnavailableError(
-            "No translate backend is wired; the W6B translate operation is not merged."
-        )
+        raise TranslationUnavailableError("No translate backend is wired (W6B not merged).")
 
 
 @dataclass(frozen=True)
 class QualityResult:
-    """One assessment: a state plus the measured score when it exists."""
-
     state: str
     score: float | None
     lid_probability: float | None = None
 
 
 def _cosine(a: list[float], b: list[float]) -> float | None:
-    """Cosine over two equal-length vectors; None on any zero vector."""
     if len(a) != len(b):
         return None
     dot = sum(x * y for x, y in zip(a, b, strict=True))
@@ -95,26 +79,37 @@ def _cosine(a: list[float], b: list[float]) -> float | None:
     return dot / (norm_a * norm_b)
 
 
+def _labse_encoder() -> EncoderLike | None:
+    """Build the LaBSE encoder once; None when the [quality] extra is absent.
+
+    The extras-only import stays inside this factory (through the typed
+    ``_quality_types`` seam), so an environment without the extra keeps
+    the honest not_measured path.
+    """
+    global _LABSE_MODEL
+    if _LABSE_MODEL is None:
+        module = import_sentence_transformers()
+        if module is None:
+            return None
+        _LABSE_MODEL = module.SentenceTransformer("sentence-transformers/LaBSE")
+    return _LABSE_MODEL
+
+
 def _embed_pair(source: str, translation: str) -> list[list[float]] | None:
-    """LaBSE embeddings for the pair; None when the extra is absent."""
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError:
+    model = _labse_encoder()
+    if model is None:
         return None
-    model = SentenceTransformer("sentence-transformers/LaBSE")
     return [list(map(float, v)) for v in model.encode([source, translation])]
 
 
 def _lid_probability(text: str, weights_path: str) -> float | None:
-    """fastText language-ID probability; None when weights or extra are absent."""
     if not weights_path:
         return None
-    try:
-        import fasttext
-    except ImportError:
+    module = import_fasttext()
+    if module is None:
         return None
     try:
-        detector = fasttext.load_model(weights_path)
+        detector = module.load_model(weights_path)
         labels, probabilities = detector.predict(text.replace("\n", " "))
     except Exception:
         return None
@@ -128,11 +123,7 @@ def assess_translation(
     translation: str,
     quality_cfg: Mapping[str, Any] | None = None,
 ) -> QualityResult:
-    """Score one translation; ``not_measured`` whenever a piece is absent.
-
-    An empty translation is not measurable either. The floor comes from
-    ``coding.quality.min_quality_cosine`` (default 0.80, refine D-4).
-    """
+    """Score one translation; not_measured whenever a piece is absent."""
     if not translation.strip():
         return QualityResult(STATE_NOT_MEASURED, None, None)
     cfg = quality_cfg or QUALITY_CONFIG_DEFAULTS

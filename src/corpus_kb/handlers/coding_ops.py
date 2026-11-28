@@ -1,10 +1,9 @@
 """Coding operation bodies (pure move out of ``coding_handler.py``).
 
 ``code_batch`` / ``pool_summaries`` / ``embed_codebook`` / ``embed_text``
-are the byte-identical ``CodingHandler`` method bodies;
-``build_reliability_report`` is the computation half of
-``handle_reliability`` (the tenant-scoped fetches stay in the method so
-they keep routing through the handler's patched ``tenant_scope``).
+are the ``CodingHandler`` method bodies; ``build_reliability_report`` is
+the computation half of ``handle_reliability`` (its tenant-scoped fetches
+stay in the method, behind the handler's patched ``tenant_scope``).
 """
 
 from __future__ import annotations
@@ -16,7 +15,11 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.coding._scope import CodingStore
-from corpus_kb.coding.codebook_loader import CodebookEmbeddingError, load_codebook
+from corpus_kb.coding.codebook_loader import (
+    CodebookEmbeddingError,
+    active_paradigm,
+    load_codebook,
+)
 from corpus_kb.coding.coder_dispatch import dispatch_chunk
 from corpus_kb.coding.confidence_routing import Bands
 from corpus_kb.coding.judgment_sampling import judgment_mean_enabled
@@ -34,7 +37,7 @@ from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 
 logger = logging.getLogger(__name__)
 
-# final_codes.status -> the disposition vocabulary reliability_sampling strata on.
+# final_codes.status -> the disposition vocabulary the strata sample on.
 _DISPOSITION = {
     "accepted": "accepted",
     "rejected": "rejected",
@@ -49,7 +52,7 @@ async def pool_summaries(
 
     Keyword governance (collision/over-cap/keyness) runs over the hits this
     pass materialized; the MECE/precision/coverage-gap blocks (TD-11) ride
-    ``mece`` and ``keyword_precision``, reading stored vectors only.
+    ``mece`` and ``keyword_precision`` off stored vectors only.
     """
     keywords = await materialize_chunk_keyword_hits(pool, tenant_id, codebook_version_id)
     similarity = await run_similarity_pooling(pool, tenant_id, codebook_version_id)
@@ -83,21 +86,18 @@ async def code_batch(
 ) -> dict[str, Any]:
     """Code a batch of cells.
 
-    `cells` is a list of {"chunk_id": str|UUID, "code_ids": [str, ...]}, one
-    entry per dispatch call (<=5 candidate codes each); the response carries
-    the per-cell results plus batch counters. A cell that raises (bad
-    chunk_id, transport failure, DB error) is recorded as a per-cell error
-    and counted as rejected; the batch keeps going.
+    `cells` maps one dispatch call to its {"chunk_id", "code_ids"} pair
+    (<=5 candidate codes); a raising cell is recorded and the batch keeps
+    going.
     """
     results: list[dict[str, Any]] = []
     cells_coded = 0
     cells_rejected = 0
     rows_written = 0
-    # Resolve the U35 flag once per batch: judgment_mean_enabled() reads
-    # the config from disk, which must not happen per coded cell (hot
-    # path latency, and a mid-batch config edit would flip behavior
-    # halfway through the run).
+    # Resolve the U35 flag once per batch (it reads config from disk).
     batch_use_judgment_mean = judgment_mean_enabled()
+    # Ruling 9a: the active codebook version's paradigm rides every batch.
+    batch_paradigm = await active_paradigm(pool, str(tenant_id))
     for cell in cells:
         raw_chunk_id = cell.get("chunk_id")
         try:
@@ -114,6 +114,7 @@ async def code_batch(
                 coding_pass=coding_pass,
                 bands=bands,
                 use_judgment_mean=batch_use_judgment_mean,
+                paradigm=batch_paradigm,
             )
         except Exception as exc:  # one bad cell must not abort the batch
             logger.warning("Coding cell %s failed: %s", raw_chunk_id, exc)
@@ -165,8 +166,7 @@ async def build_reliability_report(
     ]
     sampled = stratified_sample(population_rows, per_code_min, seed) if population_rows else []
     # Seed every code present in the population at 0 first, so a code that
-    # exists but drew zero rows in the sample still shows up as
-    # insufficient instead of being silently absent from `counts`.
+    # drew zero sampled rows still shows up as insufficient, not absent.
     sampled_counts: dict[str, int] = {r["code_id"]: 0 for r in population_rows}
     for r in sampled:
         sampled_counts[r["code_id"]] = sampled_counts.get(r["code_id"], 0) + 1

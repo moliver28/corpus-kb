@@ -45,6 +45,13 @@ def test_quote_failure_is_u() -> None:
     assert (graded.grade, graded.reason) == ("U", "quote_not_verified")
 
 
+def test_quote_failure_on_reject_is_u() -> None:
+    """AM-09 (P2): the quote gate is unconditional — a reject with an
+    unverified quote grades U even when every other A signal holds."""
+    graded = grade_cell(replace(FULL, decision="reject", quote_ok=False))
+    assert (graded.grade, graded.reason) == ("U", "quote_not_verified")
+
+
 def test_insufficient_calibration_seeds_is_u() -> None:
     graded = grade_cell(replace(FULL, calibration_n=29))
     assert (graded.grade, graded.reason) == ("U", "insufficient_calibration_seeds")
@@ -94,6 +101,7 @@ def test_reasons_stay_inside_the_closed_list() -> None:
         FULL,
         replace(FULL, paradigm="reflexive"),
         replace(FULL, quote_ok=False),
+        replace(FULL, decision="reject", quote_ok=False),
         replace(FULL, calibration_n=1),
         replace(FULL, conformal_singleton=False),
         replace(FULL, error_bound=0.9),
